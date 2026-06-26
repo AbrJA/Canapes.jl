@@ -1,0 +1,300 @@
+==============================================================================
+Gideon.jl — Inference (recommend / score / predict) Benchmark
+==============================================================================
+  Julia:        1.12.6
+  Threads:      4
+  BLAS threads: 8
+  Element type: Float32
+  Peak RSS:     449.4 MiB
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scale: small (1000 users × 500 items, density=0.050)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Matrix: 1000 users × 500 items, nnz=24369 (0.3 MiB sparse)
+
+  WRMF-Chol     training... 0.91s  →  benchmarking inference...
+    recommend(k=10)              0.0034 s     2.2 MiB      297849 users/s
+    recommend(k=50)              0.0060 s     1.8 MiB      165534 users/s
+    score(full)                  0.0259 s     1.8 MiB       38640 users/s
+    similar_items(×500)          0.0034 s         0 B      148562 users/s
+
+  WRMF-CG       training... 0.10s  →  benchmarking inference...
+    recommend(k=10)              0.0027 s     1.9 MiB      365852 users/s
+    recommend(k=50)              0.0084 s         0 B      119570 users/s
+    score(full)                  0.0041 s     1.8 MiB      244670 users/s
+    similar_items(×500)          0.0033 s         0 B      149712 users/s
+
+  iALS          training... 0.81s  →  benchmarking inference...
+    recommend(k=10)              0.0024 s   348.0 KiB      419630 users/s
+    recommend(k=50)              0.0064 s     1.8 MiB      156134 users/s
+    score(full)                  0.0012 s     1.8 MiB      843823 users/s
+    similar_items(×500)          0.0033 s         0 B      151051 users/s
+
+  eALS          training... 0.91s  →  benchmarking inference...
+    recommend(k=10)              0.0028 s     3.8 MiB      354623 users/s
+    recommend(k=50)              0.0066 s     3.7 MiB      151253 users/s
+    score(full)                  0.0011 s         0 B      934531 users/s
+    similar_items(×500)          0.0049 s         0 B      102358 users/s
+
+  BPR           training... 0.31s  →  benchmarking inference...
+    recommend(k=10)              0.0023 s         0 B      437908 users/s
+    recommend(k=50)              0.0062 s         0 B      162085 users/s
+    score(full)                  0.0007 s         0 B     1347803 users/s
+    similar_items(×500)          0.0034 s         0 B      147910 users/s
+
+  LMF           training... 0.58s  →  benchmarking inference...
+    recommend(k=10)              0.0028 s         0 B      358560 users/s
+    recommend(k=50)              0.0084 s         0 B      118858 users/s
+    score(full)                  0.0007 s         0 B     1426595 users/s
+    similar_items(×500)          0.0034 s         0 B      148640 users/s
+
+  SoftImpute    training... 1.53s  →  benchmarking inference...
+    recommend(k=10)              0.0019 s         0 B      514473 users/s
+    recommend(k=50)              0.0052 s         0 B      193592 users/s
+    score(full)                  0.0007 s         0 B     1356681 users/s
+    similar_items(×500)          0.0017 s         0 B      297310 users/s
+
+  PureSVD       training... 0.52s  →  benchmarking inference...
+    recommend(k=10)              0.0031 s         0 B      317623 users/s
+    recommend(k=50)              0.0081 s         0 B      123554 users/s
+    score(full)                  0.0008 s         0 B     1180348 users/s
+    similar_items(×500)          0.0049 s         0 B      101504 users/s
+
+  EASE          training... 0.20s  →  benchmarking inference...
+    recommend(k=10)              0.0129 s     3.4 MiB       77700 users/s
+    recommend(k=50)              0.0167 s     7.5 MiB       59847 users/s
+    score(full)                  0.0103 s         0 B       97268 users/s
+
+  SLIM          training... 6.79s  →  benchmarking inference...
+    recommend(k=10)              0.0114 s         0 B       87360 users/s
+    recommend(k=50)              0.0145 s         0 B       68873 users/s
+    score(full)                  0.0074 s         0 B      134938 users/s
+
+  ADMMSLIM      training... 0.96s  →  benchmarking inference...
+    recommend(k=10)              0.0126 s     1.0 MiB       79243 users/s
+    recommend(k=50)              0.0166 s         0 B       60219 users/s
+    score(full)                  0.0108 s         0 B       92550 users/s
+
+  ItemKNN       training... 0.39s  →  benchmarking inference...
+    recommend(k=10)              0.0105 s     3.1 MiB       95476 users/s
+    recommend(k=50)              0.0135 s         0 B       73887 users/s
+    score(full)                  0.0057 s         0 B      174193 users/s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scale: medium (10000 users × 2000 items, density=0.020)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Matrix: 10000 users × 2000 items, nnz=395988 (4.5 MiB sparse)
+
+  WRMF-Chol     training... 1.63s  →  benchmarking inference...
+    recommend(k=10)              0.0415 s    76.3 MiB      241170 users/s
+    recommend(k=50)              0.0724 s    76.3 MiB      138084 users/s
+    score(full)                  0.2301 s    76.3 MiB       43459 users/s
+    similar_items(×1000)         0.0203 s         0 B       49302 users/s
+
+  WRMF-CG       training... 0.28s  →  benchmarking inference...
+    recommend(k=10)              0.0383 s    76.3 MiB      260940 users/s
+    recommend(k=50)              0.0678 s    76.3 MiB      147568 users/s
+    score(full)                  0.0730 s    76.3 MiB      136932 users/s
+    similar_items(×1000)         0.0240 s         0 B       41647 users/s
+
+  iALS          training... 0.62s  →  benchmarking inference...
+    recommend(k=10)              0.0412 s    76.3 MiB      242570 users/s
+    recommend(k=50)              0.0697 s    76.3 MiB      143554 users/s
+    score(full)                  0.0275 s    76.3 MiB      363947 users/s
+    similar_items(×1000)         0.0243 s         0 B       41153 users/s
+
+  eALS          training... 0.65s  →  benchmarking inference...
+    recommend(k=10)              0.0530 s   152.6 MiB      188673 users/s
+    recommend(k=50)              0.0785 s   152.6 MiB      127332 users/s
+    score(full)                  0.0602 s   152.6 MiB      166078 users/s
+    similar_items(×1000)         0.0362 s         0 B       27641 users/s
+
+  BPR           training... 0.16s  →  benchmarking inference...
+    recommend(k=10)              0.0412 s    76.3 MiB      242868 users/s
+    recommend(k=50)              0.0690 s    76.3 MiB      144871 users/s
+    score(full)                  0.0285 s    76.3 MiB      350289 users/s
+    similar_items(×1000)         0.0239 s         0 B       41874 users/s
+
+  LMF           training... 0.19s  →  benchmarking inference...
+    recommend(k=10)              0.0394 s    76.3 MiB      253614 users/s
+    recommend(k=50)              0.0760 s    76.3 MiB      131650 users/s
+    score(full)                  0.0297 s    76.3 MiB      336986 users/s
+    similar_items(×1000)         0.0239 s         0 B       41881 users/s
+
+  SoftImpute    training... 1.21s  →  benchmarking inference...
+    recommend(k=10)              0.0551 s   152.6 MiB      181445 users/s
+    recommend(k=50)              0.0795 s   152.6 MiB      125762 users/s
+    score(full)                  0.0593 s   152.6 MiB      168699 users/s
+    similar_items(×1000)         0.0324 s         0 B       30868 users/s
+
+  PureSVD       training... 0.41s  →  benchmarking inference...
+    recommend(k=10)              0.0545 s   152.6 MiB      183320 users/s
+    recommend(k=50)              0.0796 s   152.6 MiB      125674 users/s
+    score(full)                  0.0675 s   152.6 MiB      148041 users/s
+    similar_items(×1000)         0.0377 s         0 B       26501 users/s
+
+  EASE          training... 0.17s  →  benchmarking inference...
+    recommend(k=10)              0.7462 s   305.2 MiB       13401 users/s
+    recommend(k=50)              0.7634 s   305.2 MiB       13099 users/s
+    score(full)                  0.7082 s   305.2 MiB       14121 users/s
+
+  SLIM          training... 24.67s  →  benchmarking inference...
+    recommend(k=10)              0.6973 s   611.6 MiB       14340 users/s
+    recommend(k=50)              0.6784 s   607.6 MiB       14742 users/s
+    score(full)                  0.3222 s   304.2 MiB       31041 users/s
+
+  ADMMSLIM      training... 3.62s  →  benchmarking inference...
+    recommend(k=10)              0.7456 s   305.9 MiB       13411 users/s
+    recommend(k=50)              0.7623 s   305.2 MiB       13118 users/s
+    score(full)                  0.7069 s   305.2 MiB       14147 users/s
+
+  ItemKNN       training... 0.10s  →  benchmarking inference...
+    recommend(k=10)              0.3569 s   387.0 MiB       28021 users/s
+    recommend(k=50)              0.3769 s   387.0 MiB       26529 users/s
+    score(full)                  0.1659 s   194.3 MiB       60261 users/s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scale: large (50000 users × 5000 items, density=0.005)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Matrix: 50000 users × 5000 items, nnz=1246932 (14.3 MiB sparse)
+
+  WRMF-Chol     training... 6.17s  →  benchmarking inference...
+    recommend(k=10)              0.2964 s   972.1 MiB      168717 users/s
+    recommend(k=50)              0.4509 s   972.7 MiB      110886 users/s
+    score(full)                  1.0944 s   959.8 MiB       45689 users/s
+    similar_items(×1000)         0.0642 s         0 B       15586 users/s
+
+  WRMF-CG       training... 1.31s  →  benchmarking inference...
+    recommend(k=10)              0.2907 s   953.7 MiB      171978 users/s
+    recommend(k=50)              0.4465 s   972.6 MiB      111979 users/s
+    score(full)                  0.5221 s   958.4 MiB       95771 users/s
+    similar_items(×1000)         0.0673 s         0 B       14854 users/s
+
+  iALS          training... 3.39s  →  benchmarking inference...
+    recommend(k=10)              0.2809 s   953.7 MiB      177981 users/s
+    recommend(k=50)              0.4524 s   957.6 MiB      110515 users/s
+    score(full)                  0.3960 s   953.7 MiB      126274 users/s
+    similar_items(×1000)         0.0660 s         0 B       15161 users/s
+
+  eALS          training... 3.37s  →  benchmarking inference...
+    recommend(k=10)              0.4885 s     1.9 GiB      102352 users/s
+    recommend(k=50)              0.6301 s     1.9 GiB       79354 users/s
+    score(full)                  0.8297 s     1.9 GiB       60261 users/s
+    similar_items(×1000)         0.1155 s         0 B        8661 users/s
+
+  BPR           training... 0.90s  →  benchmarking inference...
+    recommend(k=10)              0.2934 s   953.7 MiB      170436 users/s
+    recommend(k=50)              0.4552 s   955.1 MiB      109853 users/s
+    score(full)                  0.4157 s   953.7 MiB      120273 users/s
+    similar_items(×1000)         0.0758 s         0 B       13200 users/s
+
+  LMF           training... 1.36s  →  benchmarking inference...
+    recommend(k=10)              0.2872 s   953.7 MiB      174119 users/s
+    recommend(k=50)              0.4449 s   953.7 MiB      112380 users/s
+    score(full)                  0.4198 s   953.7 MiB      119109 users/s
+    similar_items(×1000)         0.0597 s         0 B       16754 users/s
+
+  SoftImpute    training... 7.47s  →  benchmarking inference...
+    recommend(k=10)              0.4863 s     1.9 GiB      102812 users/s
+    recommend(k=50)              0.6343 s     1.9 GiB       78821 users/s
+    score(full)                  0.8501 s     1.9 GiB       58818 users/s
+    similar_items(×1000)         0.1134 s         0 B        8822 users/s
+
+  PureSVD       training... 2.41s  →  benchmarking inference...
+    recommend(k=10)              0.5046 s     1.9 GiB       99089 users/s
+    recommend(k=50)              0.6315 s     1.9 GiB       79182 users/s
+    score(full)                  0.8543 s     1.9 GiB       58527 users/s
+    similar_items(×1000)         0.1150 s         0 B        8696 users/s
+
+  EASE          training... 1.11s  →  benchmarking inference...
+    recommend(k=10)              8.3239 s     3.7 GiB        6007 users/s
+    recommend(k=50)              8.5531 s     3.7 GiB        5846 users/s
+    score(full)                  8.2709 s     3.7 GiB        6045 users/s
+
+  SLIM          SKIPPED (too slow at n_items=5000)
+  ADMMSLIM      training... 31.51s  →  benchmarking inference...
+    recommend(k=10)              8.5655 s     3.7 GiB        5837 users/s
+    recommend(k=50)              8.5485 s     3.7 GiB        5849 users/s
+    score(full)                  8.1593 s     3.7 GiB        6128 users/s
+
+  ItemKNN       training... 0.88s  →  benchmarking inference...
+    recommend(k=10)              1.8637 s     1.6 GiB       26829 users/s
+    recommend(k=50)              1.9699 s     1.6 GiB       25382 users/s
+    score(full)                  0.8262 s   838.3 MiB       60521 users/s
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Regression models (FTRL, FM)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Data: 10000 samples × 500 features, nnz=243772
+
+  FTRL          training... 0.15s  →  benchmarking predict...
+    predict                      0.0030 s         0 B     3284812 samples/s
+
+  FM            training... 0.64s  →  benchmarking predict...
+    predict                      0.0055 s         0 B     1801894 samples/s
+
+  Data: 100000 samples × 1000 features, nnz=1980038
+
+  FTRL          training... 0.32s  →  benchmarking predict...
+    predict                      0.0365 s         0 B     2741200 samples/s
+
+  FM            training... 0.72s  →  benchmarking predict...
+    predict                      0.0591 s         0 B     1691994 samples/s
+
+
+==============================================================================
+SUMMARY
+==============================================================================
+  Peak RSS: 8.4 GiB
+
+Scale    Algorithm    Operation                   Time (s)     Memory   Throughput
+──────────────────────────────────────────────────────────────────────────────
+large    WRMF-Chol    recommend(k=10)               0.2964  972.1 MiB     168717 /s
+large    WRMF-Chol    recommend(k=50)               0.4509  972.7 MiB     110886 /s
+large    WRMF-Chol    score(full)                   1.0944  959.8 MiB      45689 /s
+large    WRMF-Chol    similar_items(×1000)          0.0642        0 B      15586 /s
+large    WRMF-CG      recommend(k=10)               0.2907  953.7 MiB     171978 /s
+large    WRMF-CG      recommend(k=50)               0.4465  972.6 MiB     111979 /s
+large    WRMF-CG      score(full)                   0.5221  958.4 MiB      95771 /s
+large    WRMF-CG      similar_items(×1000)          0.0673        0 B      14854 /s
+large    iALS         recommend(k=10)               0.2809  953.7 MiB     177981 /s
+large    iALS         recommend(k=50)               0.4524  957.6 MiB     110515 /s
+large    iALS         score(full)                   0.3960  953.7 MiB     126274 /s
+large    iALS         similar_items(×1000)          0.0660        0 B      15161 /s
+large    eALS         recommend(k=10)               0.4885    1.9 GiB     102352 /s
+large    eALS         recommend(k=50)               0.6301    1.9 GiB      79354 /s
+large    eALS         score(full)                   0.8297    1.9 GiB      60261 /s
+large    eALS         similar_items(×1000)          0.1155        0 B       8661 /s
+large    BPR          recommend(k=10)               0.2934  953.7 MiB     170436 /s
+large    BPR          recommend(k=50)               0.4552  955.1 MiB     109853 /s
+large    BPR          score(full)                   0.4157  953.7 MiB     120273 /s
+large    BPR          similar_items(×1000)          0.0758        0 B      13200 /s
+large    LMF          recommend(k=10)               0.2872  953.7 MiB     174119 /s
+large    LMF          recommend(k=50)               0.4449  953.7 MiB     112380 /s
+large    LMF          score(full)                   0.4198  953.7 MiB     119109 /s
+large    LMF          similar_items(×1000)          0.0597        0 B      16754 /s
+large    SoftImpute   recommend(k=10)               0.4863    1.9 GiB     102812 /s
+large    SoftImpute   recommend(k=50)               0.6343    1.9 GiB      78821 /s
+large    SoftImpute   score(full)                   0.8501    1.9 GiB      58818 /s
+large    SoftImpute   similar_items(×1000)          0.1134        0 B       8822 /s
+large    PureSVD      recommend(k=10)               0.5046    1.9 GiB      99089 /s
+large    PureSVD      recommend(k=50)               0.6315    1.9 GiB      79182 /s
+large    PureSVD      score(full)                   0.8543    1.9 GiB      58527 /s
+large    PureSVD      similar_items(×1000)          0.1150        0 B       8696 /s
+large    EASE         recommend(k=10)               8.3239    3.7 GiB       6007 /s
+large    EASE         recommend(k=50)               8.5531    3.7 GiB       5846 /s
+large    EASE         score(full)                   8.2709    3.7 GiB       6045 /s
+large    ADMMSLIM     recommend(k=10)               8.5655    3.7 GiB       5837 /s
+large    ADMMSLIM     recommend(k=50)               8.5485    3.7 GiB       5849 /s
+large    ADMMSLIM     score(full)                   8.1593    3.7 GiB       6128 /s
+large    ItemKNN      recommend(k=10)               1.8637    1.6 GiB      26829 /s
+large    ItemKNN      recommend(k=50)               1.9699    1.6 GiB      25382 /s
+large    ItemKNN      score(full)                   0.8262  838.3 MiB      60521 /s
+10k×500  FTRL         predict                       0.0030        0 B    3284812 /s
+10k×500  FM           predict                       0.0055        0 B    1801894 /s
+100k×1000 FTRL         predict                       0.0365        0 B    2741200 /s
+100k×1000 FM           predict                       0.0591        0 B    1691994 /s
+──────────────────────────────────────────────────────────────────────────────
+
+Results saved to: /home/ajaimes/Documents/GitHub/Julia/Packages/Gideon.jl/benchmark/results_recommend_julia.csv

@@ -400,6 +400,97 @@ def main() -> int:
         }
         (out_dir / "py_slim_metrics.json").write_text(json.dumps(slim_metrics, indent=2), encoding="utf-8")
 
+    # ── PureSVD reference (scipy truncated SVD) ──────────────────────────
+    print("[PureSVD] Computing scipy.sparse.linalg.svds reference...")
+    from scipy.sparse.linalg import svds as scipy_svds
+    pure_rank = 10
+    u_svd, s_svd, vt_svd = scipy_svds(train.astype(np.float64), k=pure_rank)
+    # scipy returns ascending order; flip to descending
+    idx = np.argsort(-s_svd)
+    u_svd = u_svd[:, idx]
+    s_svd = s_svd[idx]
+    vt_svd = vt_svd[idx, :]
+    recon_svd = (u_svd * s_svd) @ vt_svd
+    np.savetxt(out_dir / "py_puresvd_svals.csv", s_svd[None, :], delimiter=",")
+    np.savetxt(out_dir / "py_puresvd_recon.csv", recon_svd, delimiter=",")
+    print(f"  singular values: {s_svd[:5]}")
+
+    # ── ItemKNN cosine reference (scipy) ─────────────────────────────────
+    print("[ItemKNN] Computing cosine KNN reference...")
+    from sklearn.metrics.pairwise import cosine_similarity
+    knn_k = 20
+    x_dense = x.toarray().astype(np.float64)
+    # Item-item cosine similarity from X^T X normalized
+    sim = cosine_similarity(x_dense.T)
+    np.fill_diagonal(sim, 0.0)
+    # Keep top-k per column (column j: top-k most similar to item j)
+    sim_topk = np.zeros_like(sim)
+    for j in range(sim.shape[1]):
+        topk_idx = np.argpartition(-sim[:, j], knn_k)[:knn_k]
+        sim_topk[topk_idx, j] = sim[topk_idx, j]
+    # Row-normalize
+    row_sums = sim_topk.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1.0
+    sim_topk_norm = sim_topk / row_sums
+    knn_scores = x_dense @ sim_topk_norm
+    np.savetxt(out_dir / "py_knn_W.csv", sim_topk_norm, delimiter=",")
+    np.savetxt(out_dir / "py_knn_scores.csv", knn_scores, delimiter=",")
+    knn_preds = topk_from_scores(knn_scores, train=train, k=10)
+    knn_metrics = {
+        "k": 10,
+        "knn_k": knn_k,
+        "ndcg": ndcg_at_k(knn_preds, test, k=10),
+        "recall": recall_at_k(knn_preds, test, k=10),
+    }
+    (out_dir / "py_knn_metrics.json").write_text(json.dumps(knn_metrics, indent=2), encoding="utf-8")
+    print(f"  W nnz: {np.count_nonzero(sim_topk_norm)}, NDCG@10: {knn_metrics['ndcg']:.4f}")
+
+    # ── ADMMSLIM reference (closed-form ADMM) ────────────────────────────
+    print("[ADMMSLIM] Computing ADMM-SLIM reference...")
+    admm_l1 = 0.01
+    admm_l2 = 100.0
+    admm_rho = 1.0
+    admm_max_iter = 100
+    admm_tol = 1e-5
+    G = x_dense.T @ x_dense  # Gram
+    n_it = G.shape[0]
+    lhs = G + (admm_l2 + admm_rho) * np.eye(n_it)
+    lhs_inv = np.linalg.inv(lhs)  # pre-factor
+    B = np.zeros((n_it, n_it))
+    Z = np.zeros((n_it, n_it))
+    U = np.zeros((n_it, n_it))
+    for it in range(admm_max_iter):
+        rhs_admm = G + admm_rho * (Z - U)
+        B = lhs_inv @ rhs_admm
+        np.fill_diagonal(B, 0.0)
+        # Z-update: soft-threshold + nonneg
+        B_plus_U = B + U
+        threshold = admm_l1 / admm_rho
+        Z = np.maximum(B_plus_U - threshold, 0.0)
+        np.fill_diagonal(Z, 0.0)
+        # U-update
+        U += B - Z
+        # convergence
+        resid = np.linalg.norm(B - Z) / (np.linalg.norm(B) + 1e-12)
+        if resid < admm_tol:
+            print(f"  converged at iter {it+1}, resid={resid:.2e}")
+            break
+    admm_W = Z
+    admm_scores = x_dense @ admm_W
+    np.savetxt(out_dir / "py_admmslim_W.csv", admm_W, delimiter=",")
+    np.savetxt(out_dir / "py_admmslim_scores.csv", admm_scores, delimiter=",")
+    admm_preds = topk_from_scores(admm_scores, train=train, k=10)
+    admm_metrics = {
+        "k": 10,
+        "l1": admm_l1,
+        "l2": admm_l2,
+        "rho": admm_rho,
+        "ndcg": ndcg_at_k(admm_preds, test, k=10),
+        "recall": recall_at_k(admm_preds, test, k=10),
+    }
+    (out_dir / "py_admmslim_metrics.json").write_text(json.dumps(admm_metrics, indent=2), encoding="utf-8")
+    print(f"  W nnz: {np.count_nonzero(admm_W)}, NDCG@10: {admm_metrics['ndcg']:.4f}")
+
     meta = {
         "seed": seed,
         "n_users": n_users,
@@ -418,6 +509,11 @@ def main() -> int:
         "slim_available": slim_w is not None,
         "slim_l1": slim_l1,
         "slim_l2": slim_l2,
+        "puresvd_rank": pure_rank,
+        "knn_k": knn_k,
+        "admm_l1": admm_l1,
+        "admm_l2": admm_l2,
+        "admm_rho": admm_rho,
         "implicit_version": getattr(implicit, "__version__", "unknown"),
     }
     (out_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

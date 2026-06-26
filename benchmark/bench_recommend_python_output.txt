@@ -1,0 +1,180 @@
+==============================================================================
+Python — Inference (recommend / score) Benchmark
+==============================================================================
+  Python:       3.12.13
+  NumPy:        2.5.0
+  Peak RSS:     49.2 MiB
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scale: small (1000 users × 500 items, density=0.050)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Matrix: 1000 users × 500 items, nnz=24382 (0.2 MiB sparse)
+
+  ALS(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s]100%|██████████| 5/5 [00:00<00:00, 140.83it/s]
+0.04s  →  benchmarking inference...
+    recommend(k=10)              0.0020 s   196.0 KiB      505793 users/s
+    recommend(k=50)              0.0037 s   708.0 KiB      268826 users/s
+    score(full)                  0.0006 s         0 B     1611282 users/s
+    similar_items(×500)          0.0065 s         0 B       76757 users/s
+
+  BPR(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s] 20%|██        | 1/5 [00:00<00:00, 212.14it/s, train_auc=50.42%, skipped=5.13%] 40%|████      | 2/5 [00:00<00:00, 213.20it/s, train_auc=50.53%, skipped=4.84%] 60%|██████    | 3/5 [00:00<00:00, 225.59it/s, train_auc=50.30%, skipped=5.10%] 80%|████████  | 4/5 [00:00<00:00, 241.11it/s, train_auc=50.71%, skipped=5.41%]100%|██████████| 5/5 [00:00<00:00, 238.81it/s, train_auc=50.03%, skipped=5.27%]100%|██████████| 5/5 [00:00<00:00, 237.64it/s, train_auc=50.03%, skipped=5.27%]
+0.02s  →  benchmarking inference...
+    recommend(k=10)              0.0016 s         0 B      628534 users/s
+    recommend(k=50)              0.0024 s         0 B      410139 users/s
+    score(full)                  0.0006 s         0 B     1617673 users/s
+    similar_items(×500)          0.0069 s         0 B       72124 users/s
+
+  LMF(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s]100%|██████████| 5/5 [00:00<00:00, 113.40it/s]
+0.05s  →  benchmarking inference...
+    recommend(k=10)              0.0017 s         0 B      592323 users/s
+    recommend(k=50)              0.0035 s         0 B      285373 users/s
+    score(full)                  0.0006 s         0 B     1686904 users/s
+    similar_items(×500)          0.0070 s         0 B       71353 users/s
+
+  EASE          training... 0.03s  →  benchmarking inference...
+    recommend(k=10)              0.0080 s     7.5 MiB      125174 users/s
+    recommend(k=50)              0.0090 s     7.5 MiB      111113 users/s
+    score(full)                  0.0058 s         0 B      172183 users/s
+
+  ItemKNN       training... 0.01s  →  benchmarking inference...
+    recommend(k=10)              0.0156 s     9.1 MiB       64160 users/s
+    recommend(k=50)              0.0157 s     9.1 MiB       63626 users/s
+    score(full)                  0.0093 s         0 B      106960 users/s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scale: medium (10000 users × 2000 items, density=0.020)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Matrix: 10000 users × 2000 items, nnz=396081 (3.1 MiB sparse)
+
+  ALS(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s] 40%|████      | 2/5 [00:00<00:00, 18.32it/s] 80%|████████  | 4/5 [00:00<00:00, 19.22it/s]100%|██████████| 5/5 [00:00<00:00, 19.11it/s]
+0.27s  →  benchmarking inference...
+    recommend(k=10)              0.0361 s         0 B      276939 users/s
+    recommend(k=50)              0.0625 s         0 B      159907 users/s
+    score(full)                  0.0276 s    76.3 MiB      361799 users/s
+    similar_items(×1000)         0.0243 s         0 B       41148 users/s
+
+  BPR(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s] 20%|██        | 1/5 [00:00<00:00, 20.61it/s, train_auc=49.98%, skipped=2.07%] 40%|████      | 2/5 [00:00<00:00, 21.24it/s, train_auc=50.06%, skipped=2.06%] 60%|██████    | 3/5 [00:00<00:00, 22.04it/s, train_auc=50.06%, skipped=2.06%] 60%|██████    | 3/5 [00:00<00:00, 22.04it/s, train_auc=50.02%, skipped=2.08%] 80%|████████  | 4/5 [00:00<00:00, 22.04it/s, train_auc=49.85%, skipped=2.03%]100%|██████████| 5/5 [00:00<00:00, 22.04it/s, train_auc=49.94%, skipped=2.05%]100%|██████████| 5/5 [00:00<00:00, 22.40it/s, train_auc=49.94%, skipped=2.05%]
+0.23s  →  benchmarking inference...
+    recommend(k=10)              0.0303 s         0 B      330361 users/s
+    recommend(k=50)              0.0582 s         0 B      171899 users/s
+    score(full)                  0.0271 s    76.3 MiB      369450 users/s
+    similar_items(×1000)         0.0246 s         0 B       40609 users/s
+
+  LMF(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s] 40%|████      | 2/5 [00:00<00:00, 14.46it/s] 80%|████████  | 4/5 [00:00<00:00, 13.74it/s]100%|██████████| 5/5 [00:00<00:00, 13.77it/s]
+0.38s  →  benchmarking inference...
+    recommend(k=10)              0.0353 s         0 B      283610 users/s
+    recommend(k=50)              0.0557 s         0 B      179578 users/s
+    score(full)                  0.0269 s    76.3 MiB      371685 users/s
+    similar_items(×1000)         0.0292 s         0 B       34300 users/s
+
+  EASE          training... 0.68s  →  benchmarking inference...
+    recommend(k=10)              0.2872 s   152.6 MiB       34815 users/s
+    recommend(k=50)              0.2901 s   152.6 MiB       34471 users/s
+    score(full)                  0.2064 s    76.3 MiB       48448 users/s
+
+  ItemKNN       training... 0.16s  →  benchmarking inference...
+    recommend(k=10)              0.2844 s   152.6 MiB       35167 users/s
+    recommend(k=50)              0.3005 s   152.6 MiB       33280 users/s
+    score(full)                  0.2018 s    76.3 MiB       49562 users/s
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scale: large (50000 users × 5000 items, density=0.005)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Matrix: 50000 users × 5000 items, nnz=1246839 (9.7 MiB sparse)
+
+  ALS(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s] 20%|██        | 1/5 [00:00<00:00,  4.65it/s] 40%|████      | 2/5 [00:00<00:00,  4.82it/s] 60%|██████    | 3/5 [00:00<00:00,  4.98it/s] 80%|████████  | 4/5 [00:00<00:00,  4.88it/s]100%|██████████| 5/5 [00:01<00:00,  4.91it/s]100%|██████████| 5/5 [00:01<00:00,  4.88it/s]
+1.04s  →  benchmarking inference...
+    recommend(k=10)              0.2562 s         0 B      195152 users/s
+    recommend(k=50)              0.3734 s         0 B      133918 users/s
+    score(full)                  0.3393 s   953.7 MiB      147345 users/s
+    similar_items(×1000)         0.0731 s         0 B       13687 users/s
+
+  BPR(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s] 20%|██        | 1/5 [00:00<00:00,  6.21it/s] 20%|██        | 1/5 [00:00<00:00,  6.21it/s, train_auc=49.93%, skipped=0.52%] 40%|████      | 2/5 [00:00<00:00,  6.65it/s, train_auc=49.93%, skipped=0.52%] 40%|████      | 2/5 [00:00<00:00,  6.65it/s, train_auc=50.08%, skipped=0.51%] 60%|██████    | 3/5 [00:00<00:00,  6.44it/s, train_auc=50.08%, skipped=0.51%] 60%|██████    | 3/5 [00:00<00:00,  6.44it/s, train_auc=49.98%, skipped=0.51%] 80%|████████  | 4/5 [00:00<00:00,  6.30it/s, train_auc=49.98%, skipped=0.51%] 80%|████████  | 4/5 [00:00<00:00,  6.30it/s, train_auc=50.03%, skipped=0.53%]100%|██████████| 5/5 [00:00<00:00,  6.10it/s, train_auc=50.03%, skipped=0.53%]100%|██████████| 5/5 [00:00<00:00,  6.10it/s, train_auc=50.02%, skipped=0.52%]100%|██████████| 5/5 [00:00<00:00,  6.23it/s, train_auc=50.02%, skipped=0.52%]
+0.82s  →  benchmarking inference...
+    recommend(k=10)              0.2348 s         0 B      212950 users/s
+    recommend(k=50)              0.3303 s         0 B      151365 users/s
+    score(full)                  0.3387 s   953.7 MiB      147623 users/s
+    similar_items(×1000)         0.0759 s         0 B       13172 users/s
+
+  LMF(implicit)  training...   0%|          | 0/5 [00:00<?, ?it/s] 20%|██        | 1/5 [00:00<00:01,  3.41it/s] 40%|████      | 2/5 [00:00<00:00,  3.27it/s] 60%|██████    | 3/5 [00:00<00:00,  3.38it/s] 80%|████████  | 4/5 [00:01<00:00,  3.16it/s]100%|██████████| 5/5 [00:01<00:00,  3.06it/s]100%|██████████| 5/5 [00:01<00:00,  3.16it/s]
+1.64s  →  benchmarking inference...
+    recommend(k=10)              0.2524 s         0 B      198079 users/s
+    recommend(k=50)              0.3765 s         0 B      132785 users/s
+    score(full)                  0.3650 s   953.7 MiB      136994 users/s
+    similar_items(×1000)         0.0807 s         0 B       12396 users/s
+
+  EASE          training... 11.27s  →  benchmarking inference...
+    recommend(k=10)              3.1678 s     1.9 GiB       15784 users/s
+    recommend(k=50)              3.1754 s     1.9 GiB       15746 users/s
+    score(full)                  2.2404 s   953.7 MiB       22318 users/s
+
+  ItemKNN       training... 0.68s  →  benchmarking inference...
+    recommend(k=10)              1.3925 s     1.9 GiB       35908 users/s
+    recommend(k=50)              1.3549 s     1.9 GiB       36903 users/s
+    score(full)                  0.5842 s   953.7 MiB       85585 users/s
+
+
+==============================================================================
+SUMMARY
+==============================================================================
+  Peak RSS: 5.2 GiB
+
+Scale    Algorithm      Operation                   Time (s)     Memory   Throughput
+──────────────────────────────────────────────────────────────────────────────
+small    ALS(implicit)  recommend(k=10)               0.0020  196.0 KiB     505793 /s
+small    ALS(implicit)  recommend(k=50)               0.0037  708.0 KiB     268826 /s
+small    ALS(implicit)  score(full)                   0.0006        0 B    1611282 /s
+small    ALS(implicit)  similar_items(×500)           0.0065        0 B      76757 /s
+small    BPR(implicit)  recommend(k=10)               0.0016        0 B     628534 /s
+small    BPR(implicit)  recommend(k=50)               0.0024        0 B     410139 /s
+small    BPR(implicit)  score(full)                   0.0006        0 B    1617673 /s
+small    BPR(implicit)  similar_items(×500)           0.0069        0 B      72124 /s
+small    LMF(implicit)  recommend(k=10)               0.0017        0 B     592323 /s
+small    LMF(implicit)  recommend(k=50)               0.0035        0 B     285373 /s
+small    LMF(implicit)  score(full)                   0.0006        0 B    1686904 /s
+small    LMF(implicit)  similar_items(×500)           0.0070        0 B      71353 /s
+small    EASE           recommend(k=10)               0.0080    7.5 MiB     125174 /s
+small    EASE           recommend(k=50)               0.0090    7.5 MiB     111113 /s
+small    EASE           score(full)                   0.0058        0 B     172183 /s
+small    ItemKNN        recommend(k=10)               0.0156    9.1 MiB      64160 /s
+small    ItemKNN        recommend(k=50)               0.0157    9.1 MiB      63626 /s
+small    ItemKNN        score(full)                   0.0093        0 B     106960 /s
+medium   ALS(implicit)  recommend(k=10)               0.0361        0 B     276939 /s
+medium   ALS(implicit)  recommend(k=50)               0.0625        0 B     159907 /s
+medium   ALS(implicit)  score(full)                   0.0276   76.3 MiB     361799 /s
+medium   ALS(implicit)  similar_items(×1000)          0.0243        0 B      41148 /s
+medium   BPR(implicit)  recommend(k=10)               0.0303        0 B     330361 /s
+medium   BPR(implicit)  recommend(k=50)               0.0582        0 B     171899 /s
+medium   BPR(implicit)  score(full)                   0.0271   76.3 MiB     369450 /s
+medium   BPR(implicit)  similar_items(×1000)          0.0246        0 B      40609 /s
+medium   LMF(implicit)  recommend(k=10)               0.0353        0 B     283610 /s
+medium   LMF(implicit)  recommend(k=50)               0.0557        0 B     179578 /s
+medium   LMF(implicit)  score(full)                   0.0269   76.3 MiB     371685 /s
+medium   LMF(implicit)  similar_items(×1000)          0.0292        0 B      34300 /s
+medium   EASE           recommend(k=10)               0.2872  152.6 MiB      34815 /s
+medium   EASE           recommend(k=50)               0.2901  152.6 MiB      34471 /s
+medium   EASE           score(full)                   0.2064   76.3 MiB      48448 /s
+medium   ItemKNN        recommend(k=10)               0.2844  152.6 MiB      35167 /s
+medium   ItemKNN        recommend(k=50)               0.3005  152.6 MiB      33280 /s
+medium   ItemKNN        score(full)                   0.2018   76.3 MiB      49562 /s
+large    ALS(implicit)  recommend(k=10)               0.2562        0 B     195152 /s
+large    ALS(implicit)  recommend(k=50)               0.3734        0 B     133918 /s
+large    ALS(implicit)  score(full)                   0.3393  953.7 MiB     147345 /s
+large    ALS(implicit)  similar_items(×1000)          0.0731        0 B      13687 /s
+large    BPR(implicit)  recommend(k=10)               0.2348        0 B     212950 /s
+large    BPR(implicit)  recommend(k=50)               0.3303        0 B     151365 /s
+large    BPR(implicit)  score(full)                   0.3387  953.7 MiB     147623 /s
+large    BPR(implicit)  similar_items(×1000)          0.0759        0 B      13172 /s
+large    LMF(implicit)  recommend(k=10)               0.2524        0 B     198079 /s
+large    LMF(implicit)  recommend(k=50)               0.3765        0 B     132785 /s
+large    LMF(implicit)  score(full)                   0.3650  953.7 MiB     136994 /s
+large    LMF(implicit)  similar_items(×1000)          0.0807        0 B      12396 /s
+large    EASE           recommend(k=10)               3.1678    1.9 GiB      15784 /s
+large    EASE           recommend(k=50)               3.1754    1.9 GiB      15746 /s
+large    EASE           score(full)                   2.2404  953.7 MiB      22318 /s
+large    ItemKNN        recommend(k=10)               1.3925    1.9 GiB      35908 /s
+large    ItemKNN        recommend(k=50)               1.3549    1.9 GiB      36903 /s
+large    ItemKNN        score(full)                   0.5842  953.7 MiB      85585 /s
+──────────────────────────────────────────────────────────────────────────────
+
+Results saved to: /home/ajaimes/Documents/GitHub/Julia/Packages/Gideon.jl/benchmark/results_recommend_python.csv

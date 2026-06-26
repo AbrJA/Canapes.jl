@@ -424,4 +424,143 @@ end
             @info "Skipping SoftImpute parity: softimpute fixture files not found"
         end
     end
+
+    # ── PureSVD (Julia) vs scipy.sparse.linalg.svds ──────────────────────
+
+    @testset "PureSVD (Julia) vs scipy.svds" begin
+        svd_svals_path = joinpath(PY_FIXTURE_DIR, "py_puresvd_svals.csv")
+        svd_recon_path = joinpath(PY_FIXTURE_DIR, "py_puresvd_recon.csv")
+
+        if isfile(svd_svals_path) && isfile(svd_recon_path)
+            py_svals = vec(_read_matrix(svd_svals_path))
+            py_recon = _read_matrix(svd_recon_path)
+
+            m = PureSVD(rank=10, max_iter=200, convergence_tol=1e-6, verbose=false)
+            fit!(m, X_train; rng=MersenneTwister(42))
+            jl_recon = Matrix(m.U * Diagonal(m.d) * m.V')
+
+            # Singular values should match closely (same truncated SVD)
+            nsv = min(length(m.d), length(py_svals))
+            jl_sv = Float64.(sort(m.d[1:nsv]; rev=true))
+            py_sv = Float64.(sort(py_svals[1:nsv]; rev=true))
+            sv_rel = norm(jl_sv - py_sv) / (norm(py_sv) + 1e-12)
+
+            # Reconstruction correlation
+            c = _cor(vec(jl_recon), vec(py_recon))
+
+            @test sv_rel < 0.05  # singular values should be very close
+            @test c >= 0.99      # reconstruction should be nearly identical
+
+            println("  PureSVD singular-value relative error: $(round(sv_rel; sigdigits=4))")
+            println("  PureSVD reconstruction correlation: $(round(c; sigdigits=6))")
+        else
+            @info "Skipping PureSVD parity: fixture files not found"
+        end
+    end
+
+    # ── ItemKNN (Julia) vs sklearn cosine KNN ────────────────────────────
+
+    @testset "ItemKNN (Julia) vs Python cosine KNN" begin
+        knn_w_path = joinpath(PY_FIXTURE_DIR, "py_knn_W.csv")
+        knn_scores_path = joinpath(PY_FIXTURE_DIR, "py_knn_scores.csv")
+        knn_metrics_path = joinpath(PY_FIXTURE_DIR, "py_knn_metrics.json")
+
+        if isfile(knn_w_path) && isfile(knn_scores_path)
+            py_W = _read_matrix(knn_w_path)
+            py_scores = _read_matrix(knn_scores_path)
+
+            m = ItemKNN(k=20, similarity=:cosine, normalize=true, shrinkage=0.0, verbose=false)
+            fit!(m, X)
+            jl_W = Matrix(m.W)
+            jl_scores = Matrix(X * m.W)
+
+            # W matrix correlation — both use cosine + top-k + row-normalize
+            w_cor = _cor(vec(jl_W), vec(py_W))
+
+            # Score correlation
+            score_cor = _cor(vec(jl_scores), vec(py_scores))
+
+            # Top-k overlap
+            k = 10
+            n_eval = min(25, size(jl_scores, 1))
+            jl_top = _row_topk(jl_scores[1:n_eval, :], k)
+            py_top = _row_topk(py_scores[1:n_eval, :], k)
+            overlap = _mean_topk_overlap(jl_top, py_top)
+
+            @test w_cor >= 0.95      # W matrices should be very similar
+            @test score_cor >= 0.95  # scores should match
+            @test overlap >= 0.70   # top-k should mostly agree
+
+            println("  ItemKNN W correlation: $(round(w_cor; sigdigits=4))")
+            println("  ItemKNN score correlation: $(round(score_cor; sigdigits=4))")
+            println("  ItemKNN top-$k overlap: $(round(overlap; sigdigits=4))")
+
+            # Compare quality metrics if available
+            if isfile(knn_metrics_path)
+                py_ndcg = _read_json_metric(knn_metrics_path, "ndcg")
+                jl_preds = _safe_recommend(m, X_train, 10)
+                jl_ndcg = mean(ndcg_at_k(jl_preds, X_test; k=10))
+                delta = abs(jl_ndcg - py_ndcg)
+                @test delta < 0.10  # quality should be comparable
+                println("  ItemKNN NDCG@10: Julia=$(round(jl_ndcg; sigdigits=4)) Python=$(round(py_ndcg; sigdigits=4)) Δ=$(round(delta; sigdigits=4))")
+            end
+        else
+            @info "Skipping ItemKNN parity: fixture files not found"
+        end
+    end
+
+    # ── ADMMSLIM (Julia) vs Python ADMM reference ────────────────────────
+
+    @testset "ADMMSLIM (Julia) vs Python ADMM" begin
+        admm_w_path = joinpath(PY_FIXTURE_DIR, "py_admmslim_W.csv")
+        admm_scores_path = joinpath(PY_FIXTURE_DIR, "py_admmslim_scores.csv")
+        admm_metrics_path = joinpath(PY_FIXTURE_DIR, "py_admmslim_metrics.json")
+
+        if isfile(admm_w_path) && isfile(admm_scores_path)
+            py_W = _read_matrix(admm_w_path)
+            py_scores = _read_matrix(admm_scores_path)
+
+            m = ADMMSLIM(λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=100,
+                         convergence_tol=1e-5, nonneg=true, verbose=false)
+            fit!(m, X)
+            jl_W = m.W
+            jl_scores = Matrix(X * m.W)
+
+            # W matrix comparison — same algorithm, same hyperparameters
+            w_frob = norm(jl_W - py_W) / (norm(py_W) + 1e-12)
+            w_cor = _cor(vec(jl_W), vec(py_W))
+
+            # Score comparison
+            score_cor = _cor(vec(jl_scores), vec(py_scores))
+
+            # Top-k overlap
+            k = 10
+            n_eval = min(25, size(jl_scores, 1))
+            jl_top = _row_topk(jl_scores[1:n_eval, :], k)
+            py_top = _row_topk(py_scores[1:n_eval, :], k)
+            overlap = _mean_topk_overlap(jl_top, py_top)
+
+            @test w_frob < 0.05    # W should be nearly identical (same algorithm)
+            @test w_cor >= 0.99    # very high correlation expected
+            @test score_cor >= 0.99
+            @test overlap >= 0.85  # top-k should largely agree
+
+            println("  ADMMSLIM W Frobenius relative error: $(round(w_frob; sigdigits=4))")
+            println("  ADMMSLIM W correlation: $(round(w_cor; sigdigits=6))")
+            println("  ADMMSLIM score correlation: $(round(score_cor; sigdigits=6))")
+            println("  ADMMSLIM top-$k overlap: $(round(overlap; sigdigits=4))")
+
+            # Compare quality metrics
+            if isfile(admm_metrics_path)
+                py_ndcg = _read_json_metric(admm_metrics_path, "ndcg")
+                jl_preds = _safe_recommend(m, X_train, 10)
+                jl_ndcg = mean(ndcg_at_k(jl_preds, X_test; k=10))
+                delta = abs(jl_ndcg - py_ndcg)
+                @test delta < 0.05  # same algorithm → very close quality
+                println("  ADMMSLIM NDCG@10: Julia=$(round(jl_ndcg; sigdigits=4)) Python=$(round(py_ndcg; sigdigits=4)) Δ=$(round(delta; sigdigits=4))")
+            end
+        else
+            @info "Skipping ADMMSLIM parity: fixture files not found"
+        end
+    end
 end

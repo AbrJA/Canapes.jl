@@ -86,7 +86,7 @@ function EALS(;
     convergence_tol::Float64 = 0.005,
     popularity_exponent::Float64 = 0.5,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float64,
+    dtype::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))

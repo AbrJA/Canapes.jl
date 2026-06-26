@@ -77,10 +77,11 @@ function SoftImpute(;
     convergence_tol::Float64 = 1e-3,
     final_svd::Bool = true,
     verbose::Bool = true,
+    dtype::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
-    T = Float64
+    T = dtype
     SoftImpute{T}(rank, T(λ), max_iter, T(convergence_tol), final_svd, verbose,
                   Matrix{T}(undef,0,0), T[], Matrix{T}(undef,0,0),
                   Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
@@ -138,10 +139,11 @@ function SoftSVD(;
     convergence_tol::Float64 = 1e-3,
     final_svd::Bool = true,
     verbose::Bool = true,
+    dtype::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
-    T = Float64
+    T = dtype
     SoftSVD{T}(rank, T(λ), max_iter, T(convergence_tol), final_svd, verbose,
                Matrix{T}(undef,0,0), T[], Matrix{T}(undef,0,0),
                Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
@@ -166,9 +168,10 @@ fit!(model, X)
 # model.U * Diagonal(model.d) * model.V' ≈ best rank-20 approximation
 ```
 """
-function PureSVD(; rank::Int=10, max_iter::Int=100, convergence_tol::Float64=1e-3, verbose::Bool=true)
+function PureSVD(; rank::Int=10, max_iter::Int=100, convergence_tol::Float64=1e-3,
+                  verbose::Bool=true, dtype::Type{<:AbstractFloat}=Float32)
     SoftSVD(rank=rank, λ=0.0, max_iter=max_iter, convergence_tol=convergence_tol,
-            final_svd=false, verbose=verbose)
+            final_svd=false, verbose=verbose, dtype=dtype)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -222,7 +225,7 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
         iter_start = time_ns()
 
         # ── Step 1: Update V (items) ──
-        B_hat = _als_half_step(model, Xt, U_cur, d_cur, V_cur, λ)::Matrix{T}
+        B_hat = Matrix{T}(_als_half_step(model, Xt, U_cur, d_cur, V_cur, λ))
         Bsvd = svd(B_hat)
         kk = min(k, length(Bsvd.S))
         V_cur = Matrix{T}(Bsvd.U[:, 1:kk])
@@ -230,7 +233,7 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
         U_cur = Matrix{T}(U_cur * Bsvd.V[:, 1:kk])  # rotate U to stay consistent
 
         # ── Step 2: Update U (users) ──
-        A_hat = _als_half_step(model, X, V_cur, d_cur, U_cur, λ)::Matrix{T}
+        A_hat = Matrix{T}(_als_half_step(model, X, V_cur, d_cur, U_cur, λ))
         Asvd = svd(A_hat)
         kk2 = min(kk, length(Asvd.S))
         U_cur = Matrix{T}(Asvd.U[:, 1:kk2])

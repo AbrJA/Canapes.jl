@@ -123,8 +123,8 @@ end
 #   - large:  5000² × 4 = 100 MB  ← still fine
 
 const SCALES = [
-#    (name="small",   n_users=1_000,   n_items=500,    density=0.05),
-#    (name="medium",  n_users=10_000,  n_items=2_000,  density=0.02),
+    (name="small",   n_users=1_000,   n_items=500,    density=0.05),
+    (name="medium",  n_users=10_000,  n_items=2_000,  density=0.02),
     (name="large",   n_users=50_000,  n_items=5_000,  density=0.005),
 ]
 

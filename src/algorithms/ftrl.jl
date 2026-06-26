@@ -63,6 +63,7 @@ function FTRL(;
     clip_gradient::Float64 = 1000.0,
     max_iter::Int = 1,
     verbose::Bool = true,
+    dtype::Type{<:AbstractFloat} = Float32,
 )
     0.0 <= dropout < 1.0 || throw(ArgumentError("dropout must be in [0, 1), got $dropout"))
     0.0 <= l1_ratio <= 1.0 || throw(ArgumentError("l1_ratio must be in [0, 1], got $l1_ratio"))
@@ -70,9 +71,10 @@ function FTRL(;
     learning_rate > 0.0 || throw(ArgumentError("learning_rate must be positive, got $learning_rate"))
     learning_rate_decay > 0.0 || throw(ArgumentError("learning_rate_decay must be positive, got $learning_rate_decay"))
     clip_gradient > 0.0 || throw(ArgumentError("clip_gradient must be positive, got $clip_gradient"))
-    FTRL{Float64}(learning_rate, learning_rate_decay, λ, l1_ratio, dropout,
-                  family, clip_gradient, max_iter, verbose,
-                  0, Float64[], Float64[], false)
+    T = dtype
+    FTRL{T}(T(learning_rate), T(learning_rate_decay), T(λ), T(l1_ratio), T(dropout),
+            family, T(clip_gradient), max_iter, verbose,
+            0, T[], T[], false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

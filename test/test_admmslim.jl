@@ -56,7 +56,7 @@ end
     fit!(model, X)
     S = score(model, X)
 
-    @test S isa Matrix{Float64}
+    @test S isa Matrix{Float32}
     @test size(S) == (30, 15)
     @test all(isfinite, S)
 end

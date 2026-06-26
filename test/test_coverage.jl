@@ -388,7 +388,7 @@ if _HAS_CUDA
         fit!(model_cpu, X)
 
         @test model_gpu.is_fitted
-        @test model_gpu.B ≈ model_cpu.B atol=1e-10
+        @test model_gpu.B ≈ model_cpu.B atol=1e-5
     end
 
     @testset "GPU IALS correctness" begin

@@ -52,9 +52,10 @@ mutable struct EASE{T<:AbstractFloat} <: AbstractItemSimilarity
     is_fitted::Bool
 end
 
-function EASE(; λ::Float64=500.0, verbose::Bool=true)
+function EASE(; λ::Float64=500.0, verbose::Bool=true, dtype::Type{<:AbstractFloat}=Float32)
     λ > 0.0 || throw(ArgumentError("λ must be positive, got $λ"))
-    EASE{Float64}(λ, verbose, Matrix{Float64}(undef, 0, 0), false)
+    T = dtype
+    EASE{T}(T(λ), verbose, Matrix{T}(undef, 0, 0), false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -121,8 +122,9 @@ function recommend(model::EASE{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     n_items = size(model.B, 1)
     k_out = min(k, n_items)
 
-    # Compute full score matrix via efficient sparse × dense
-    S = Matrix{T}(X * model.B)
+    # Compute scores as (n_items × n_users) for column-major access
+    # S = B' * X'  →  each column is one user's scores (contiguous)
+    S = Matrix{T}(model.B' * X')
     preds = Matrix{Int}(undef, n_users, k_out)
     X_csr = to_csr(X)
 
@@ -134,12 +136,12 @@ function recommend(model::EASE{T}, X::SparseMatrixCSC; k::Int=10) where {T}
         # Mask seen items using CSR row access
         @inbounds for idx in nzrange(X_csr, u)
             j = Int(X_csr.colval[idx])
-            S[u, j] = T(-Inf)
+            S[j, u] = T(-Inf)
         end
 
-        row = @view S[u, :]
+        col = @view S[:, u]
         topk = topk_bufs[tid]
-        _topk_indices!(topk, row, k_out)
+        _topk_indices!(topk, col, k_out)
         @inbounds for i in 1:k_out
             preds[u, i] = topk[i]
         end

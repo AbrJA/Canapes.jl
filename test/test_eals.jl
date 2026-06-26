@@ -59,8 +59,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 20, 0.15)
 
-    U_init = randn(rng, 4, 30) .* 0.01
-    V_init = randn(rng, 4, 20) .* 0.01
+    U_init = Float32.(randn(rng, 4, 30) .* 0.01)
+    V_init = Float32.(randn(rng, 4, 20) .* 0.01)
 
     model = EALS(rank=4, max_iter=3, verbose=false)
     fit!(model, X; U_init=U_init, V_init=V_init, rng=MersenneTwister(2))

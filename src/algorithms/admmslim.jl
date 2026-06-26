@@ -73,11 +73,12 @@ function ADMMSLIM(;
     convergence_tol::Float64 = 1e-4,
     nonneg::Bool = true,
     verbose::Bool = true,
+    dtype::Type{<:AbstractFloat} = Float32,
 )
     λ_1 >= 0.0 || throw(ArgumentError("λ_1 must be non-negative, got $λ_1"))
     λ_2 >= 0.0 || throw(ArgumentError("λ_2 must be non-negative, got $λ_2"))
     ρ > 0.0 || throw(ArgumentError("ρ must be positive, got $ρ"))
-    T = Float64
+    T = dtype
     ADMMSLIM{T}(T(λ_1), T(λ_2), T(ρ), max_iter, T(convergence_tol), nonneg, verbose,
                  Matrix{T}(undef, 0, 0), false)
 end
@@ -212,8 +213,8 @@ function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     n_items = size(model.W, 1)
     k_out = min(k, n_items)
 
-    # Score matrix: sparse × dense
-    S = Matrix{T}(X * model.W)
+    # Compute scores as (n_items × n_users) for column-major access
+    S = Matrix{T}(model.W' * X')
     preds = Matrix{Int}(undef, n_users, k_out)
     X_csr = to_csr(X)
 
@@ -225,12 +226,12 @@ function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
         # Mask seen items
         @inbounds for idx in nzrange(X_csr, u)
             j = Int(X_csr.colval[idx])
-            S[u, j] = T(-Inf)
+            S[j, u] = T(-Inf)
         end
 
-        row = @view S[u, :]
+        col = @view S[:, u]
         topk = topk_bufs[tid]
-        _topk_indices!(topk, row, k_out)
+        _topk_indices!(topk, col, k_out)
         @inbounds for i in 1:k_out
             preds[u, i] = topk[i]
         end

@@ -51,11 +51,12 @@ function SLIM(;
     convergence_tol::Float64 = 1e-4,
     nonneg::Bool = true,
     verbose::Bool = true,
+    dtype::Type{<:AbstractFloat} = Float32,
 )
     λ_1 >= 0.0 || throw(ArgumentError("λ_1 must be non-negative, got $λ_1"))
     λ_2 >= 0.0 || throw(ArgumentError("λ_2 must be non-negative, got $λ_2"))
-    T = Float64
-    SLIM{T}(λ_1, λ_2, max_iter, convergence_tol, nonneg, verbose,
+    T = dtype
+    SLIM{T}(T(λ_1), T(λ_2), max_iter, T(convergence_tol), nonneg, verbose,
             spzeros(T, 0, 0), false)
 end
 

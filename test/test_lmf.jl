@@ -54,3 +54,13 @@ end
     @test model.is_fitted
     @test all(isfinite, model.user_factors)
 end
+
+@testset "Negative samples exclude observed entries" begin
+    X = sparse([1, 1, 2], [1, 2, 1], [1.0, 1.0, 1.0], 2, 3)
+    X_csr = Gideon.to_csr(X)
+    pool = Int32[1, 2, 1, 2, 1]
+    for _ in 1:100
+        item = Gideon._lmf_sample_unobserved(MersenneTwister(1), 3, X_csr, 1, pool, length(pool))
+        @test item == 3
+    end
+end

@@ -215,8 +215,8 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         # gradient estimate (matches implicit's effective behavior).
         n_neg_samples = min(k, user_seen * n_neg)
         @fastmath @inbounds for _ in 1:n_neg_samples
-            neg_idx = rand(local_rng, 1:n_interactions)
-            j = Int(all_items[neg_idx])
+            j = _lmf_sample_unobserved(local_rng, n_items, X_csr, u,
+                                        all_items, n_interactions)
             s = zero(T)
             @simd for g in 1:k
                 s += U[g, u] * V[g, j]
@@ -280,8 +280,8 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         # gradient estimate (matches implicit's effective behavior).
         n_neg_samples = min(k, item_seen * n_neg)
         @fastmath @inbounds for _ in 1:n_neg_samples
-            neg_idx = rand(local_rng, 1:n_interactions)
-            u = Int(all_users[neg_idx])
+            u = _lmf_sample_unobserved(local_rng, n_users, Xt_csr, j,
+                                        all_users, n_interactions)
             s = zero(T)
             @simd for g in 1:k
                 s += U[g, u] * V[g, j]
@@ -301,6 +301,40 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
     end
 end
 
+"""Sample from `pool` while excluding entries observed by `entity`."""
+@inline function _lmf_sample_unobserved(rng::AbstractRNG, limit::Int,
+                                        observed::SparseMatricesCSR.SparseMatrixCSR,
+                                        entity::Int, pool::Vector{Int32},
+                                        n_pool::Int)
+    # Rejection sampling is cheap for sparse rows and bounded for dense ones.
+    for _ in 1:min(16, limit)
+        candidate = Int(pool[rand(rng, 1:n_pool)])
+        is_observed = false
+        for idx in nzrange(observed, entity)
+            if Int(observed.colval[idx]) == candidate
+                is_observed = true
+                break
+            end
+        end
+        !is_observed && return candidate
+    end
+
+    # Start at a random offset so the fallback does not always favor low IDs.
+    start = rand(rng, 1:limit)
+    for offset in 0:(limit - 1)
+        candidate = mod1(start + offset, limit)
+        is_observed = false
+        for idx in nzrange(observed, entity)
+            if Int(observed.colval[idx]) == candidate
+                is_observed = true
+                break
+            end
+        end
+        !is_observed && return candidate
+    end
+    throw(ArgumentError("no unobserved entity is available for LogisticMF negative sampling"))
+end
+
 function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
                             X_csr::SparseMatricesCSR.SparseMatrixCSR, n_users::Int, k::Int) where {T}
     nt = Threads.maxthreadid()
@@ -318,5 +352,4 @@ function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
     end
     sum(partial) / max(one(T), T(nnz(X_csr)))
 end
-
 

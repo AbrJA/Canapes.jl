@@ -111,6 +111,8 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
     k = model.rank
+    run_callbacks_train_begin(callbacks, model)
+    try
 
     # Initialize factors with small random values
     model.user_factors = randn(rng, T, k, n_users) .* T(0.01)
@@ -278,6 +280,9 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.is_fitted = true
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
 end
 
 """

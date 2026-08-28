@@ -102,8 +102,10 @@ per iteration, then adds per-user diagonal corrections from non-zero entries.
 function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               U_init::Union{Nothing,AbstractMatrix} = nothing,
-              V_init::Union{Nothing,AbstractMatrix} = nothing,
-              callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
+               V_init::Union{Nothing,AbstractMatrix} = nothing,
+               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
+    run_callbacks_train_begin(callbacks, model)
+    try
     n_users, n_items = size(X)
     k = model.rank
     α = model.α
@@ -193,6 +195,9 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.is_fitted = true
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
 end
 
 """
@@ -544,5 +549,4 @@ function _ials_loss(U::Matrix{T}, V::Matrix{T},
     end
     loss + λ * (sum(abs2, U) + sum(abs2, V))
 end
-
 

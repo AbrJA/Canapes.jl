@@ -78,6 +78,8 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
     k = model.rank
+    run_callbacks_train_begin(callbacks, model)
+    try
 
     # Standard normal initialization (matching implicit)
     model.user_factors = randn(rng, T, k, n_users)
@@ -165,6 +167,9 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     end
     model.is_fitted = true
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
 end
 
 """
@@ -352,4 +357,3 @@ function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
     end
     sum(partial) / max(one(T), T(nnz(X_csr)))
 end
-

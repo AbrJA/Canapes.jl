@@ -211,6 +211,8 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
     k = min(model.rank, m, n)
     λ = T(model.λ)
     algo_name = model isa SoftImpute ? "SoftImpute" : "SoftSVD"
+    run_callbacks_train_begin(callbacks, model)
+    try
 
     # Initialize with random orthonormal bases (rsparse style)
     U_cur = Matrix{T}(qr(randn(rng, T, m, k)).Q)[:, 1:k]::Matrix{T}
@@ -281,6 +283,9 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
     model.item_factors = (model.V .* sqrt.(model.d)')'  # rank × n
     model.is_fitted = true
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

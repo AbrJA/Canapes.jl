@@ -107,6 +107,8 @@ function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
     all(x -> x > 0, nonzeros(X)) || throw(ArgumentError("All co-occurrence values must be positive"))
 
     k = model.rank
+    run_callbacks_train_begin(callbacks, model)
+    try
 
     # Initialize embeddings
     model.W_main    = (rand(rng, T, k, n) .- T(0.5))
@@ -160,6 +162,9 @@ function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
     end
     model.is_fitted = true
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
 end
 
 function _glove_epoch!(model::GloVe{T}, rows, cols, vals, order) where {T}

@@ -1,5 +1,13 @@
 # test/test_infrastructure.jl — Callbacks, Serialization, Cross-validation
 
+mutable struct LifecycleCallback <: AbstractCallback
+    events::Vector{Symbol}
+end
+
+Gideon.on_train_begin(cb::LifecycleCallback, _) = push!(cb.events, :begin)
+Gideon.on_epoch_end(cb::LifecycleCallback, ::Gideon.CallbackInfo) = (push!(cb.events, :epoch); :continue)
+Gideon.on_train_end(cb::LifecycleCallback, _) = push!(cb.events, :end)
+
 @testset "Callbacks" begin
     @testset "EarlyStoppingCallback" begin
         cb = EarlyStoppingCallback(patience=3, min_delta=0.01)
@@ -57,6 +65,14 @@
         info2 = Gideon.CallbackInfo(2, 1.0, 1.0, model)
         @test run_callbacks([cb1, cb2], info2) == true
     end
+end
+
+@testset "Training lifecycle" begin
+    cb = LifecycleCallback(Symbol[])
+    model = WMF(rank=2, max_iter=1, verbose=false)
+    X = sparse([1, 2], [1, 2], [1.0, 1.0], 2, 3)
+    fit!(model, X; rng=MersenneTwister(1), callbacks=[cb])
+    @test cb.events == [:begin, :epoch, :end]
 end
 
 @testset "Serialization" begin

@@ -115,8 +115,10 @@ Fit the WMF model on user-item sparse matrix `X` (n_users × n_items).
 function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               U_init::Union{Nothing, Matrix{T}} = nothing,
-              V_init::Union{Nothing, Matrix{T}} = nothing,
-              callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
+               V_init::Union{Nothing, Matrix{T}} = nothing,
+               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
+    run_callbacks_train_begin(callbacks, model)
+    try
     n_users, n_items = size(X)
     k = model.rank
 
@@ -158,6 +160,9 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     end
     model.is_fitted = true
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

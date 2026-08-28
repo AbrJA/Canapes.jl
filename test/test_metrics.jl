@@ -76,3 +76,11 @@ end
     prec = precision_at_k(preds, actual; k=2)
     @test prec[1] ≈ 1.0  # both [1,2] are relevant
 end
+
+@testset "Invalid ranking inputs" begin
+    actual = sparse([1], [1], [1.0], 1, 3)
+    @test_throws ArgumentError precision_at_k([1 2], actual; k=0)
+    @test_throws ArgumentError precision_at_k([1 1], actual; k=2)
+    @test_throws ArgumentError precision_at_k([1 4], actual; k=2)
+    @test_throws DimensionMismatch precision_at_k(reshape([1, 2], 2, 1), actual; k=1)
+end

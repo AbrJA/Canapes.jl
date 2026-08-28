@@ -96,7 +96,6 @@ export
 
     # Cross-validation & search
     random_holdout,
-    temporal_split,
     crossval,
     grid_search,
     random_search,

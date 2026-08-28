@@ -62,12 +62,6 @@ function random_holdout(X::SparseMatrixCSC{Tv,Ti};
     (X_train, X_test)
 end
 
-"""Deprecated alias for [`random_holdout`](@ref)."""
-function temporal_split(X::SparseMatrixCSC; kwargs...)
-    Base.depwarn("temporal_split is deprecated; use random_holdout instead", :temporal_split)
-    random_holdout(X; kwargs...)
-end
-
 """
     crossval(model_fn, X; n_folds=5, k=10, metric=map_at_k, rng=default_rng())
 

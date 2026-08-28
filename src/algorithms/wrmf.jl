@@ -432,8 +432,8 @@ function _implicit_matvec!(
             w = weights[pos]
             iszero(w) && continue
             d = zero(T)
-            @simd for f in 1:k
-                d += Y[f, i] * v[f]
+            for f in 1:k
+                d = muladd(Y[f, i], v[f], d)
             end
             wd = w * d
             @simd for f in 1:k
@@ -471,8 +471,8 @@ function _compute_loss(model::WMF{T}, X::SparseMatrixCSC) where {T}
             i = rv[idx]
             r = T(nz[idx])
             pred = zero(T)
-            @inbounds @simd for f in 1:k
-                pred += U[f, i] * V[f, j]
+            @inbounds for f in 1:k
+                pred = muladd(U[f, i], V[f, j], pred)
             end
             if model.feedback == IMPLICIT
                 c = max(one(T), one(T) + α * r)

@@ -214,13 +214,13 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         end
 
         # Fused positive pass: deriv += c * (1 - σ(s)) * v = c * σ(-s) * v
-        @fastmath @inbounds for idx in rng_u
+        @inbounds for idx in rng_u
             j = Int(X_csr.colval[idx])
             c_uj = T(X_csr.nzval[idx])
             # Compute dot product
             s = zero(T)
-            @simd for g in 1:k
-                s += U[g, u] * V[g, j]
+            for g in 1:k
+                s = muladd(U[g, u], V[g, j], s)
             end
             # c * (1 - σ(s)) = c * σ(-s)
             z = c_uj / (one(T) + exp(s))
@@ -233,12 +233,12 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         # Cap at k: with k-dimensional factors, O(k) negatives suffice for a good
         # gradient estimate (matches implicit's effective behavior).
         n_neg_samples = min(k, user_seen * n_neg)
-        @fastmath @inbounds for _ in 1:n_neg_samples
+        @inbounds for _ in 1:n_neg_samples
             j = _lmf_sample_unobserved(local_rng, n_items, X_csr, u,
                                         all_items, n_interactions)
             s = zero(T)
-            @simd for g in 1:k
-                s += U[g, u] * V[g, j]
+            for g in 1:k
+                s = muladd(U[g, u], V[g, j], s)
             end
             σ_s = one(T) / (one(T) + exp(-s))
             @simd for f in 1:k
@@ -284,12 +284,12 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         end
 
         # Fused positive pass: deriv += c * (1 - σ(s)) * u = c * σ(-s) * u
-        @fastmath @inbounds for idx in rng_j
+        @inbounds for idx in rng_j
             u = Int(Xt_csr.colval[idx])
             c_uj = T(Xt_csr.nzval[idx])
             s = zero(T)
-            @simd for g in 1:k
-                s += U[g, u] * V[g, j]
+            for g in 1:k
+                s = muladd(U[g, u], V[g, j], s)
             end
             z = c_uj / (one(T) + exp(s))
             @simd for f in 1:k
@@ -301,12 +301,12 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         # Cap at k: with k-dimensional factors, O(k) negatives suffice for a good
         # gradient estimate (matches implicit's effective behavior).
         n_neg_samples = min(k, item_seen * n_neg)
-        @fastmath @inbounds for _ in 1:n_neg_samples
+        @inbounds for _ in 1:n_neg_samples
             u = _lmf_sample_unobserved(local_rng, n_users, Xt_csr, j,
                                         all_users, n_interactions)
             s = zero(T)
-            @simd for g in 1:k
-                s += U[g, u] * V[g, j]
+            for g in 1:k
+                s = muladd(U[g, u], V[g, j], s)
             end
             σ_s = one(T) / (one(T) + exp(-s))
             @simd for f in 1:k
@@ -364,12 +364,12 @@ function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
     partial = zeros(T, nt)
     chunk_size = cld(n_users, nt)
     Threads.@threads for chunk in 1:nt
-        @fastmath @inbounds for u in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_users)
+        @inbounds for u in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_users)
             for idx in nzrange(X_csr, u)
                 j = Int(X_csr.colval[idx])
                 s = zero(T)
-                @simd for f in 1:k
-                    s += U[f, u] * V[f, j]
+                for f in 1:k
+                    s = muladd(U[f, u], V[f, j], s)
                 end
                 partial[chunk] -= log(one(T) / (one(T) + exp(-s)) + T(1e-10))
             end

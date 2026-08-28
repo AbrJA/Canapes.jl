@@ -206,8 +206,8 @@ function _predict_pairwise_scores(user_factors::Matrix{T}, item_factors::Matrix{
         u = user_indices[idx]
         i = item_indices[idx]
         s = zero(T)
-        @simd for f in 1:k
-            s += user_factors[f, u] * item_factors[f, i]
+        for f in 1:k
+            s = muladd(user_factors[f, u], item_factors[f, i], s)
         end
         scores[idx] = s
     end
@@ -287,9 +287,9 @@ function _cosine_topk(factors::Matrix{T}, query_id::Int, k::Int) where {T}
         else
             col_norm = zero(T)
             dot_val = zero(T)
-            @simd for f in 1:rank
-                dot_val += factors[f, query_id] * factors[f, j]
-                col_norm += factors[f, j]^2
+            for f in 1:rank
+                dot_val = muladd(factors[f, query_id], factors[f, j], dot_val)
+                col_norm = muladd(factors[f, j], factors[f, j], col_norm)
             end
             col_norm = sqrt(col_norm)
             sims[j] = col_norm > zero(T) ? dot_val / (q_norm * col_norm) : zero(T)

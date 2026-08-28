@@ -484,8 +484,8 @@ function _eals_loss(U::Matrix{T}, V::Matrix{T}, X::SparseMatrixCSC,
         for idx in nzrange(X, j)
             u = rv[idx]
             pred = zero(T)
-            @inbounds @simd for f in 1:k
-                pred += U[f, u] * V[f, j]
+            @inbounds for f in 1:k
+                pred = muladd(U[f, u], V[f, j], pred)
             end
             loss_obs += (one(T) + cj) * (one(T) - pred)^2
         end
@@ -509,8 +509,8 @@ function _eals_loss(U::Matrix{T}, V::Matrix{T}, X::SparseMatrixCSC,
         for idx in nzrange(X, j)
             u = rv[idx]
             pred = zero(T)
-            @inbounds @simd for f in 1:k
-                pred += U[f, u] * V[f, j]
+            @inbounds for f in 1:k
+                pred = muladd(U[f, u], V[f, j], pred)
             end
             loss_miss -= cj * pred^2
         end

@@ -550,8 +550,8 @@ function _ials_loss(U::Matrix{T}, V::Matrix{T},
             i = rv[idx]
             r = T(nz[idx])
             pred = zero(T)
-            @inbounds @simd for f in 1:k
-                pred += U[f, i] * V[f, j]
+            @inbounds for f in 1:k
+                pred = muladd(U[f, i], V[f, j], pred)
             end
             c = one(T) + α * r
             loss += c * (one(T) - pred)^2

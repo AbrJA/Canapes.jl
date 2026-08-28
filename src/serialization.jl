@@ -53,9 +53,15 @@ function load_model(path::String)
         # Parse version
         version_str = replace(header, "GIDEON_v" => "")
         version = tryparse(Int, version_str)
-        version === nothing && error("Invalid version in header: '$header'")
-        _ = deserialize(io)  # type string (for validation/logging)
+        version === nothing && throw(ArgumentError("Invalid version in header: '$header'"))
+        version == GIDEON_SERIALIZATION_VERSION || throw(ArgumentError(
+            "Unsupported Gideon model version $version; expected $GIDEON_SERIALIZATION_VERSION"))
+        serialized_type = deserialize(io)
+        serialized_type isa String || throw(ArgumentError(
+            "Invalid model type metadata in '$path'"))
         model = deserialize(io)
+        model isa AbstractSparseModel || throw(ArgumentError(
+            "Serialized object is not a Gideon model: $serialized_type"))
         model
     end
 end

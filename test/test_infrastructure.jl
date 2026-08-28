@@ -92,6 +92,12 @@ end
         @test loaded.is_fitted
         @test loaded.B ≈ model.B
         @test loaded.λ ≈ model.λ
+
+        # Incompatible format versions must be rejected.
+        bytes = read(tmpfile)
+        bytes[9] = UInt8('9')
+        write(tmpfile, bytes)
+        @test_throws ArgumentError load_model(tmpfile)
     finally
         rm(tmpfile; force=true)
     end

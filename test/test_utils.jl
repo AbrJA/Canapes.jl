@@ -101,3 +101,11 @@ end
         @test sparse_row_nnz(empty) == zeros(Int, 10)
     end
 end
+
+@testset "Recommendation input validation" begin
+    X = sparse([1], [1], [1.0], 1, 3)
+    @test Gideon._validate_recommend_input(X, 3, 1) == 1
+    @test_throws ArgumentError Gideon._validate_recommend_input(X, 3, 0)
+    @test_throws ArgumentError Gideon._validate_recommend_input(X, 3, -1)
+    @test_throws DimensionMismatch Gideon._validate_recommend_input(X, 2, 1)
+end

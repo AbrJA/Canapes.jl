@@ -225,13 +225,23 @@ end
 # Models with user_factors/item_factors get these for free.
 # Override only when special logic is needed (e.g. WMF transform, GloVe embeddings).
 
+@inline function _validate_recommend_input(X::SparseMatrixCSC, n_items::Int, k::Int)
+    k >= 1 || throw(ArgumentError("k must be ≥ 1, got $k"))
+    size(X, 2) == n_items || throw(DimensionMismatch(
+        "X has $(size(X, 2)) items but the fitted model has $n_items"))
+    min(k, n_items)
+end
+
 function recommend(model::AbstractMatrixFactorization, X::SparseMatrixCSC; k::Int=10)
     model.is_fitted || error("Model not fitted")
+    _validate_recommend_input(X, size(model.item_factors, 2), k)
     _predict_topk_batched(model.user_factors, model.item_factors, to_csr(X), k)
 end
 
 function score(model::AbstractMatrixFactorization, X::SparseMatrixCSC)
     model.is_fitted || error("Model not fitted")
+    size(X, 2) == size(model.item_factors, 2) || throw(DimensionMismatch(
+        "X has $(size(X, 2)) items but the fitted model has $(size(model.item_factors, 2))"))
     model.user_factors' * model.item_factors
 end
 

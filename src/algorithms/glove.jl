@@ -247,6 +247,7 @@ Uses the combined GloVe embeddings for scoring.
 function recommend(model::GloVe{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     model.is_fitted || error("Model not fitted")
     E = embeddings(model)
+    _validate_recommend_input(X, size(E, 2), k)
     _predict_topk_batched(E, E, to_csr(X), k)
 end
 
@@ -258,6 +259,8 @@ Return the full score matrix using combined embeddings: E' * E.
 function score(model::GloVe{T}, X::SparseMatrixCSC) where {T}
     model.is_fitted || error("Model not fitted")
     E = embeddings(model)
+    size(X, 2) == size(E, 2) || throw(DimensionMismatch(
+        "X has $(size(X, 2)) items but the fitted model has $(size(E, 2))"))
     E' * E
 end
 

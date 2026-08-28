@@ -219,56 +219,8 @@ Return top-k item indices per user. Scores = X * W, excluding seen items.
 """
 function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
-    n_users = size(X, 1)
-    n_items = size(model.W, 1)
-    k_out = min(k, n_items)
-
-    # Batched GEMM: convert sparse X to dense in chunks, multiply via BLAS
-    preds = Matrix{Int}(undef, n_users, k_out)
-    X_csr = to_csr(X)
-
-    max_batch_mem = 2 * 1024^3
-    batch_size = max(1, min(n_users, Int(floor(max_batch_mem / (2 * n_items * sizeof(T))))))
-
-    nt = Threads.nthreads()
-    topk_bufs = _thread_buffers(() -> Vector{Int}(undef, k_out), nt)
-    scores_buf = Matrix{T}(undef, n_items, batch_size)
-    X_batch = Matrix{T}(undef, batch_size, n_items)
-
-    for batch_start in 1:batch_size:n_users
-        batch_end = min(batch_start + batch_size - 1, n_users)
-        n_batch = batch_end - batch_start + 1
-
-        Xb = @view X_batch[1:n_batch, :]
-        fill!(Xb, zero(T))
-        @inbounds for u_local in 1:n_batch
-            u = batch_start + u_local - 1
-            for idx in nzrange(X_csr, u)
-                j = Int(X_csr.colval[idx])
-                Xb[u_local, j] = T(X_csr.nzval[idx])
-            end
-        end
-
-        Sb = @view scores_buf[:, 1:n_batch]
-        mul!(Sb, model.W', Xb')
-
-        Threads.@threads for chunk in 1:nt
-            topk = topk_bufs[chunk]
-            @inbounds for u_local in _thread_chunk_bounds(chunk, n_batch, nt)
-                u = batch_start + u_local - 1
-                for idx in nzrange(X_csr, u)
-                    j = Int(X_csr.colval[idx])
-                    scores_buf[j, u_local] = T(-Inf)
-                end
-                col = @view scores_buf[:, u_local]
-                _topk_indices!(topk, col, k_out)
-                for i in 1:k_out
-                    preds[u, i] = topk[i]
-                end
-            end
-        end
-    end
-    preds
+    # Batched GEMM via the shared memory-bounded path (see _predict_batched_gemm_topk)
+    _predict_batched_gemm_topk(X, model.W, k)
 end
 
 """

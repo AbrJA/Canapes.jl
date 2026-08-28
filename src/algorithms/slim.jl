@@ -188,51 +188,7 @@ Return top-k item indices per user. Scores = X * W, excluding seen items.
 """
 function recommend(model::SLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
-    n_users = size(X, 1)
-    n_items = size(model.W, 1)
-    k_out = _validate_recommend_input(X, n_items, k)
-
-    # Compute all scores at once: S = X * W (sparse × sparse)
-    S = X * model.W
-    S_csr = to_csr(S)
-    preds = Matrix{Int}(undef, n_users, k_out)
-    X_csr = to_csr(X)
-
-    nt = Threads.nthreads()
-    topk_bufs = _thread_buffers(() -> Vector{Int}(undef, k_out), nt)
-    score_bufs = _thread_buffers(() -> zeros(T, n_items), nt)
-
-    Threads.@threads for chunk in 1:nt
-        scores = score_bufs[chunk]
-        topk = topk_bufs[chunk]
-
-        for u in _thread_chunk_bounds(chunk, n_users, nt)
-
-        # Zero out scores
-        @inbounds @simd for i in 1:n_items
-            scores[i] = zero(T)
-        end
-
-        # Fill from CSR row of S
-        @inbounds for idx in nzrange(S_csr, u)
-            j = Int(S_csr.colval[idx])
-            scores[j] = S_csr.nzval[idx]
-        end
-
-        # Mask seen items
-        @inbounds for idx in nzrange(X_csr, u)
-            j = Int(X_csr.colval[idx])
-            scores[j] = T(-Inf)
-        end
-
-        topk = topk_bufs[chunk]
-        _topk_indices!(topk, scores, k_out)
-        @inbounds for i in 1:k_out
-            preds[u, i] = topk[i]
-        end
-        end
-    end
-    preds
+    _predict_sparse_score_topk(X * model.W, X, k)
 end
 
 """

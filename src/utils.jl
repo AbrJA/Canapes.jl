@@ -240,6 +240,129 @@ function _predict_pairwise_scores(user_factors::Matrix{T}, item_factors::Matrix{
     scores
 end
 
+"""
+    _predict_sparse_score_topk(S, X, k) -> Matrix{Int}
+
+Shared top-k recommendation for sparse-score item-similarity models
+(SLIM, ItemKNN). Scores `S` (typically `X * W`) are scattered per user into a
+dense buffer, seen items from `X` are masked, and the top-k is extracted with
+a threaded partial sort. Returns an `n_users × k` matrix of item indices.
+"""
+function _predict_sparse_score_topk(S::SparseMatrixCSC{Tv,Ti},
+                                    X::SparseMatrixCSC,
+                                    k::Int) where {Tv,Ti}
+    T = eltype(S)
+    n_users = size(X, 1)
+    n_items = size(S, 2)
+    k_out = _validate_recommend_input(X, n_items, k)
+
+    S_csr = to_csr(S)
+    X_csr = to_csr(X)
+    preds = Matrix{Int}(undef, n_users, k_out)
+
+    nt = Threads.nthreads()
+    topk_bufs = _thread_buffers(() -> Vector{Int}(undef, k_out), nt)
+    score_bufs = _thread_buffers(() -> zeros(T, n_items), nt)
+
+    Threads.@threads for chunk in 1:nt
+        scores = score_bufs[chunk]
+        topk = topk_bufs[chunk]
+
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds @simd for i in 1:n_items
+                scores[i] = zero(T)
+            end
+
+            @inbounds for idx in nzrange(S_csr, u)
+                j = Int(S_csr.colval[idx])
+                scores[j] = S_csr.nzval[idx]
+            end
+
+            # Mask seen items
+            @inbounds for idx in nzrange(X_csr, u)
+                j = Int(X_csr.colval[idx])
+                scores[j] = T(-Inf)
+            end
+
+            _topk_indices!(topk, scores, k_out)
+            @inbounds for i in 1:k_out
+                preds[u, i] = topk[i]
+            end
+        end
+    end
+    preds
+end
+
+"""
+    _predict_batched_gemm_topk(X, W, k) -> Matrix{Int}
+
+Shared memory-bounded GEMM top-k recommendation for dense item-similarity
+models (EASE, ADMMSLIM). The sparse user-item matrix is densified in batches
+(target ≤ 2 GB for the dense chunk + score buffer), scored via BLAS GEMM,
+seen items masked, and the top-k per user extracted with a threaded partial
+sort. Keeps the full-score and top-k paths separate so huge matrices never
+materialize a full dense score matrix.
+"""
+function _predict_batched_gemm_topk(X::SparseMatrixCSC{Tv,Ti},
+                                    W::Matrix{T},
+                                    k::Int) where {Tv,Ti,T}
+    n_users = size(X, 1)
+    n_items = size(W, 1)
+    k_out = _validate_recommend_input(X, n_items, k)
+
+    preds = Matrix{Int}(undef, n_users, k_out)
+    X_csr = to_csr(X)
+
+    # Batch sizing: target ≤ 2 GB for the dense X chunk + score buffer
+    max_batch_mem = 2 * 1024^3
+    batch_size = max(1, min(n_users, Int(floor(max_batch_mem / (2 * n_items * sizeof(T))))))
+
+    nt = Threads.nthreads()
+    topk_bufs = _thread_buffers(() -> Vector{Int}(undef, k_out), nt)
+    # Score buffer: (n_items × batch_size) — column per user for contiguous top-k
+    scores_buf = Matrix{T}(undef, n_items, batch_size)
+    # Dense X batch buffer: (batch_size × n_items) for GEMM input
+    X_batch = Matrix{T}(undef, batch_size, n_items)
+
+    for batch_start in 1:batch_size:n_users
+        batch_end = min(batch_start + batch_size - 1, n_users)
+        n_batch = batch_end - batch_start + 1
+
+        # Convert sparse chunk to dense
+        Xb = @view X_batch[1:n_batch, :]
+        fill!(Xb, zero(T))
+        @inbounds for u_local in 1:n_batch
+            u = batch_start + u_local - 1
+            for idx in nzrange(X_csr, u)
+                j = Int(X_csr.colval[idx])
+                Xb[u_local, j] = T(X_csr.nzval[idx])
+            end
+        end
+
+        # GEMM: S[:,1:n_batch] = W' * Xb' → (n_items × n_batch)
+        Sb = @view scores_buf[:, 1:n_batch]
+        mul!(Sb, W', Xb')
+
+        # Mask and top-k (threaded, chunked)
+        Threads.@threads for chunk in 1:nt
+            topk = topk_bufs[chunk]
+            @inbounds for u_local in _thread_chunk_bounds(chunk, n_batch, nt)
+                u = batch_start + u_local - 1
+                for idx in nzrange(X_csr, u)
+                    j = Int(X_csr.colval[idx])
+                    scores_buf[j, u_local] = T(-Inf)
+                end
+                col = @view scores_buf[:, u_local]
+                _topk_indices!(topk, col, k_out)
+                for i in 1:k_out
+                    preds[u, i] = topk[i]
+                end
+            end
+        end
+    end
+    preds
+end
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Default recommend/score for AbstractMatrixFactorization
 # ──────────────────────────────────────────────────────────────────────────────

@@ -40,8 +40,11 @@ function ap_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads for u in 1:n_users
-        @inbounds result[u] = _ap_single(predictions, actual_t, u, k_eff)
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds result[u] = _ap_single(predictions, actual_t, u, k_eff)
+        end
     end
     result
 end
@@ -91,8 +94,11 @@ function ndcg_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads for u in 1:n_users
-        @inbounds result[u] = _ndcg_single(predictions, actual_t, u, k_eff)
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds result[u] = _ndcg_single(predictions, actual_t, u, k_eff)
+        end
     end
     result
 end
@@ -138,8 +144,11 @@ function precision_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads for u in 1:n_users
-        @inbounds result[u] = _precision_single(predictions, actual_t, u, k_eff)
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds result[u] = _precision_single(predictions, actual_t, u, k_eff)
+        end
     end
     result
 end
@@ -173,20 +182,23 @@ function recall_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads for u in 1:n_users
-        @inbounds begin
-            relevant = Set(_relevant_items(actual_t, u))
-            if isempty(relevant)
-                result[u] = 0.0
-                continue
-            end
-            hits = 0
-            for pos in 1:k_eff
-                if predictions[u, pos] in relevant
-                    hits += 1
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds begin
+                relevant = Set(_relevant_items(actual_t, u))
+                if isempty(relevant)
+                    result[u] = 0.0
+                    continue
                 end
+                hits = 0
+                for pos in 1:k_eff
+                    if predictions[u, pos] in relevant
+                        hits += 1
+                    end
+                end
+                result[u] = hits / length(relevant)
             end
-            result[u] = hits / length(relevant)
         end
     end
     result

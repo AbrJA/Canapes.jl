@@ -198,13 +198,15 @@ function recommend(model::SLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     preds = Matrix{Int}(undef, n_users, k_out)
     X_csr = to_csr(X)
 
-    nt = Threads.maxthreadid()
-    topk_bufs = [Vector{Int}(undef, k_out) for _ in 1:nt]
-    score_bufs = [zeros(T, n_items) for _ in 1:nt]
+    nt = Threads.nthreads()
+    topk_bufs = _thread_buffers(() -> Vector{Int}(undef, k_out), nt)
+    score_bufs = _thread_buffers(() -> zeros(T, n_items), nt)
 
-    Threads.@threads for u in 1:n_users
-        tid = Threads.threadid()
-        scores = score_bufs[tid]
+    Threads.@threads for chunk in 1:nt
+        scores = score_bufs[chunk]
+        topk = topk_bufs[chunk]
+
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
 
         # Zero out scores
         @inbounds @simd for i in 1:n_items
@@ -223,10 +225,11 @@ function recommend(model::SLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
             scores[j] = T(-Inf)
         end
 
-        topk = topk_bufs[tid]
+        topk = topk_bufs[chunk]
         _topk_indices!(topk, scores, k_out)
         @inbounds for i in 1:k_out
             preds[u, i] = topk[i]
+        end
         end
     end
     preds

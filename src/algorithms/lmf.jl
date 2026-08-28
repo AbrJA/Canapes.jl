@@ -135,7 +135,7 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
 
     # Per-thread RNGs and pre-allocated gradient buffers (zero alloc inner loop)
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     thread_rngs = [Random.Xoshiro(rand(rng, UInt64)) for _ in 1:nt]
     deriv_bufs = [Vector{T}(undef, k) for _ in 1:nt]
 
@@ -364,12 +364,12 @@ function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
     partial = zeros(T, nt)
     chunk_size = cld(n_users, nt)
     Threads.@threads for chunk in 1:nt
-        @inbounds for u in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_users)
+        @fastmath @inbounds for u in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_users)
             for idx in nzrange(X_csr, u)
                 j = Int(X_csr.colval[idx])
                 s = zero(T)
-                for f in 1:k
-                    s = muladd(U[f, u], V[f, j], s)
+                @simd for f in 1:k
+                    s += U[f, u] * V[f, j]
                 end
                 partial[chunk] -= log(one(T) / (one(T) + exp(-s)) + T(1e-10))
             end

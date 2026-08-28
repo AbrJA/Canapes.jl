@@ -167,7 +167,7 @@ function Gideon.fit_gpu!(model::Gideon.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
 
     # Pre-allocate per-thread buffers (avoids allocation inside @threads loop)
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     A_bufs = [Matrix{T}(undef, k, k) for _ in 1:nt]
     b_bufs = [Vector{T}(undef, k) for _ in 1:nt]
 
@@ -245,10 +245,12 @@ function _gpu_ials_update_buffered!(target::Matrix{T}, source::Matrix{T}, R,
                                     b_bufs::Vector{Vector{T}},
                                     get_range, get_col, get_val) where {T}
     n = size(target, 2)
-    Threads.@threads for u in 1:n
-        tid = Threads.threadid()
-        A = A_bufs[tid]
-        b = b_bufs[tid]
+    nt = length(A_bufs)
+    Threads.@threads for chunk in 1:nt
+        A = A_bufs[chunk]
+        b = b_bufs[chunk]
+
+        for u in Gideon._thread_chunk_bounds(chunk, n, nt)
 
         # A ← gramian (copy into pre-allocated buffer)
         copyto!(A, gramian)
@@ -272,6 +274,7 @@ function _gpu_ials_update_buffered!(target::Matrix{T}, source::Matrix{T}, R,
         @inbounds for f in 1:k
             target[f, u] = x[f]
         end
+        end
     end
 end
 
@@ -288,8 +291,8 @@ function _ials_loss(U::Matrix{T}, V::Matrix{T}, X::SparseMatrixCSC, α::T, λ::T
             u = rv[idx]
             r = T(nz[idx])
             pred = zero(T)
-            @inbounds for f in 1:k
-                pred = muladd(U[f, u], V[f, j], pred)
+            @inbounds @simd for f in 1:k
+                pred += U[f, u] * V[f, j]
             end
             c = one(T) + α * r
             loss += c * (one(T) - pred)^2
@@ -335,7 +338,7 @@ function Gideon.fit_gpu!(model::Gideon.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
 
     # Pre-allocate per-thread buffers
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     gram_bufs = [Matrix{T}(undef, k, k) for _ in 1:nt]
     rhs_bufs  = [Vector{T}(undef, k) for _ in 1:nt]
 
@@ -402,10 +405,12 @@ function _gpu_wrmf_sweep!(
     nz = nonzeros(A)
 
     # ── Per-entity Cholesky solves on CPU with pre-allocated buffers ──
-    Base.Threads.@threads for u in 1:n_entities
-        tid = Threads.threadid()
-        gram = gram_bufs[tid]
-        rhs = rhs_bufs[tid]
+    nt = length(gram_bufs)
+    Base.Threads.@threads for chunk in 1:nt
+        gram = gram_bufs[chunk]
+        rhs = rhs_bufs[chunk]
+
+        for u in Gideon._thread_chunk_bounds(chunk, n_entities, nt)
 
         # gram ← YᵀY + λI
         copyto!(gram, YtY)
@@ -457,6 +462,7 @@ function _gpu_wrmf_sweep!(
                     factors[f, u] = rhs[f]
                 end
             end
+        end
         end
     end
 end

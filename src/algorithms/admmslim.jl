@@ -230,8 +230,8 @@ function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     max_batch_mem = 2 * 1024^3
     batch_size = max(1, min(n_users, Int(floor(max_batch_mem / (2 * n_items * sizeof(T))))))
 
-    nt = Threads.maxthreadid()
-    topk_bufs = [Vector{Int}(undef, k_out) for _ in 1:nt]
+    nt = Threads.nthreads()
+    topk_bufs = _thread_buffers(() -> Vector{Int}(undef, k_out), nt)
     scores_buf = Matrix{T}(undef, n_items, batch_size)
     X_batch = Matrix{T}(undef, batch_size, n_items)
 
@@ -252,18 +252,19 @@ function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
         Sb = @view scores_buf[:, 1:n_batch]
         mul!(Sb, model.W', Xb')
 
-        Threads.@threads for u_local in 1:n_batch
-            tid = Threads.threadid()
-            u = batch_start + u_local - 1
-            @inbounds for idx in nzrange(X_csr, u)
-                j = Int(X_csr.colval[idx])
-                scores_buf[j, u_local] = T(-Inf)
-            end
-            col = @view scores_buf[:, u_local]
-            topk = topk_bufs[tid]
-            _topk_indices!(topk, col, k_out)
-            @inbounds for i in 1:k_out
-                preds[u, i] = topk[i]
+        Threads.@threads for chunk in 1:nt
+            topk = topk_bufs[chunk]
+            @inbounds for u_local in _thread_chunk_bounds(chunk, n_batch, nt)
+                u = batch_start + u_local - 1
+                for idx in nzrange(X_csr, u)
+                    j = Int(X_csr.colval[idx])
+                    scores_buf[j, u_local] = T(-Inf)
+                end
+                col = @view scores_buf[:, u_local]
+                _topk_indices!(topk, col, k_out)
+                for i in 1:k_out
+                    preds[u, i] = topk[i]
+                end
             end
         end
     end

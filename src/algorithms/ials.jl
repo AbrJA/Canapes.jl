@@ -138,7 +138,7 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
 
     # Pre-allocate per-thread work buffers
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     A_bufs = [Matrix{T}(undef, k, k) for _ in 1:nt]
     b_bufs = [Vector{T}(undef, k) for _ in 1:nt]
     # CG-specific buffers
@@ -226,6 +226,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
     n = size(target, 2)
     colval = R.colval
     nzval = R.nzval
+    nt = Threads.nthreads()
 
     # Precompute Gramian: SᵀS + λI (upper triangle only)
     gramian = Matrix{T}(undef, k, k)
@@ -234,12 +235,12 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads for u in 1:n
-        tid = Threads.threadid()
-        A = A_bufs[tid]
-        b = b_bufs[tid]
-        Z = Z_bufs[tid]
+    Threads.@threads for chunk in 1:nt
+        A = A_bufs[chunk]
+        b = b_bufs[chunk]
+        Z = Z_bufs[chunk]
 
+        for u in _thread_chunk_bounds(chunk, n, nt)
         # Gather rated item vectors, scale for syrk, and accumulate b in one pass
         m = 0
         fill!(b, zero(T))
@@ -273,6 +274,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         @inbounds for f in 1:k
             target[f, u] = b[f]
         end
+        end
     end
 end
 
@@ -285,6 +287,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
     n = size(target, 2)
     rv = rowvals(R)
     nz = nonzeros(R)
+    nt = Threads.nthreads()
 
     # Precompute Gramian: SᵀS + λI (upper triangle only)
     gramian = Matrix{T}(undef, k, k)
@@ -293,11 +296,12 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads for j in 1:n
-        tid = Threads.threadid()
-        A = A_bufs[tid]
-        b = b_bufs[tid]
-        Z = Z_bufs[tid]
+    Threads.@threads for chunk in 1:nt
+        A = A_bufs[chunk]
+        b = b_bufs[chunk]
+        Z = Z_bufs[chunk]
+
+        for j in _thread_chunk_bounds(chunk, n, nt)
 
         m = 0
         fill!(b, zero(T))
@@ -329,6 +333,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         @inbounds for f in 1:k
             target[f, j] = b[f]
         end
+        end
     end
 end
 
@@ -353,6 +358,7 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
     n = size(target, 2)
     colval = R.colval
     nzval = R.nzval
+    nt = Threads.nthreads()
 
     # Gramian = SᵀS + λI (full symmetric for gemv)
     gramian = Matrix{T}(undef, k, k)
@@ -362,14 +368,15 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads for u in 1:n
-        tid = Threads.threadid()
-        b = b_bufs[tid]
-        r = r_bufs[tid]
-        p = p_bufs[tid]
-        Ap = Ap_bufs[tid]
-        Z = Z_bufs[tid]
-        w = w_bufs[tid]
+    Threads.@threads for chunk in 1:nt
+        b = b_bufs[chunk]
+        r = r_bufs[chunk]
+        p = p_bufs[chunk]
+        Ap = Ap_bufs[chunk]
+        Z = Z_bufs[chunk]
+        w = w_bufs[chunk]
+
+        for u in _thread_chunk_bounds(chunk, n, nt)
 
         # Gather item vectors and confidence weights for this user
         m = 0
@@ -438,6 +445,7 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
             end
             rs_old = rs_new
         end
+        end
     end
 end
 
@@ -454,6 +462,7 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
     n = size(target, 2)
     rv = rowvals(R)
     nz = nonzeros(R)
+    nt = Threads.nthreads()
 
     gramian = Matrix{T}(undef, k, k)
     BLAS.syrk!('U', 'N', one(T), source, zero(T), gramian)
@@ -462,14 +471,15 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads for j in 1:n
-        tid = Threads.threadid()
-        b = b_bufs[tid]
-        r = r_bufs[tid]
-        p = p_bufs[tid]
-        Ap = Ap_bufs[tid]
-        Z = Z_bufs[tid]
-        w = w_bufs[tid]
+    Threads.@threads for chunk in 1:nt
+        b = b_bufs[chunk]
+        r = r_bufs[chunk]
+        p = p_bufs[chunk]
+        Ap = Ap_bufs[chunk]
+        Z = Z_bufs[chunk]
+        w = w_bufs[chunk]
+
+        for j in _thread_chunk_bounds(chunk, n, nt)
 
         # Gather item vectors and confidence weights
         m = 0
@@ -535,6 +545,7 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
             end
             rs_old = rs_new
         end
+        end
     end
 end
 
@@ -550,8 +561,8 @@ function _ials_loss(U::Matrix{T}, V::Matrix{T},
             i = rv[idx]
             r = T(nz[idx])
             pred = zero(T)
-            @inbounds for f in 1:k
-                pred = muladd(U[f, i], V[f, j], pred)
+            @inbounds @simd for f in 1:k
+                pred += U[f, i] * V[f, j]
             end
             c = one(T) + α * r
             loss += c * (one(T) - pred)^2

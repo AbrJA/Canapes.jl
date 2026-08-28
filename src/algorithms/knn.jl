@@ -147,14 +147,14 @@ function _cosine_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv,
 
     # Build sparse W by keeping top-k per column (excluding self-similarity)
     # Use COO for construction
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     # Thread-local storage
-    local_rows = [Int[] for _ in 1:nt]
-    local_cols = [Int[] for _ in 1:nt]
-    local_vals = [T[] for _ in 1:nt]
+    local_rows = _thread_buffers(() -> Int[], nt)
+    local_cols = _thread_buffers(() -> Int[], nt)
+    local_vals = _thread_buffers(() -> T[], nt)
 
-    Threads.@threads for j in 1:n_items
-        tid = Threads.threadid()
+    Threads.@threads for chunk in 1:nt
+        for j in _thread_chunk_bounds(chunk, n_items, nt)
         norm_j = col_norms[j]
         norm_j == zero(T) && continue
 
@@ -177,9 +177,10 @@ function _cosine_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv,
         end
 
         for (i, s) in sims
-            push!(local_rows[tid], i)
-            push!(local_cols[tid], j)
-            push!(local_vals[tid], s)
+            push!(local_rows[chunk], i)
+            push!(local_cols[chunk], j)
+            push!(local_vals[chunk], s)
+        end
         end
     end
 
@@ -208,13 +209,13 @@ function _jaccard_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv
     X_bin = SparseMatrixCSC(n_users, n_items, X.colptr, rowvals(X), ones(Int, nnz(X)))
     G = X_bin' * X_bin  # intersection counts
 
-    nt = Threads.maxthreadid()
-    local_rows = [Int[] for _ in 1:nt]
-    local_cols = [Int[] for _ in 1:nt]
-    local_vals = [T[] for _ in 1:nt]
+    nt = Threads.nthreads()
+    local_rows = _thread_buffers(() -> Int[], nt)
+    local_cols = _thread_buffers(() -> Int[], nt)
+    local_vals = _thread_buffers(() -> T[], nt)
 
-    Threads.@threads for j in 1:n_items
-        tid = Threads.threadid()
+    Threads.@threads for chunk in 1:nt
+        for j in _thread_chunk_bounds(chunk, n_items, nt)
         nj = col_nnz[j]
         nj == 0 && continue
 
@@ -236,9 +237,10 @@ function _jaccard_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv
         end
 
         for (i, s) in sims
-            push!(local_rows[tid], i)
-            push!(local_cols[tid], j)
-            push!(local_vals[tid], s)
+            push!(local_rows[chunk], i)
+            push!(local_cols[chunk], j)
+            push!(local_vals[chunk], s)
+        end
         end
     end
 
@@ -268,13 +270,15 @@ function recommend(model::ItemKNN{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     preds = Matrix{Int}(undef, n_users, k_out)
     X_csr = to_csr(X)
 
-    nt = Threads.maxthreadid()
-    topk_bufs = [Vector{Int}(undef, k_out) for _ in 1:nt]
-    score_bufs = [zeros(T, n_items) for _ in 1:nt]
+    nt = Threads.nthreads()
+    topk_bufs = _thread_buffers(() -> Vector{Int}(undef, k_out), nt)
+    score_bufs = _thread_buffers(() -> zeros(T, n_items), nt)
 
-    Threads.@threads for u in 1:n_users
-        tid = Threads.threadid()
-        scores = score_bufs[tid]
+    Threads.@threads for chunk in 1:nt
+        scores = score_bufs[chunk]
+        topk = topk_bufs[chunk]
+
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
 
         @inbounds @simd for i in 1:n_items
             scores[i] = zero(T)
@@ -290,10 +294,10 @@ function recommend(model::ItemKNN{T}, X::SparseMatrixCSC; k::Int=10) where {T}
             scores[j] = T(-Inf)
         end
 
-        topk = topk_bufs[tid]
         _topk_indices!(topk, scores, k_out)
         @inbounds for i in 1:k_out
             preds[u, i] = topk[i]
+        end
         end
     end
     preds

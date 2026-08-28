@@ -217,14 +217,15 @@ function _als_sweep_cholesky!(
     nz = nonzeros(A)
 
     # Pre-allocate per-thread buffers
-    nt = Threads.maxthreadid()
-    gram_bufs = [Matrix{T}(undef, k, k) for _ in 1:nt]
-    rhs_bufs  = [Vector{T}(undef, k)    for _ in 1:nt]
+    nt = Threads.nthreads()
+    gram_bufs = _thread_buffers(() -> Matrix{T}(undef, k, k), nt)
+    rhs_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt)
 
-    Base.Threads.@threads for u in 1:n_entities
-        tid  = Threads.threadid()
-        gram = gram_bufs[tid]
-        rhs  = rhs_bufs[tid]
+    Base.Threads.@threads for chunk in 1:nt
+        gram = gram_bufs[chunk]
+        rhs  = rhs_bufs[chunk]
+
+        for u in _thread_chunk_bounds(chunk, n_entities, nt)
 
         # gram ← YᵀY + λI
         copyto!(gram, YtY)
@@ -260,6 +261,7 @@ function _als_sweep_cholesky!(
         end
 
         @inbounds factors[:, u] .= rhs
+        end
     end
 end
 
@@ -330,20 +332,21 @@ function _als_sweep_cg!(
     nz = nonzeros(A)
 
     # Per-thread CG workspace
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     max_nnz = maximum(length(nzrange(A, u)) for u in 1:n_entities; init=0)
-    rhs_bufs  = [Vector{T}(undef, k)        for _ in 1:nt]
-    idx_bufs  = [Vector{Int}(undef, max_nnz) for _ in 1:nt]
-    wgt_bufs  = [Vector{T}(undef, max_nnz)   for _ in 1:nt]
-    r_bufs    = [Vector{T}(undef, k)        for _ in 1:nt]
-    p_bufs    = [Vector{T}(undef, k)        for _ in 1:nt]
-    Ap_bufs   = [Vector{T}(undef, k)        for _ in 1:nt]
+    rhs_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt)
+    idx_bufs  = _thread_buffers(() -> Vector{Int}(undef, max_nnz), nt)
+    wgt_bufs  = _thread_buffers(() -> Vector{T}(undef, max_nnz), nt)
+    r_bufs    = _thread_buffers(() -> Vector{T}(undef, k), nt)
+    p_bufs    = _thread_buffers(() -> Vector{T}(undef, k), nt)
+    Ap_bufs   = _thread_buffers(() -> Vector{T}(undef, k), nt)
 
-    Base.Threads.@threads for u in 1:n_entities
-        tid  = Threads.threadid()
-        rhs  = rhs_bufs[tid]
-        idxs = idx_bufs[tid]
-        wgts = wgt_bufs[tid]
+    Base.Threads.@threads for chunk in 1:nt
+        rhs  = rhs_bufs[chunk]
+        idxs = idx_bufs[chunk]
+        wgts = wgt_bufs[chunk]
+
+        for u in _thread_chunk_bounds(chunk, n_entities, nt)
 
         fill!(rhs, zero(T))
         col_range = nzrange(A, u)
@@ -367,7 +370,8 @@ function _als_sweep_cg!(
         _cg_solve!(xu, base_gram, fixed,
                    view(idxs, 1:n_nz), view(wgts, 1:n_nz),
                    rhs, k, cg_steps,
-                   r_bufs[tid], p_bufs[tid], Ap_bufs[tid])
+                   r_bufs[chunk], p_bufs[chunk], Ap_bufs[chunk])
+        end
     end
 end
 
@@ -471,8 +475,8 @@ function _compute_loss(model::WMF{T}, X::SparseMatrixCSC) where {T}
             i = rv[idx]
             r = T(nz[idx])
             pred = zero(T)
-            @inbounds for f in 1:k
-                pred = muladd(U[f, i], V[f, j], pred)
+            @inbounds @simd for f in 1:k
+                pred += U[f, i] * V[f, j]
             end
             if model.feedback == IMPLICIT
                 c = max(one(T), one(T) + α * r)

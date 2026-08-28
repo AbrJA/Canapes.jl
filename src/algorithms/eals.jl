@@ -307,21 +307,21 @@ function _eals_update_users!(U::Matrix{T}, V::Matrix{T},
                              SV::Matrix{T}, c_items::Vector{T},
                              λ::T, k::Int, n_users::Int) where {T}
     # Per-thread prediction cache
-    nt = Threads.maxthreadid()
-    pred_bufs = [Vector{T}(undef, 0) for _ in 1:nt]
+    nt = Threads.nthreads()
+    pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), nt)
 
-    Threads.@threads for u in 1:n_users
-        tid = Threads.threadid()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
         rng_u = nzrange(X_csr, u)
         n_nz = length(rng_u)
         n_nz == 0 && continue
 
         # Gather observed items and their indices
         # Compute predictions for this user's observed items
-        buf = pred_bufs[tid]
+        buf = pred_bufs[chunk]
         if length(buf) < n_nz
-            pred_bufs[tid] = Vector{T}(undef, n_nz)
-            buf = pred_bufs[tid]
+            pred_bufs[chunk] = Vector{T}(undef, n_nz)
+            buf = pred_bufs[chunk]
         end
 
         # Compute current predictions for observed items
@@ -383,6 +383,7 @@ function _eals_update_users!(U::Matrix{T}, V::Matrix{T},
                 U[f, u] = new_val
             end
         end
+        end
     end
 end
 
@@ -397,19 +398,19 @@ function _eals_update_items!(V::Matrix{T}, U::Matrix{T},
     nz = nonzeros(X)
     n_users = size(U, 2)
 
-    nt = Threads.maxthreadid()
-    pred_bufs = [Vector{T}(undef, 0) for _ in 1:nt]
+    nt = Threads.nthreads()
+    pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), nt)
 
-    Threads.@threads for j in 1:n_items
-        tid = Threads.threadid()
+    Threads.@threads for chunk in 1:nt
+        for j in _thread_chunk_bounds(chunk, n_items, nt)
         rng_j = nzrange(X, j)
         n_nz = length(rng_j)
         cj = c_items[j]
 
-        buf = pred_bufs[tid]
+        buf = pred_bufs[chunk]
         if length(buf) < n_nz
-            pred_bufs[tid] = Vector{T}(undef, max(n_nz, 64))
-            buf = pred_bufs[tid]
+            pred_bufs[chunk] = Vector{T}(undef, max(n_nz, 64))
+            buf = pred_bufs[chunk]
         end
 
         # Compute current predictions for observed users of this item
@@ -461,6 +462,7 @@ function _eals_update_items!(V::Matrix{T}, U::Matrix{T},
                 V[f, j] = new_val
             end
         end
+        end
     end
 end
 
@@ -484,8 +486,8 @@ function _eals_loss(U::Matrix{T}, V::Matrix{T}, X::SparseMatrixCSC,
         for idx in nzrange(X, j)
             u = rv[idx]
             pred = zero(T)
-            @inbounds for f in 1:k
-                pred = muladd(U[f, u], V[f, j], pred)
+            @inbounds @simd for f in 1:k
+                pred += U[f, u] * V[f, j]
             end
             loss_obs += (one(T) + cj) * (one(T) - pred)^2
         end
@@ -509,8 +511,8 @@ function _eals_loss(U::Matrix{T}, V::Matrix{T}, X::SparseMatrixCSC,
         for idx in nzrange(X, j)
             u = rv[idx]
             pred = zero(T)
-            @inbounds for f in 1:k
-                pred = muladd(U[f, u], V[f, j], pred)
+            @inbounds @simd for f in 1:k
+                pred += U[f, u] * V[f, j]
             end
             loss_miss -= cj * pred^2
         end

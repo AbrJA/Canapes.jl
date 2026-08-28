@@ -95,6 +95,31 @@ Used by BPR and LogisticMF for negative sampling.
 end
 
 """
+    _thread_chunk_bounds(chunk, n, nt) -> UnitRange{Int}
+
+Return the contiguous range of `1:n` assigned to chunk `chunk` (1 ≤ chunk ≤ nt).
+Chunks are as equal in size as possible. This is the canonical partitioning used
+by all threaded sweeps: `Threads.@threads for chunk in 1:nt` with per-chunk
+buffers indexed by `chunk` (never by `Threads.threadid()`, which can exceed
+`maxthreadid()` and is non-deterministic under dynamic scheduling).
+"""
+@inline function _thread_chunk_bounds(chunk::Int, n::Int, nt::Int)
+    chunk_size = cld(n, nt)
+    start = (chunk - 1) * chunk_size + 1
+    stop = min(chunk * chunk_size, n)
+    start:stop
+end
+
+"""
+    _thread_buffers(f, nt) -> Vector
+
+Allocate `nt` per-chunk work buffers by calling `f()` once per chunk.
+"""
+function _thread_buffers(f::Function, nt::Int)
+    [f() for _ in 1:nt]
+end
+
+"""
     _topk_indices!(topk, scores, k)
 
 Find indices of the `k` largest elements in `scores`, stored in `topk[1:k]`
@@ -155,7 +180,7 @@ function _predict_topk_batched(user_factors::Matrix{T}, item_factors::Matrix{T},
     batch_size = max(1, min(n_users, Int(floor(max_batch_mem / (n_items * sizeof(T))))))
 
     # Per-thread top-k buffers
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     topk_bufs = [Vector{Int}(undef, k_actual) for _ in 1:nt]
     scores_buf = Matrix{T}(undef, n_items, batch_size)
 
@@ -168,19 +193,20 @@ function _predict_topk_batched(user_factors::Matrix{T}, item_factors::Matrix{T},
         scores = @view scores_buf[:, 1:n_batch]
         mul!(scores, item_factors', @view(user_factors[:, batch_users]))
 
-        # Mask seen items and extract top-k per user (threaded)
-        Threads.@threads for local_u in 1:n_batch
-            tid = Threads.threadid()
-            global_u = batch_users[local_u]
-            @inbounds for idx in nzrange(X_csr, global_u)
-                j = Int(X_csr.colval[idx])
-                scores_buf[j, local_u] = T(-Inf)
-            end
-            col = @view scores_buf[:, local_u]
-            topk = topk_bufs[tid]
-            _topk_indices!(topk, col, k_actual)
-            @inbounds for i in 1:k_actual
-                predictions[global_u, i] = topk[i]
+        # Mask seen items and extract top-k per user (threaded, chunked)
+        Threads.@threads for chunk in 1:nt
+            topk = topk_bufs[chunk]
+            @inbounds for local_u in _thread_chunk_bounds(chunk, n_batch, nt)
+                global_u = batch_users[local_u]
+                for idx in nzrange(X_csr, global_u)
+                    j = Int(X_csr.colval[idx])
+                    scores_buf[j, local_u] = T(-Inf)
+                end
+                col = @view scores_buf[:, local_u]
+                _topk_indices!(topk, col, k_actual)
+                for i in 1:k_actual
+                    predictions[global_u, i] = topk[i]
+                end
             end
         end
     end

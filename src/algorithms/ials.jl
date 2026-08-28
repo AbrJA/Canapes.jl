@@ -107,6 +107,7 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     run_callbacks_train_begin(callbacks, model)
     try
     n_users, n_items = size(X)
+    _require_nonempty_dimensions(X, "IALS")
     k = model.rank
     α = model.α
     λ = model.λ
@@ -549,4 +550,3 @@ function _ials_loss(U::Matrix{T}, V::Matrix{T},
     end
     loss + λ * (sum(abs2, U) + sum(abs2, V))
 end
-

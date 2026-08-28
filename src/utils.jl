@@ -227,6 +227,12 @@ end
     min(k, n_items)
 end
 
+@inline function _require_nonempty_dimensions(X::SparseMatrixCSC, algorithm::AbstractString)
+    all(>(0), size(X)) || throw(ArgumentError(
+        "$algorithm requires positive user and item dimensions, got $(size(X))"))
+    nothing
+end
+
 function recommend(model::AbstractMatrixFactorization, X::SparseMatrixCSC; k::Int=10)
     model.is_fitted || error("Model not fitted")
     _validate_recommend_input(X, size(model.item_factors, 2), k)

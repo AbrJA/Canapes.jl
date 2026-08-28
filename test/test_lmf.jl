@@ -64,3 +64,8 @@ end
         @test item == 3
     end
 end
+
+@testset "Empty input" begin
+    @test_throws ArgumentError fit!(LogisticMF(rank=2, max_iter=1, verbose=false), spzeros(2, 2))
+    @test_throws ArgumentError fit!(LogisticMF(rank=2, max_iter=1, verbose=false), spzeros(0, 2))
+end

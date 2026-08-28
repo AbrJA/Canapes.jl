@@ -88,3 +88,8 @@ end
     # Regularization should produce smaller embeddings
     @test sum(abs2, embeddings(m_reg)) < sum(abs2, embeddings(m_noreg))
 end
+
+@testset "Empty input" begin
+    @test_throws ArgumentError fit!(GloVe(rank=2, max_iter=1, verbose=false), spzeros(3, 3))
+    @test_throws ArgumentError fit!(GloVe(rank=2, max_iter=1, verbose=false), spzeros(0, 0))
+end

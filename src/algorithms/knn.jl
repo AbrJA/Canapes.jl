@@ -81,6 +81,7 @@ function fit!(model::ItemKNN{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
               callbacks::Vector{<:AbstractCallback}=AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
+    _require_nonempty_dimensions(X, "ItemKNN")
     kn = min(model.k, n_items - 1)
     run_callbacks_train_begin(callbacks, model)
     try

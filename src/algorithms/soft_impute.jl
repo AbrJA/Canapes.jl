@@ -208,6 +208,7 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     m, n = size(X)
+    _require_nonempty_dimensions(X, "SoftImpute")
     k = min(model.rank, m, n)
     λ = T(model.λ)
     algo_name = model isa SoftImpute ? "SoftImpute" : "SoftSVD"

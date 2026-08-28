@@ -77,6 +77,9 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
+    (n_users > 0 && n_items > 0) || throw(ArgumentError(
+        "LogisticMF requires positive user and item dimensions, got $(size(X))"))
+    nnz(X) > 0 || throw(ArgumentError("LogisticMF requires at least one observed interaction"))
     k = model.rank
     run_callbacks_train_begin(callbacks, model)
     try

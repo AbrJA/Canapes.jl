@@ -73,6 +73,15 @@ end
     X = sparse([1, 2], [1, 2], [1.0, 1.0], 2, 3)
     fit!(model, X; rng=MersenneTwister(1), callbacks=[cb])
     @test cb.events == [:begin, :epoch, :end]
+
+    for fit_model in [
+        FTRL(max_iter=1, verbose=false),
+        FM(rank=2, max_iter=1, verbose=false),
+    ]
+        current = LifecycleCallback(Symbol[])
+        fit!(fit_model, X, [1.0, 0.0]; rng=MersenneTwister(1), callbacks=[current])
+        @test current.events == [:begin, :epoch, :end]
+    end
 end
 
 @testset "Serialization" begin

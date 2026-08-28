@@ -164,19 +164,42 @@ end
 Train the FTRL model for `model.max_iter` epochs over the full dataset.
 """
 function fit!(model::FTRL{T}, X::SparseMatrixCSC, y::AbstractVector;
-              kwargs...) where {T}
+              weights::AbstractVector{T}=ones(T, length(y)),
+              rng::AbstractRNG=Random.default_rng(),
+              callbacks::AbstractVector{<:AbstractCallback}=AbstractCallback[]) where {T}
     train_start = time_ns()
+    run_callbacks_train_begin(callbacks, model)
+    try
     for i in 1:model.max_iter
         epoch_start = time_ns()
-        update!(model, X, y; kwargs...)
+        update!(model, X, y; weights=weights, rng=rng)
         epoch_seconds = (time_ns() - epoch_start) / 1e9
         total_seconds = (time_ns() - train_start) / 1e9
         if model.verbose
             @info @sprintf("[FTRL] epoch %d/%d | epoch=%s | total=%s",
                            i, model.max_iter, elapsed_str(epoch_seconds), elapsed_str(total_seconds))
         end
+        if !isempty(callbacks)
+            loss = _ftrl_training_loss(model, X, y)
+            info = CallbackInfo(i, Float64(loss), total_seconds, model)
+            run_callbacks(callbacks, info) && break
+        end
     end
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
+end
+
+function _ftrl_training_loss(model::FTRL{T}, X::SparseMatrixCSC,
+                             y::AbstractVector) where {T}
+    preds = predict(model, X)
+    if model.family isa Binomial
+        -sum(y .* log.(preds .+ T(1e-10)) .+
+             (one(T) .- y) .* log.(one(T) .- preds .+ T(1e-10))) / length(y)
+    else
+        sum((preds .- y).^2) / length(y)
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

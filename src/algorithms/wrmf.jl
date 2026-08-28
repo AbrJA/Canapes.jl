@@ -509,12 +509,9 @@ Processes users in batches to avoid allocating the full score matrix.
 function recommend(model::WMF{T}, X::SparseMatrixCSC; k::Int = 10) where {T}
     model.is_fitted || error("Model not fitted. Call fit! first.")
 
-    # Use cached user factors if dimensions match (training data), else re-embed
-    user_emb = if size(model.user_factors, 2) == size(X, 1)
-        model.user_factors
-    else
-        transform(model, X)
-    end
+    # Fold in users from X so recommendations always match score(model, X),
+    # including when X contains updated interactions for existing users.
+    user_emb = transform(model, X)
 
     _predict_topk_batched(user_emb, model.item_factors, to_csr(X), k)
 end

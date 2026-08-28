@@ -41,6 +41,35 @@ const RECOMMENDER_FACTORIES = [
     end
 end
 
+@testset "Reference-style score ordering" begin
+    X = _reference_interactions()
+    for spec in RECOMMENDER_FACTORIES
+        @testset "$(spec.name)" begin
+            model = spec.factory()
+            fit!(model, X; rng=MersenneTwister(42))
+            predictions = recommend(model, X; k=3)
+            scores = score(model, X)
+            for u in axes(predictions, 1)
+                @test issorted(scores[u, predictions[u, :]]; rev=true)
+            end
+        end
+    end
+end
+
+@testset "Reference-style deterministic repeatability" begin
+    X = _reference_interactions()
+    for spec in [RECOMMENDER_FACTORIES[6], RECOMMENDER_FACTORIES[7], RECOMMENDER_FACTORIES[8]]
+        @testset "$(spec.name)" begin
+            first = spec.factory()
+            second = spec.factory()
+            fit!(first, X; rng=MersenneTwister(42))
+            fit!(second, X; rng=MersenneTwister(42))
+            @test recommend(first, X; k=3) == recommend(second, X; k=3)
+            @test score(first, X) == score(second, X)
+        end
+    end
+end
+
 @testset "Reference-style edge cases" begin
     X = _reference_interactions()
     X[8, :] .= 0

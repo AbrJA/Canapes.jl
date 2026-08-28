@@ -72,4 +72,7 @@ using Pkg
     @testset "Correctness" begin
         include("test_correctness.jl")
     end
+    @testset "Reference contracts" begin
+        include("test_reference_contracts.jl")
+    end
 end

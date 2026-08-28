@@ -232,7 +232,7 @@ end
 Return the combined word embeddings `W_main + W_ctx` (each column is an embedding vector).
 """
 function embeddings(model::GloVe{T}) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     model.W_main .+ model.W_ctx
 end
 
@@ -243,7 +243,7 @@ Return top-k most similar items per row, excluding self-interactions.
 Uses the combined GloVe embeddings for scoring.
 """
 function recommend(model::GloVe{T}, X::SparseMatrixCSC; k::Int=10) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     E = embeddings(model)
     _validate_recommend_input(X, size(E, 2), k)
     _predict_topk_batched(E, E, to_csr(X), k)
@@ -255,7 +255,7 @@ end
 Return the full score matrix using combined embeddings: E' * E.
 """
 function score(model::GloVe{T}, X::SparseMatrixCSC) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     E = embeddings(model)
     size(X, 2) == size(E, 2) || throw(DimensionMismatch(
         "X has $(size(X, 2)) items but the fitted model has $(size(E, 2))"))
@@ -269,7 +269,7 @@ Return pairwise similarity scores for specific (row, col) index pairs.
 """
 function score(model::GloVe{T}, row_indices::AbstractVector{<:Integer},
                col_indices::AbstractVector{<:Integer}) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     E = embeddings(model)
     _predict_pairwise_scores(E, E, row_indices, col_indices)
 end

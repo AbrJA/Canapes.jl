@@ -489,7 +489,7 @@ Compute user embeddings for new users given their interaction matrix `X` (n_new 
 Returns a `rank × n_new` factor matrix.
 """
 function transform(model::WMF{T}, X::SparseMatrixCSC) where {T}
-    model.is_fitted || error("Model not fitted. Call fit! first.")
+    _require_fitted(model.is_fitted)
     n_users_new = size(X, 1)
     k = model.rank
     new_user_factors = Matrix{T}(undef, k, n_users_new)
@@ -507,7 +507,7 @@ Return top-k item indices for each user. Returns `n_users × k` matrix.
 Processes users in batches to avoid allocating the full score matrix.
 """
 function recommend(model::WMF{T}, X::SparseMatrixCSC; k::Int = 10) where {T}
-    model.is_fitted || error("Model not fitted. Call fit! first.")
+    _require_fitted(model.is_fitted)
 
     # Fold in users from X so recommendations always match score(model, X),
     # including when X contains updated interactions for existing users.
@@ -523,7 +523,7 @@ Return the full score matrix (n_users × n_items) without top-k filtering.
 Uses `transform` to embed users, then computes inner products with item factors.
 """
 function score(model::WMF{T}, X::SparseMatrixCSC) where {T}
-    model.is_fitted || error("Model not fitted. Call fit! first.")
+    _require_fitted(model.is_fitted)
     user_emb = transform(model, X)
     user_emb' * model.item_factors
 end
@@ -535,6 +535,6 @@ Return raw scores for specific (user, item) pairs using pre-fitted factors.
 """
 function score(model::WMF{T}, user_indices::AbstractVector{<:Integer},
               item_indices::AbstractVector{<:Integer}) where {T}
-    model.is_fitted || error("Model not fitted. Call fit! first.")
+    _require_fitted(model.is_fitted)
     _predict_pairwise_scores(model.user_factors, model.item_factors, user_indices, item_indices)
 end

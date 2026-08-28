@@ -208,7 +208,7 @@ end
 Return top-k item indices per user. Scores = X * W, excluding seen items.
 """
 function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     n_users = size(X, 1)
     n_items = size(model.W, 1)
     k_out = min(k, n_items)
@@ -266,6 +266,6 @@ end
 Return the full score matrix S = X * W (dense, n_users × n_items).
 """
 function score(model::ADMMSLIM{T}, X::SparseMatrixCSC) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     Matrix{T}(X * model.W)
 end

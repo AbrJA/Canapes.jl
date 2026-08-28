@@ -215,7 +215,7 @@ Generate predictions using the fitted model. Output depends on family:
 - `Poisson()`  → positive count predictions
 """
 function predict(model::FTRL{T}, X::SparseMatrixCSC) where {T}
-    model.is_initialized || error("Model not fitted")
+    _require_fitted(model.is_initialized)
     n_samples = size(X, 1)
     size(X, 2) == model.n_features || throw(DimensionMismatch("Feature dimension mismatch: expected $(model.n_features), got $(size(X, 2))"))
 
@@ -243,7 +243,7 @@ end
 Return the model coefficient vector derived from the FTRL state.
 """
 function coef(model::FTRL{T}) where {T}
-    model.is_initialized || error("Model not fitted")
+    _require_fitted(model.is_initialized)
     w = Vector{T}(undef, model.n_features)
     lr = model.learning_rate
     β  = model.learning_rate_decay

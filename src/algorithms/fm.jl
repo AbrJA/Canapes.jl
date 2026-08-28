@@ -248,7 +248,7 @@ Generate predictions. Output depends on family:
 - `Gaussian()` → real-valued predictions
 """
 function predict(model::FM{T}, X::SparseMatrixCSC) where {T}
-    model.is_initialized || error("Model not fitted")
+    _require_fitted(model.is_initialized)
     n_samples = size(X, 1)
     size(X, 2) == model.n_features || throw(DimensionMismatch("Feature dimension mismatch: expected $(model.n_features), got $(size(X, 2))"))
 

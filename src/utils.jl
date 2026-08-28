@@ -233,14 +233,19 @@ end
     nothing
 end
 
+@inline function _require_fitted(fitted::Bool)
+    fitted || throw(ArgumentError("model is not fitted; call fit! first"))
+    nothing
+end
+
 function recommend(model::AbstractMatrixFactorization, X::SparseMatrixCSC; k::Int=10)
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     _validate_recommend_input(X, size(model.item_factors, 2), k)
     _predict_topk_batched(model.user_factors, model.item_factors, to_csr(X), k)
 end
 
 function score(model::AbstractMatrixFactorization, X::SparseMatrixCSC)
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     size(X, 2) == size(model.item_factors, 2) || throw(DimensionMismatch(
         "X has $(size(X, 2)) items but the fitted model has $(size(model.item_factors, 2))"))
     model.user_factors' * model.item_factors
@@ -249,7 +254,7 @@ end
 function score(model::AbstractMatrixFactorization,
                user_indices::AbstractVector{<:Integer},
                item_indices::AbstractVector{<:Integer})
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     _predict_pairwise_scores(model.user_factors, model.item_factors, user_indices, item_indices)
 end
 
@@ -305,7 +310,7 @@ Find the k most similar items to `item_id` based on cosine similarity
 of item embedding vectors. Returns `(ids::Vector{Int}, scores::Vector)`.
 """
 function similar_items(model::AbstractMatrixFactorization, item_id::Int; k::Int=10)
-    hasproperty(model, :is_fitted) && model.is_fitted || error("Model not fitted")
+    hasproperty(model, :is_fitted) && _require_fitted(model.is_fitted)
     factors = if hasproperty(model, :item_factors)
         model.item_factors
     else
@@ -321,7 +326,7 @@ Find the k most similar users to `user_id` based on cosine similarity
 of user embedding vectors. Returns `(ids::Vector{Int}, scores::Vector)`.
 """
 function similar_users(model::AbstractMatrixFactorization, user_id::Int; k::Int=10)
-    hasproperty(model, :is_fitted) && model.is_fitted || error("Model not fitted")
+    hasproperty(model, :is_fitted) && _require_fitted(model.is_fitted)
     factors = if hasproperty(model, :user_factors)
         model.user_factors
     else

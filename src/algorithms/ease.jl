@@ -117,7 +117,7 @@ Return top-k item indices per user. Scores are computed as X * B.
 Already-interacted items are excluded.
 """
 function recommend(model::EASE{T}, X::SparseMatrixCSC; k::Int=10) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     n_users = size(X, 1)
     n_items = size(model.B, 1)
     k_out = min(k, n_items)
@@ -184,6 +184,6 @@ end
 Return the full score matrix S = X * B (dense, n_users × n_items).
 """
 function score(model::EASE{T}, X::SparseMatrixCSC) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     Matrix{T}(X * model.B)
 end

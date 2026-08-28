@@ -177,7 +177,7 @@ end
 Return top-k item indices per user. Scores = X * W, excluding seen items.
 """
 function recommend(model::SLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     n_users = size(X, 1)
     n_items = size(model.W, 1)
     k_out = _validate_recommend_input(X, n_items, k)
@@ -228,7 +228,7 @@ end
 Return sparse score matrix S = X * W.
 """
 function score(model::SLIM{T}, X::SparseMatrixCSC) where {T}
-    model.is_fitted || error("Model not fitted")
+    _require_fitted(model.is_fitted)
     size(X, 2) == size(model.W, 1) || throw(DimensionMismatch(
         "X has $(size(X, 2)) items but the fitted model has $(size(model.W, 1))"))
     X * model.W

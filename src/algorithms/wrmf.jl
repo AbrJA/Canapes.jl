@@ -212,39 +212,66 @@ function _als_sweep_cholesky!(
     YtY = Matrix{T}(undef, k, k)
     BLAS.syrk!('U', 'N', one(T), fixed, zero(T), YtY)
     LinearAlgebra.copytri!(YtY, 'U')
+    base_gram = copy(YtY)
+    @inbounds for d in 1:k
+        base_gram[d, d] += λ
+    end
 
     rv = rowvals(A)
     nz = nonzeros(A)
 
-    # Pre-allocate per-thread buffers
+    # Pre-allocate per-thread buffers.
+    # Batched gram assembly (Rendle 2021): gather scaled item vectors into Z and
+    # accumulate Z·Zᵀ with a single syrk! call per sub-batch instead of one syr!
+    # per item. Z is capped so per-thread memory stays at k × Z_CAP regardless
+    # of how dense a single entity is, and shrinks to the actual max row nnz.
     nt = Threads.nthreads()
     gram_bufs = _thread_buffers(() -> Matrix{T}(undef, k, k), nt)
     rhs_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt)
+    Z_CAP = 4096
+    max_nnz = maximum(length(nzrange(A, u)) for u in 1:n_entities; init=0)
+    z_bufs   = _thread_buffers(() -> Matrix{T}(undef, k, min(max_nnz, Z_CAP)), nt)
 
     Base.Threads.@threads for chunk in 1:nt
         gram = gram_bufs[chunk]
         rhs  = rhs_bufs[chunk]
+        Z    = z_bufs[chunk]
 
         for u in _thread_chunk_bounds(chunk, n_entities, nt)
 
         # gram ← YᵀY + λI
-        copyto!(gram, YtY)
-        @inbounds for d in 1:k
-            gram[d, d] += λ
-        end
+        copyto!(gram, base_gram)
         fill!(rhs, zero(T))
 
-        for idx in nzrange(A, u)
-            i   = rv[idx]
-            rui = T(nz[idx])
-            yi  = @view fixed[:, i]
-
-            if is_implicit
+        if is_implicit
+            # Batched gather + syrk!: gram += Σ (cui - 1) yᵢyᵢᵀ, rhs = Σ cui yᵢ
+            m = 0
+            for idx in nzrange(A, u)
+                i   = rv[idx]
+                rui = T(nz[idx])
                 cui = max(one(T), one(T) + α * rui)
-                BLAS.syr!('U', cui - one(T), yi, gram)
-                BLAS.axpy!(cui, yi, rhs)
-            else
-                BLAS.axpy!(rui, yi, rhs)
+                sq  = sqrt(cui - one(T))
+                @inbounds for f in 1:k
+                    sf = fixed[f, i]
+                    Z[f, m+1] = sf * sq
+                    rhs[f] += cui * sf
+                end
+                m += 1
+                if m == Z_CAP
+                    BLAS.syrk!('U', 'N', one(T), Z, one(T), gram)
+                    m = 0
+                end
+            end
+            if m > 0
+                BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), gram)
+            end
+        else
+            @inbounds for idx in nzrange(A, u)
+                i   = rv[idx]
+                rui = T(nz[idx])
+                for f in 1:k
+                    rhs[f] += rui * fixed[f, i]
+                end
             end
         end
 

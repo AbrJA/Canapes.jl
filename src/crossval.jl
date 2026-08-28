@@ -3,15 +3,16 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    temporal_split(X::SparseMatrixCSC; test_fraction=0.2, rng=Random.default_rng())
+    random_holdout(X::SparseMatrixCSC; test_fraction=0.2, rng=Random.default_rng())
 
 Split a user-item matrix into train/test by randomly holding out a fraction
-of each user's interactions for testing. This simulates a temporal split.
+of each user's interactions for testing. This is a random holdout, not a
+temporal split, because the matrix does not contain timestamps.
 
 Returns `(X_train, X_test)` as sparse matrices.
 """
-function temporal_split(X::SparseMatrixCSC{Tv,Ti};
-                        test_fraction::Float64=0.2,
+function random_holdout(X::SparseMatrixCSC{Tv,Ti};
+                        test_fraction::Real=0.2,
                         rng::AbstractRNG=Random.default_rng()) where {Tv,Ti}
     0.0 < test_fraction < 1.0 || throw(ArgumentError("test_fraction must be in (0, 1), got $test_fraction"))
 
@@ -61,6 +62,12 @@ function temporal_split(X::SparseMatrixCSC{Tv,Ti};
     (X_train, X_test)
 end
 
+"""Deprecated alias for [`random_holdout`](@ref)."""
+function temporal_split(X::SparseMatrixCSC; kwargs...)
+    Base.depwarn("temporal_split is deprecated; use random_holdout instead", :temporal_split)
+    random_holdout(X; kwargs...)
+end
+
 """
     crossval(model_fn, X; n_folds=5, k=10, metric=map_at_k, rng=default_rng())
 
@@ -94,8 +101,8 @@ function crossval(model_fn, X::SparseMatrixCSC;
     fold_scores = Float64[]
 
     for fold in 1:n_folds
-        X_train, X_test = temporal_split(X; test_fraction=1.0/n_folds,
-                                         rng=MersenneTwister(fold))
+        X_train, X_test = random_holdout(X; test_fraction=1.0/n_folds,
+                                         rng=MersenneTwister(rand(rng, UInt)))
 
         model = model_fn()
         fit!(model, X_train; rng=rng)
@@ -141,7 +148,7 @@ function grid_search(model_fn, X::SparseMatrixCSC,
                      test_fraction::Float64=0.2,
                      rng::AbstractRNG=Random.default_rng(),
                      verbose::Bool=true)
-    X_train, X_test = temporal_split(X; test_fraction=test_fraction, rng=rng)
+    X_train, X_test = random_holdout(X; test_fraction=test_fraction, rng=rng)
 
     # Generate all combinations
     keys_vec = collect(keys(param_grid))
@@ -207,7 +214,7 @@ function random_search(model_fn, X::SparseMatrixCSC,
                        test_fraction::Float64=0.2,
                        rng::AbstractRNG=Random.default_rng(),
                        verbose::Bool=true)
-    X_train, X_test = temporal_split(X; test_fraction=test_fraction, rng=rng)
+    X_train, X_test = random_holdout(X; test_fraction=test_fraction, rng=rng)
 
     keys_vec = collect(keys(param_samplers))
     results = Vector{NamedTuple{(:params, :score), Tuple{NamedTuple, Float64}}}()

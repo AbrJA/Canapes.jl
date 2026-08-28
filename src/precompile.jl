@@ -94,7 +94,7 @@ import PrecompileTools: @setup_workload, @compile_workload
         recall_at_k(preds_small, actual_small; k=3)
 
         # Cross-validation
-        temporal_split(X_small; test_fraction=0.3, rng=MersenneTwister(10))
+        random_holdout(X_small; test_fraction=0.3, rng=MersenneTwister(10))
 
         # Serialization
         tmpf = tempname() * ".jls"

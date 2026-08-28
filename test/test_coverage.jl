@@ -250,8 +250,8 @@ end
         @test mean_s >= 0.0
     end
 
-    @testset "temporal_split fractions" begin
-        X_train, X_test = temporal_split(X; test_fraction=0.5, rng=MersenneTwister(1))
+    @testset "random_holdout fractions" begin
+        X_train, X_test = random_holdout(X; test_fraction=0.5, rng=MersenneTwister(1))
         @test nnz(X_train) + nnz(X_test) == nnz(X)
         # With 50% split, test should have roughly half
         @test nnz(X_test) > nnz(X) * 0.3

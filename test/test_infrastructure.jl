@@ -104,10 +104,10 @@ end
 end
 
 @testset "Cross-validation" begin
-    @testset "temporal_split" begin
+    @testset "random_holdout" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 30, 0.2)
-        X_train, X_test = temporal_split(X; test_fraction=0.2, rng=MersenneTwister(1))
+        X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
 
         # Sizes match
         @test size(X_train) == size(X)

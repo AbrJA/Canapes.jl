@@ -30,7 +30,7 @@ println("\n[index.md] Quick Start")
 
 @validate "Quick Start" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
-    X_train, X_test = temporal_split(X; test_fraction=0.2, rng=MersenneTwister(1))
+    X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
     model = WMF(rank=10, λ=0.1, α=40.0, max_iter=15, verbose=false)
     fit!(model, X_train)
     recommendations = recommend(model, X_train; k=10)
@@ -390,7 +390,7 @@ end
 
 @validate "Metrics - workflow" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
-    X_train, X_test = temporal_split(X; test_fraction=0.2, rng=MersenneTwister(1))
+    X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
     model = EASE(λ=500.0, verbose=false)
     fit!(model, X_train)
     preds = recommend(model, X_train; k=10)

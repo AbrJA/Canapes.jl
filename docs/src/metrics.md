@@ -31,7 +31,7 @@ recall_at_k(predictions, actual; k=4)     # per-user vector → [1.0]
 using Gideon, SparseArrays, Random
 
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
-X_train, X_test = temporal_split(X; test_fraction=0.2, rng=MersenneTwister(1))
+X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
 
 model = EASE(λ=500.0, verbose=false)
 fit!(model, X_train)

@@ -245,7 +245,7 @@ Gideon.jl
 │   ├── utils.jl           # init_factors, sigmoid, _inplace_shuffle!, …
 │   ├── sparse_utils.jl    # to_csr, dual_representation, row/col nnz
 │   ├── callbacks.jl       # EarlyStopping, Checkpoint, LRScheduler, custom hooks
-│   ├── crossval.jl        # temporal_split, kfold_cv, grid_search, random_search
+│   ├── crossval.jl        # random_holdout, crossval, grid_search, random_search
 │   ├── serialization.jl   # save_model / load_model (versioned binary format)
 │   ├── tables.jl          # interactions_to_sparse / sparse_to_interactions
 │   ├── progress.jl        # ConvergenceMonitor, logging utilities
@@ -352,7 +352,7 @@ using Gideon, SparseArrays
 X = sprand(1000, 500, 0.02)
 
 # Temporal train/test split
-X_train, X_test = temporal_split(X; test_fraction=0.2)
+X_train, X_test = random_holdout(X; test_fraction=0.2)
 
 # Grid search over hyperparameters
 best_params, best_score, results = grid_search(

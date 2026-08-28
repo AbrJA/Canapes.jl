@@ -93,3 +93,57 @@ end
     @test_throws ArgumentError fit!(GloVe(rank=2, max_iter=1, verbose=false), spzeros(3, 3))
     @test_throws ArgumentError fit!(GloVe(rank=2, max_iter=1, verbose=false), spzeros(0, 0))
 end
+
+@testset "Deterministic across thread partitions" begin
+    # The reordered word-ownership epoch is embarrassingly parallel over words:
+    # results must be bit-identical regardless of how the work is chunked.
+    rng = MersenneTwister(42)
+    n = 60
+    A = sprand(rng, n, n, 0.1); A = A + A'
+    nonzeros(A) .= abs.(nonzeros(A)) .+ 0.1
+
+    X_csr = Gideon.to_csr(A)
+    perm = Gideon._glove_csc_to_csr_pos(X_csr, A)
+
+    function train_epochs(nt, nepochs)
+        m = GloVe(rank=8, x_max=10.0, learning_rate=0.15, max_iter=1, verbose=false)
+        fit!(m, A; rng=MersenneTwister(7))
+        grad_buf = zeros(Float32, nnz(A))
+        cost_buf = zeros(Float32, nnz(A))
+        losses = Float32[]
+        for _ in 1:nepochs
+            push!(losses, Gideon._glove_epoch!(m, X_csr, A, grad_buf, cost_buf,
+                                               perm, nothing; nt=nt))
+        end
+        (m, losses)
+    end
+
+    m1, l1 = train_epochs(1, 5)
+    m4, l4 = train_epochs(4, 5)
+    m8, l8 = train_epochs(8, 5)
+
+    # Loss curves and all learned state are bit-identical across chunk counts.
+    @test isequal(l1, l4)
+    @test isequal(l4, l8)
+    @test isequal(m1.W_main, m4.W_main)
+    @test isequal(m1.W_main, m8.W_main)
+    @test isequal(m1.W_ctx, m4.W_ctx)
+    @test isequal(m1.b_main, m4.b_main)
+    @test isequal(m1.b_ctx, m4.b_ctx)
+    @test isequal(m1.grad_W_main, m4.grad_W_main)
+    @test isequal(m1.grad_W_ctx, m4.grad_W_ctx)
+    @test isequal(m1.grad_b_main, m4.grad_b_main)
+    @test isequal(m1.grad_b_ctx, m4.grad_b_ctx)
+end
+
+@testset "Shuffled pair order stays finite" begin
+    rng = MersenneTwister(42)
+    n = 40
+    A = sprand(rng, n, n, 0.2); A = A + A'
+    nonzeros(A) .= abs.(nonzeros(A)) .+ 0.1
+    model = GloVe(rank=5, x_max=10.0, learning_rate=0.15, max_iter=10,
+                  shuffle=true, verbose=false)
+    fit!(model, A; rng=rng)
+    @test model.is_fitted
+    @test all(isfinite, embeddings(model))
+end

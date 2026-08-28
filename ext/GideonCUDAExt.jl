@@ -432,7 +432,9 @@ function _gpu_wrmf_sweep!(
         LinearAlgebra.copytri!(gram, 'U')
 
         if is_nnls
-            Gideon._nnls_cd!(factors, gram, rhs, u, k)
+            Gideon._nnls_cd!(rhs, YtY, fixed, rv, nz, nzrange(A, u),
+                             k, α, λ, is_implicit)
+            @inbounds factors[:, u] .= rhs
         else
             # In-place Cholesky solve
             _, info = LAPACK.potrf!('U', gram)

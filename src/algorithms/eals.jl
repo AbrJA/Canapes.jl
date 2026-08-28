@@ -149,6 +149,9 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
     # Build CSR for row access
     X_csr = to_csr(X)
 
+    # Per-thread prediction cache, allocated once and reused across sweeps
+    pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), Threads.nthreads())
+
     monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
 
     λ_val = model.λ::T
@@ -160,7 +163,7 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
         # Precompute S^V = Σ_j c_j * v_j * v_j^T (weighted item Gramian for missing data)
         SV = _eals_weighted_gramian(V, c_items, k, n_items)::Matrix{T}
 
-        _eals_update_users!(U, V, X_csr, SV, c_items, λ_val, k, n_users)
+        _eals_update_users!(U, V, X_csr, SV, c_items, λ_val, k, n_users, pred_bufs)
 
         # ── Update item factors ──
         # Precompute S^U = Σ_u u_u * u_u^T (uniform weight = 1 for users)
@@ -168,7 +171,7 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
         # But observed entries have enhanced weight
         SU = U * U'  # k × k (Gramian of user factors)
 
-        _eals_update_items!(V, U, X, SU, c_items, λ_val, k, n_items)
+        _eals_update_items!(V, U, X, SU, c_items, λ_val, k, n_items, pred_bufs)
 
         # ── Compute loss ──
         loss = _eals_loss(U, V, X, c_items, λ_val)
@@ -241,12 +244,13 @@ function update!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
 
     X_csr = to_csr(X)
     λ_val = model.λ::T
+    pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), Threads.nthreads())
 
     for _ in 1:n_iter
         SV = _eals_weighted_gramian(V, c_items, k, n_items)::Matrix{T}
-        _eals_update_users!(U, V, X_csr, SV, c_items, λ_val, k, n_users)
+        _eals_update_users!(U, V, X_csr, SV, c_items, λ_val, k, n_users, pred_bufs)
         SU = U * U'
-        _eals_update_items!(V, U, X, SU, c_items, λ_val, k, n_items)
+        _eals_update_items!(V, U, X, SU, c_items, λ_val, k, n_items, pred_bufs)
     end
     model
 end
@@ -305,10 +309,10 @@ where r̂_{ui,-f} = r_{ui} - Σ_{g≠f} u_{ug} * v_{ig}
 function _eals_update_users!(U::Matrix{T}, V::Matrix{T},
                              X_csr::SparseMatricesCSR.SparseMatrixCSR,
                              SV::Matrix{T}, c_items::Vector{T},
-                             λ::T, k::Int, n_users::Int) where {T}
-    # Per-thread prediction cache
-    nt = Threads.nthreads()
-    pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), nt)
+                             λ::T, k::Int, n_users::Int,
+                             pred_bufs::Vector{Vector{T}}) where {T}
+    # Per-thread prediction cache (hoisted to fit level)
+    nt = length(pred_bufs)
 
     Threads.@threads for chunk in 1:nt
         for u in _thread_chunk_bounds(chunk, n_users, nt)
@@ -393,13 +397,13 @@ Update item factors using element-wise coordinate descent.
 function _eals_update_items!(V::Matrix{T}, U::Matrix{T},
                              X::SparseMatrixCSC, SU::Matrix{T},
                              c_items::Vector{T}, λ::T,
-                             k::Int, n_items::Int) where {T}
+                             k::Int, n_items::Int,
+                             pred_bufs::Vector{Vector{T}}) where {T}
     rv = rowvals(X)
     nz = nonzeros(X)
     n_users = size(U, 2)
 
-    nt = Threads.nthreads()
-    pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), nt)
+    nt = length(pred_bufs)
 
     Threads.@threads for chunk in 1:nt
         for j in _thread_chunk_bounds(chunk, n_items, nt)

@@ -133,15 +133,21 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     # Build transpose for fast row access
     Xt = SparseMatrixCSC(X')  # n_items × n_users
 
+    # Per-thread ALS workspaces, allocated once and reused across all sweeps
+    # and iterations (avoids re-allocating gram/rhs/Z/CG buffers every sweep).
+    max_nnz = max(maximum(length(nzrange(X, u)) for u in 1:n_items; init=0),
+                  maximum(length(nzrange(Xt, u)) for u in 1:n_users; init=0))
+    ws = _als_workspace(model, k, Threads.nthreads(), max_nnz)
+
     monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
 
     for iter in 1:model.max_iter
         iter_start = time_ns()
 
         # Update user factors (fixing items)
-        _als_sweep!(model, Xt, model.user_factors, model.item_factors, n_users)
+        _als_sweep!(model, Xt, model.user_factors, model.item_factors, n_users, ws)
         # Update item factors (fixing users)
-        _als_sweep!(model, X, model.item_factors, model.user_factors, n_items)
+        _als_sweep!(model, X, model.item_factors, model.user_factors, n_items, ws)
 
         loss = _compute_loss(model, X)
         iter_seconds = (time_ns() - iter_start) / 1e9
@@ -184,14 +190,37 @@ function _als_sweep!(
     factors::Matrix{T},
     fixed::Matrix{T},
     n_entities::Int,
+    ws,
 ) where {T}
-    _als_sweep!(model.solver, model, A, factors, fixed, n_entities)
+    _als_sweep!(model.solver, model, A, factors, fixed, n_entities, ws)
 end
 
-_als_sweep!(::ConjugateGradient, model, A, factors, fixed, n_entities) =
-    _als_sweep_cg!(model, A, factors, fixed, n_entities)
-_als_sweep!(::Union{CholeskySolver, NonNegative}, model, A, factors, fixed, n_entities) =
-    _als_sweep_cholesky!(model, A, factors, fixed, n_entities)
+_als_sweep!(::ConjugateGradient, model, A, factors, fixed, n_entities, ws) =
+    _als_sweep_cg!(model, A, factors, fixed, n_entities, ws)
+_als_sweep!(::Union{CholeskySolver, NonNegative}, model, A, factors, fixed, n_entities, ws) =
+    _als_sweep_cholesky!(model, A, factors, fixed, n_entities, ws)
+
+"""
+    _als_workspace(model::WMF{T}, k, nt, max_nnz)
+
+Per-thread work buffers for one ALS sweep, allocated once per `fit!` and reused
+across every sweep/iteration to avoid repeated buffer allocation.
+"""
+function _als_workspace(model::WMF{T}, k::Int, nt::Int, max_nnz::Int) where {T}
+    if model.solver isa ConjugateGradient
+        (; rhs_bufs = _thread_buffers(() -> Vector{T}(undef, k), nt),
+           idx_bufs = _thread_buffers(() -> Vector{Int}(undef, max_nnz), nt),
+           wgt_bufs = _thread_buffers(() -> Vector{T}(undef, max_nnz), nt),
+           r_bufs   = _thread_buffers(() -> Vector{T}(undef, k), nt),
+           p_bufs   = _thread_buffers(() -> Vector{T}(undef, k), nt),
+           Ap_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt))
+    else
+        Z_CAP = 4096
+        (; gram_bufs = _thread_buffers(() -> Matrix{T}(undef, k, k), nt),
+           rhs_bufs = _thread_buffers(() -> Vector{T}(undef, k), nt),
+           z_bufs   = _thread_buffers(() -> Matrix{T}(undef, k, min(max_nnz, Z_CAP)), nt))
+    end
+end
 
 # ──────────────── CholeskySolver path ────────────────
 
@@ -201,6 +230,7 @@ function _als_sweep_cholesky!(
     factors::Matrix{T},
     fixed::Matrix{T},
     n_entities::Int,
+    ws,
 ) where {T}
     k = model.rank
     λ = model.λ
@@ -220,24 +250,22 @@ function _als_sweep_cholesky!(
     rv = rowvals(A)
     nz = nonzeros(A)
 
-    # Pre-allocate per-thread buffers.
+    # Per-thread buffers from the fit-level workspace (hoisted).
     # Batched gram assembly (Rendle 2021): gather scaled item vectors into Z and
     # accumulate Z·Zᵀ with a single syrk! call per sub-batch instead of one syr!
     # per item. Z is capped so per-thread memory stays at k × Z_CAP regardless
-    # of how dense a single entity is, and shrinks to the actual max row nnz.
-    nt = Threads.nthreads()
-    gram_bufs = _thread_buffers(() -> Matrix{T}(undef, k, k), nt)
-    rhs_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt)
-    Z_CAP = 4096
-    max_nnz = maximum(length(nzrange(A, u)) for u in 1:n_entities; init=0)
-    z_bufs   = _thread_buffers(() -> Matrix{T}(undef, k, min(max_nnz, Z_CAP)), nt)
+    # of how dense a single entity is.
+    gram_bufs = ws.gram_bufs
+    rhs_bufs  = ws.rhs_bufs
+    z_bufs    = ws.z_bufs
+    Z_CAP = size(z_bufs[1], 2)
 
-    Base.Threads.@threads for chunk in 1:nt
+    Base.Threads.@threads for chunk in 1:length(gram_bufs)
         gram = gram_bufs[chunk]
         rhs  = rhs_bufs[chunk]
         Z    = z_bufs[chunk]
 
-        for u in _thread_chunk_bounds(chunk, n_entities, nt)
+        for u in _thread_chunk_bounds(chunk, n_entities, length(gram_bufs))
 
         # gram ← YᵀY + λI
         copyto!(gram, base_gram)
@@ -341,6 +369,7 @@ function _als_sweep_cg!(
     factors::Matrix{T},
     fixed::Matrix{T},
     n_entities::Int,
+    ws,
 ) where {T}
     k = model.rank
     λ = model.λ
@@ -358,15 +387,14 @@ function _als_sweep_cg!(
     rv = rowvals(A)
     nz = nonzeros(A)
 
-    # Per-thread CG workspace
-    nt = Threads.nthreads()
-    max_nnz = maximum(length(nzrange(A, u)) for u in 1:n_entities; init=0)
-    rhs_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt)
-    idx_bufs  = _thread_buffers(() -> Vector{Int}(undef, max_nnz), nt)
-    wgt_bufs  = _thread_buffers(() -> Vector{T}(undef, max_nnz), nt)
-    r_bufs    = _thread_buffers(() -> Vector{T}(undef, k), nt)
-    p_bufs    = _thread_buffers(() -> Vector{T}(undef, k), nt)
-    Ap_bufs   = _thread_buffers(() -> Vector{T}(undef, k), nt)
+    # Per-thread CG workspace from the fit-level workspace (hoisted).
+    rhs_bufs  = ws.rhs_bufs
+    idx_bufs  = ws.idx_bufs
+    wgt_bufs  = ws.wgt_bufs
+    r_bufs    = ws.r_bufs
+    p_bufs    = ws.p_bufs
+    Ap_bufs   = ws.Ap_bufs
+    nt = length(rhs_bufs)
 
     Base.Threads.@threads for chunk in 1:nt
         rhs  = rhs_bufs[chunk]
@@ -536,7 +564,9 @@ function transform(model::WMF{T}, X::SparseMatrixCSC) where {T}
     fill!(new_user_factors, zero(T))
 
     Xt = SparseMatrixCSC(X')
-    _als_sweep!(model, Xt, new_user_factors, model.item_factors, n_users_new)
+    max_nnz = maximum(length(nzrange(Xt, u)) for u in 1:n_users_new; init=0)
+    ws = _als_workspace(model, k, Threads.nthreads(), max_nnz)
+    _als_sweep!(model, Xt, new_user_factors, model.item_factors, n_users_new, ws)
     new_user_factors
 end
 

@@ -105,6 +105,11 @@ Uses Hogwild!-style lock-free parallel SGD (Niu et al. 2011) for massive speedup
 on multi-core systems. Each thread processes independent samples with concurrent
 writes to shared factor matrices — safe for sparse problems where collision
 probability is low.
+
+!!! note "Determinism"
+    Updates are lock-free, so exact results vary with the number of threads and
+    across runs. For bit-reproducible output, run with a single thread
+    (`julia --threads=1`) and a fixed `rng`.
 """
 function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
@@ -129,7 +134,6 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
 
     # ── Build per-user item lists and flat sampling structure ──
     X_csr = to_csr(X)
-    n_interactions = nnz(X)
 
     # Build sorted item lists per user for binary-search negative verification
     user_item_sorted = Vector{Vector{Int32}}(undef, n_users)
@@ -148,8 +152,16 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
     eligible_users > 0 || throw(ArgumentError(
         "BPR requires at least one user with an unobserved item"))
 
-    userids = Vector{Int32}(undef, n_interactions)
-    itemids = Vector{Int32}(undef, n_interactions)
+    # Count eligible interactions so the flat sampling arrays are sized exactly.
+    # `n_eligible` is assigned a single time: it is captured by the threaded loop
+    # below, so a reassigned accumulator would be boxed (`Core.Box`) and
+    # type-instabilize the whole hot loop.
+    n_eligible = sum(length(items) for items in user_item_sorted if length(items) < n_items)
+    n_eligible > 0 || throw(ArgumentError(
+        "BPR requires at least one observed interaction"))
+
+    userids = Vector{Int32}(undef, n_eligible)
+    itemids = Vector{Int32}(undef, n_eligible)
     pos = 1
     for u in 1:n_users
         length(user_item_sorted[u]) == n_items && continue
@@ -159,11 +171,6 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
             pos += 1
         end
     end
-    resize!(userids, pos - 1)
-    resize!(itemids, pos - 1)
-    n_interactions = pos - 1
-    n_interactions > 0 || throw(ArgumentError(
-        "BPR requires at least one observed interaction"))
 
     # Build popularity-based sampling distribution (sqrt-frequency smoothing)
     item_pop = zeros(T, n_items)
@@ -174,7 +181,7 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
     pop_cumsum = cumsum(pop_weights)
     pop_total = pop_cumsum[end]
 
-    samples_per_epoch = model.n_samples > 0 ? model.n_samples : n_interactions
+    samples_per_epoch = model.n_samples > 0 ? model.n_samples : n_eligible
     monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=3)
 
     lr = model.learning_rate
@@ -203,32 +210,31 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
             chunk_start = (chunk - 1) * chunk_size + 1
             chunk_end = min(chunk * chunk_size, samples_per_epoch)
 
-            @fastmath @inbounds for _ in chunk_start:chunk_end
+            @inbounds for _ in chunk_start:chunk_end
                 # Sample a random interaction → gives (user, positive_item)
-                liked_index = rand(local_rng, 1:n_interactions)
+                liked_index = rand(local_rng, 1:n_eligible)
                 u = Int(userids[liked_index])
                 i = Int(itemids[liked_index])
 
                 # Sample negative item (inline for uniform; call function for others)
-                local sorted_items = user_item_sorted[u]
-                local j_int::Int
-                if neg_strategy isa Uniform
+                sorted_items = user_item_sorted[u]
+                j_int = if neg_strategy isa Uniform
                     j = rand(local_rng, Int32(1):Int32(n_items))
                     while _insorted(sorted_items, j)
                         j = rand(local_rng, Int32(1):Int32(n_items))
                     end
-                    j_int = Int(j)
+                    Int(j)
                 else
-                    j_int = _bpr_sample_negative_fast(local_rng, n_items, sorted_items,
-                                                     neg_strategy, dns_k,
-                                                     pop_cumsum, pop_total,
-                                                     U, V, u, k)
+                    _bpr_sample_negative_fast(local_rng, n_items, sorted_items,
+                                              neg_strategy, dns_k,
+                                              pop_cumsum, pop_total,
+                                              U, V, u, k)::Int
                 end
 
                 # Compute x̂_uij = x̂_ui - x̂_uj
                 x_uij = zero(T)
-                @simd for f in 1:k
-                    x_uij += U[f, u] * (V[f, i] - V[f, j_int])
+                for f in 1:k
+                    x_uij = muladd(U[f, u], V[f, i] - V[f, j_int], x_uij)
                 end
 
                 # σ(-x_uij) = 1/(1 + exp(x_uij))
@@ -247,9 +253,9 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
                     j_f = V[f, j_int]
                     diff = i_f - j_f
 
-                    U[f, u] = u_f + lr * (sig * diff - λ_u * u_f)
-                    V[f, i] = i_f + lr * (sig * u_f - λ_p * i_f)
-                    V[f, j_int] = j_f + lr * (-sig * u_f - λ_n * j_f)
+                    U[f, u] = muladd(lr, sig * diff - λ_u * u_f, u_f)
+                    V[f, i] = muladd(lr, sig * u_f - λ_p * i_f, i_f)
+                    V[f, j_int] = muladd(lr, -sig * u_f - λ_n * j_f, j_f)
                 end
             end
 
@@ -344,8 +350,8 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Dynamic, dns_k,
         _insorted(sorted_items, j) && continue
         candidates_found += 1
         score = zero(T)
-        @inbounds @simd for f in 1:k
-            score += U[f, u] * V[f, Int(j)]
+        @inbounds for f in 1:k
+            score = muladd(U[f, u], V[f, Int(j)], score)
         end
         if score > best_score
             best_score = score

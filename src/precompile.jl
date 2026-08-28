@@ -9,7 +9,7 @@ import PrecompileTools: @setup_workload, @compile_workload
 
     @compile_workload begin
         rng = MersenneTwister(1)
-        n_users, n_items = 20, 15
+        n_users, n_items = 4, 5
 
         # Small sparse matrix for precompilation
         X_small = sprand(rng, n_users, n_items, 0.3)
@@ -45,7 +45,7 @@ import PrecompileTools: @setup_workload, @compile_workload
         recommend(m_slim, X_small; k=3)
 
         # GloVe (square matrix)
-        C = sprand(rng, 10, 10, 0.5)
+        C = sprand(rng, 4, 4, 0.5)
         C = C + C'
         nonzeros(C) .= abs.(nonzeros(C)) .+ 0.1
         m_glove = GloVe(rank=4, max_iter=2, verbose=false)
@@ -95,12 +95,6 @@ import PrecompileTools: @setup_workload, @compile_workload
 
         # Cross-validation
         random_holdout(X_small; test_fraction=0.3, rng=MersenneTwister(10))
-
-        # Serialization
-        tmpf = tempname() * ".jls"
-        save_model(m_ease, tmpf)
-        load_model(tmpf)
-        rm(tmpf; force=true)
 
         # Sparse utilities
         to_csr(X_small)

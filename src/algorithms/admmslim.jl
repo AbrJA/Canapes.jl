@@ -213,27 +213,48 @@ function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     n_items = size(model.W, 1)
     k_out = min(k, n_items)
 
-    # Compute scores as (n_items × n_users) for column-major access
-    S = Matrix{T}(model.W' * X')
+    # Batched GEMM: convert sparse X to dense in chunks, multiply via BLAS
     preds = Matrix{Int}(undef, n_users, k_out)
     X_csr = to_csr(X)
 
+    max_batch_mem = 2 * 1024^3
+    batch_size = max(1, min(n_users, Int(floor(max_batch_mem / (2 * n_items * sizeof(T))))))
+
     nt = Threads.maxthreadid()
     topk_bufs = [Vector{Int}(undef, k_out) for _ in 1:nt]
+    scores_buf = Matrix{T}(undef, n_items, batch_size)
+    X_batch = Matrix{T}(undef, batch_size, n_items)
 
-    Threads.@threads for u in 1:n_users
-        tid = Threads.threadid()
-        # Mask seen items
-        @inbounds for idx in nzrange(X_csr, u)
-            j = Int(X_csr.colval[idx])
-            S[j, u] = T(-Inf)
+    for batch_start in 1:batch_size:n_users
+        batch_end = min(batch_start + batch_size - 1, n_users)
+        n_batch = batch_end - batch_start + 1
+
+        Xb = @view X_batch[1:n_batch, :]
+        fill!(Xb, zero(T))
+        @inbounds for u_local in 1:n_batch
+            u = batch_start + u_local - 1
+            for idx in nzrange(X_csr, u)
+                j = Int(X_csr.colval[idx])
+                Xb[u_local, j] = T(X_csr.nzval[idx])
+            end
         end
 
-        col = @view S[:, u]
-        topk = topk_bufs[tid]
-        _topk_indices!(topk, col, k_out)
-        @inbounds for i in 1:k_out
-            preds[u, i] = topk[i]
+        Sb = @view scores_buf[:, 1:n_batch]
+        mul!(Sb, model.W', Xb')
+
+        Threads.@threads for u_local in 1:n_batch
+            tid = Threads.threadid()
+            u = batch_start + u_local - 1
+            @inbounds for idx in nzrange(X_csr, u)
+                j = Int(X_csr.colval[idx])
+                scores_buf[j, u_local] = T(-Inf)
+            end
+            col = @view scores_buf[:, u_local]
+            topk = topk_bufs[tid]
+            _topk_indices!(topk, col, k_out)
+            @inbounds for i in 1:k_out
+                preds[u, i] = topk[i]
+            end
         end
     end
     preds

@@ -60,6 +60,8 @@ end
         for i in 1:50
             @test norms[i] ≈ norm(A_dense[i, :]) atol=1e-10
         end
+        @test_throws ArgumentError sparse_row_norms(A, 0)
+        @test_throws ArgumentError sparse_row_norms(A, -1)
     end
 
     @testset "L1 norms" begin

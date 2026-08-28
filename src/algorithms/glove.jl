@@ -14,7 +14,7 @@
 """
     GloVe{T} <: AbstractMatrixFactorization
 
-GloVe matrix factorization with AdaGrad-based SGD (Hogwild parallel).
+GloVe matrix factorization with deterministic AdaGrad-based SGD.
 
 Learns word/item embeddings from a co-occurrence matrix by factorizing
 the log-count matrix with a weighting function that caps frequent pairs.
@@ -97,7 +97,7 @@ end
     fit!(model::GloVe, X; rng, callbacks) -> model
 
 Fit GloVe on a square co-occurrence matrix `X` (all values must be positive).
-Uses Hogwild-style parallel SGD with AdaGrad.
+Uses deterministic SGD with AdaGrad.
 """
 function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
@@ -183,13 +183,9 @@ function _glove_epoch!(model::GloVe{T}, rows, cols, vals, order) where {T}
     gb  = model.grad_b_main
     gbc = model.grad_b_ctx
 
-    # Thread-local cost accumulators
-    nt = Threads.maxthreadid()
-    local_costs = zeros(T, nt)
-
-    # Hogwild parallel SGD
-    Base.Threads.@threads :static for idx in order
-        tid  = Threads.threadid()
+    # Sequential updates avoid races in the shared AdaGrad state and factors.
+    cost = zero(T)
+    for idx in order
         i = rows[idx]
         j = cols[idx]
         x_ij = T(vals[idx])
@@ -203,10 +199,10 @@ function _glove_epoch!(model::GloVe{T}, rows, cols, vals, order) where {T}
             diff += W[f, i] * Wc[f, j]
         end
 
-        local_costs[tid] += weight * diff^2
+        cost += weight * diff^2
         grad_common = T(2) * weight * diff
 
-        # AdaGrad update (Hogwild writes) with numerical floor
+        # AdaGrad update with numerical floor
         @inbounds @simd for f in 1:k
             g_main = grad_common * Wc[f, j] + λ * W[f, i]
             g_ctx  = grad_common * W[f, i]  + λ * Wc[f, j]
@@ -225,7 +221,7 @@ function _glove_epoch!(model::GloVe{T}, rows, cols, vals, order) where {T}
             bc[j] -= lr * g_bj / (sqrt(gbc[j]) + T(1e-8))
         end
     end
-    sum(local_costs)
+    cost
 end
 
 """

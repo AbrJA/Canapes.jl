@@ -104,10 +104,14 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
               U_init::Union{Nothing,AbstractMatrix} = nothing,
                V_init::Union{Nothing,AbstractMatrix} = nothing,
                callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
-    run_callbacks_train_begin(callbacks, model)
-    try
     n_users, n_items = size(X)
     _require_nonempty_dimensions(X, "IALS")
+    old_user_factors = model.user_factors
+    old_item_factors = model.item_factors
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
+    run_callbacks_train_begin(callbacks, model)
+    try
     k = model.rank
     α = model.α
     λ = model.λ
@@ -196,6 +200,11 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.is_fitted = true
     model
+    catch
+        model.user_factors = old_user_factors
+        model.item_factors = old_item_factors
+        model.is_fitted = old_is_fitted
+        rethrow()
     finally
         run_callbacks_train_end(callbacks, model)
     end

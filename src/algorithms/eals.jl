@@ -114,9 +114,15 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
               U_init::Union{Nothing,Matrix{T}} = nothing,
                V_init::Union{Nothing,Matrix{T}} = nothing,
                callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
+    n_users, n_items = size(X)
+    _require_nonempty_dimensions(X, "EALS")
+    old_user_factors = model.user_factors
+    old_item_factors = model.item_factors
+    old_item_weights = model.item_weights
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
     try
-    n_users, n_items = size(X)
     k = model.rank
 
     # Initialize factors
@@ -188,6 +194,12 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.is_fitted = true
     model
+    catch
+        model.user_factors = old_user_factors
+        model.item_factors = old_item_factors
+        model.item_weights = old_item_weights
+        model.is_fitted = old_is_fitted
+        rethrow()
     finally
         run_callbacks_train_end(callbacks, model)
     end
@@ -509,4 +521,3 @@ function _eals_loss(U::Matrix{T}, V::Matrix{T}, X::SparseMatrixCSC,
 
     loss_obs + loss_miss + reg
 end
-

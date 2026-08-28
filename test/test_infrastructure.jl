@@ -95,6 +95,20 @@ end
     @test model.is_fitted
     @test model.user_factors == old_user_factors
     @test model.item_factors == old_item_factors
+
+    for fit_model in [
+        IALS(rank=2, max_iter=1, verbose=false),
+        EALS(rank=2, max_iter=1, verbose=false),
+    ]
+        fit!(fit_model, X; rng=MersenneTwister(2))
+        old_user_factors = copy(fit_model.user_factors)
+        old_item_factors = copy(fit_model.item_factors)
+        @test_throws ArgumentError fit!(fit_model, X;
+            rng=MersenneTwister(3), callbacks=[FailingCallback()])
+        @test fit_model.is_fitted
+        @test fit_model.user_factors == old_user_factors
+        @test fit_model.item_factors == old_item_factors
+    end
 end
 
 @testset "Serialization" begin

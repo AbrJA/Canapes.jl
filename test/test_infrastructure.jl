@@ -4,9 +4,13 @@ mutable struct LifecycleCallback <: AbstractCallback
     events::Vector{Symbol}
 end
 
+struct FailingCallback <: AbstractCallback end
+
 Gideon.on_train_begin(cb::LifecycleCallback, _) = push!(cb.events, :begin)
 Gideon.on_epoch_end(cb::LifecycleCallback, ::Gideon.CallbackInfo) = (push!(cb.events, :epoch); :continue)
 Gideon.on_train_end(cb::LifecycleCallback, _) = push!(cb.events, :end)
+Gideon.on_epoch_end(::FailingCallback, ::Gideon.CallbackInfo) =
+    throw(ArgumentError("intentional callback failure"))
 
 @testset "Callbacks" begin
     @testset "EarlyStoppingCallback" begin
@@ -82,6 +86,15 @@ end
         fit!(fit_model, X, [1.0, 0.0]; rng=MersenneTwister(1), callbacks=[current])
         @test current.events == [:begin, :epoch, :end]
     end
+
+    model = WMF(rank=2, max_iter=1, verbose=false)
+    fit!(model, X; rng=MersenneTwister(2))
+    old_user_factors = copy(model.user_factors)
+    old_item_factors = copy(model.item_factors)
+    @test_throws ArgumentError fit!(model, X; rng=MersenneTwister(3), callbacks=[FailingCallback()])
+    @test model.is_fitted
+    @test model.user_factors == old_user_factors
+    @test model.item_factors == old_item_factors
 end
 
 @testset "Serialization" begin

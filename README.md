@@ -87,8 +87,8 @@ U_new = transform(model, X_new)    # (20, 50)
 Switch to Cholesky for maximum numerical stability, or NNLS for non-negative factors:
 
 ```julia
-model_chol = WMF(rank=20, λ=0.1, solver=CHOLESKY)
-model_nnls = WMF(rank=20, λ=0.1, solver=NNLS)
+model_chol = WMF(rank=20, λ=0.1, solver=CholeskySolver())
+model_nnls = WMF(rank=20, λ=0.1, solver=NonNegative())
 ```
 
 ---

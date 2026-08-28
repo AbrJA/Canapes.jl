@@ -80,3 +80,16 @@ end
     @test model.is_fitted
     @test all(isfinite, model.user_factors)
 end
+
+@testset "No negative items" begin
+    # Users with all items observed are skipped when other users are eligible.
+    X = sparse([1, 1, 2], [1, 2, 1], [1.0, 1.0, 1.0], 2, 2)
+    model = BPR(rank=2, max_iter=1, n_samples=10, verbose=false)
+    fit!(model, X; rng=MersenneTwister(42))
+    @test model.is_fitted
+
+    # A dataset with no possible BPR triplet fails explicitly.
+    X_full = sparse([1, 1], [1, 2], [1.0, 1.0], 1, 2)
+    @test_throws ArgumentError fit!(BPR(rank=2, max_iter=1, verbose=false), X_full)
+    @test_throws ArgumentError fit!(BPR(rank=2, max_iter=1, verbose=false), spzeros(2, 2))
+end

@@ -120,23 +120,9 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
     U = model.user_factors
     V = model.item_factors
 
-    # ── Build flat sampling structure (like implicit) ──
-    # userids[s] = user who made interaction s
-    # itemids[s] = item of interaction s
-    # This lets us sample a (user, positive_item) pair with a single random index
+    # ── Build per-user item lists and flat sampling structure ──
     X_csr = to_csr(X)
     n_interactions = nnz(X)
-
-    userids = Vector{Int32}(undef, n_interactions)
-    itemids = Vector{Int32}(undef, n_interactions)
-    pos = 1
-    for u in 1:n_users
-        for idx in nzrange(X_csr, u)
-            userids[pos] = Int32(u)
-            itemids[pos] = Int32(X_csr.colval[idx])
-            pos += 1
-        end
-    end
 
     # Build sorted item lists per user for binary-search negative verification
     user_item_sorted = Vector{Vector{Int32}}(undef, n_users)
@@ -148,6 +134,29 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
         sort!(items)
         user_item_sorted[u] = items
     end
+
+    # Users who have interacted with every item cannot produce BPR triplets.
+    # Exclude their positive interactions rather than retrying forever.
+    eligible_users = count(length(items) < n_items for items in user_item_sorted)
+    eligible_users > 0 || throw(ArgumentError(
+        "BPR requires at least one user with an unobserved item"))
+
+    userids = Vector{Int32}(undef, n_interactions)
+    itemids = Vector{Int32}(undef, n_interactions)
+    pos = 1
+    for u in 1:n_users
+        length(user_item_sorted[u]) == n_items && continue
+        for idx in nzrange(X_csr, u)
+            userids[pos] = Int32(u)
+            itemids[pos] = Int32(X_csr.colval[idx])
+            pos += 1
+        end
+    end
+    resize!(userids, pos - 1)
+    resize!(itemids, pos - 1)
+    n_interactions = pos - 1
+    n_interactions > 0 || throw(ArgumentError(
+        "BPR requires at least one observed interaction"))
 
     # Build popularity-based sampling distribution (sqrt-frequency smoothing)
     item_pop = zeros(T, n_items)
@@ -286,21 +295,23 @@ function _bpr_sample_negative_fast(rng::AbstractRNG, n_items::Int,
 end
 
 function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Uniform, dns_k,
-                                   pop_cumsum, pop_total, U, V, u, k)
+                                    pop_cumsum, pop_total, U, V, u, k)
     j = rand(rng, Int32(1):Int32(n_items))
-    while _insorted(sorted_items, j)
+    for _ in 1:n_items
+        !_insorted(sorted_items, j) && return Int(j)
         j = rand(rng, Int32(1):Int32(n_items))
     end
-    return Int(j)
+    throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
 end
 
 function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Popular, dns_k,
                                    pop_cumsum::Vector{T}, pop_total::T, U, V, u, k) where {T}
     j = Int32(_sample_from_cumsum(rng, pop_cumsum, pop_total, n_items))
-    while _insorted(sorted_items, j)
+    for _ in 1:n_items
+        !_insorted(sorted_items, j) && return Int(j)
         j = Int32(_sample_from_cumsum(rng, pop_cumsum, pop_total, n_items))
     end
-    return Int(j)
+    throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
 end
 
 function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Dynamic, dns_k,
@@ -325,13 +336,14 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Dynamic, dns_k,
             best_j = j
         end
     end
-    if best_j == Int32(0)
-        best_j = rand(rng, Int32(1):Int32(n_items))
-        while _insorted(sorted_items, best_j)
-            best_j = rand(rng, Int32(1):Int32(n_items))
-        end
+    best_j != Int32(0) && return Int(best_j)
+
+    # The caller normally filters these users before sampling. Keep the helper
+    # total anyway, so malformed inputs fail instead of spinning indefinitely.
+    for j in Int32(1):Int32(n_items)
+        !_insorted(sorted_items, j) && return Int(j)
     end
-    return Int(best_j)
+    throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
 end
 
 """
@@ -352,5 +364,3 @@ function _sample_from_cumsum(rng::AbstractRNG, cumsum::Vector{T},
     end
     lo
 end
-
-

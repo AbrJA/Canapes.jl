@@ -72,7 +72,12 @@ Memory: O(n_items²) for the weight matrix B.
 """
 function fit!(model::EASE{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng()) where {T,Tv,Ti}
+    old_B = model.B
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
+    try
     n_users, n_items = size(X)
+    _require_nonempty_dimensions(X, "EASE")
 
     model.verbose && @info "[EASE] Computing Gram matrix ($(n_items) items)..."
 
@@ -104,6 +109,11 @@ function fit!(model::EASE{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.verbose && @info "[EASE] Fitted. B matrix: $(n_items)×$(n_items)"
     model
+    catch
+        model.B = old_B
+        model.is_fitted = old_is_fitted
+        rethrow()
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -81,10 +81,13 @@ function fit!(model::ItemKNN{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
               callbacks::Vector{<:AbstractCallback}=AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    _require_nonempty_dimensions(X, "ItemKNN")
-    kn = min(model.k, n_items - 1)
+    old_W = model.W
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
     try
+    _require_nonempty_dimensions(X, "ItemKNN")
+    kn = min(model.k, n_items - 1)
 
     model.verbose && @info "[ItemKNN] Computing $(model.similarity) similarity for $n_items items (k=$kn)..."
 
@@ -113,6 +116,10 @@ function fit!(model::ItemKNN{T}, X::SparseMatrixCSC{Tv,Ti};
     model.is_fitted = true
     model.verbose && @info "[ItemKNN] Done. W has $(nnz(W)) nonzeros (density=$(round(nnz(W)/n_items^2; digits=6)))"
     model
+    catch
+        model.W = old_W
+        model.is_fitted = old_is_fitted
+        rethrow()
     finally
         run_callbacks_train_end(callbacks, model)
     end

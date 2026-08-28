@@ -111,6 +111,19 @@ end
         @test fit_model.user_factors == old_user_factors
         @test fit_model.item_factors == old_item_factors
     end
+
+    for (fit_model, state_field) in [
+        (EASE(λ=100.0, verbose=false), :B),
+        (SLIM(max_iter=1, verbose=false), :W),
+        (ADMMSLIM(max_iter=1, verbose=false), :W),
+        (ItemKNN(k=2, verbose=false), :W),
+    ]
+        fit!(fit_model, X; rng=MersenneTwister(2))
+        old_state = copy(getproperty(fit_model, state_field))
+        @test_throws ArgumentError fit!(fit_model, spzeros(0, 0))
+        @test fit_model.is_fitted
+        @test getproperty(fit_model, state_field) == old_state
+    end
 end
 
 @testset "Serialization" begin

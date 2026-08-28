@@ -104,6 +104,11 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     λ_1 = model.λ_1
     λ_2 = model.λ_2
     ρ = model.ρ
+    old_W = model.W
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
+    try
+    _require_nonempty_dimensions(X, "ADMMSLIM")
 
     model.verbose && @info "[ADMM-SLIM] Computing Gram matrix ($n_items × $n_items)..."
 
@@ -196,6 +201,11 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     density = nnz_w / (n_items * n_items) * 100
     model.verbose && @info "[ADMM-SLIM] Done. W: $(n_items)×$(n_items), nnz=$(nnz_w) ($(round(density; digits=3))%)"
     model
+    catch
+        model.W = old_W
+        model.is_fitted = old_is_fitted
+        rethrow()
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

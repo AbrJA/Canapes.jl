@@ -72,7 +72,12 @@ Solves n_items independent elastic net problems via coordinate descent.
 """
 function fit!(model::SLIM{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng()) where {T,Tv,Ti}
+    old_W = model.W
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
+    try
     n_users, n_items = size(X)
+    _require_nonempty_dimensions(X, "SLIM")
 
     # Precompute XᵀX (Gram matrix) and column norms
     G = Matrix{T}(X' * X)   # n_items × n_items
@@ -95,6 +100,11 @@ function fit!(model::SLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     density = nnz_w / (n_items * n_items) * 100
     model.verbose && @info "[SLIM] Done. W: $(n_items)×$(n_items), nnz=$(nnz_w) ($(round(density, digits=3))%)"
     model
+    catch
+        model.W = old_W
+        model.is_fitted = old_is_fitted
+        rethrow()
+    end
 end
 
 """

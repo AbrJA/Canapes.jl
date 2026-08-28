@@ -78,4 +78,7 @@ using Pkg
     @testset "Reference contracts" begin
         include("test_reference_contracts.jl")
     end
+    @testset "Fixtures" begin
+        include("test_fixtures.jl")
+    end
 end

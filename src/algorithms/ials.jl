@@ -268,9 +268,22 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         copyto!(A, gramian)
         BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), A)
 
-        # Solve via CholeskySolver
-        LAPACK.potrf!('U', A)
-        LAPACK.potrs!('U', A, b)
+        # Solve via CholeskySolver, with a singular-gramian fallback
+        # (λ ≈ 0 with very few ratings can produce a singular gram).
+        _, info = LAPACK.potrf!('U', A)
+        if info != 0
+            copyto!(A, gramian)
+            @inbounds for d in 1:k
+                A[d, d] += max(λ, eps(T))
+            end
+            LinearAlgebra.copytri!(A, 'U')
+            _, info = LAPACK.potrf!('U', A)
+        end
+        if info == 0
+            LAPACK.potrs!('U', A, b)
+        else
+            fill!(b, zero(T))
+        end
         @inbounds for f in 1:k
             target[f, u] = b[f]
         end
@@ -328,8 +341,22 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         copyto!(A, gramian)
         BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), A)
 
-        LAPACK.potrf!('U', A)
-        LAPACK.potrs!('U', A, b)
+        # Solve via CholeskySolver, with a singular-gramian fallback
+        # (λ ≈ 0 with very few ratings can produce a singular gram).
+        _, info = LAPACK.potrf!('U', A)
+        if info != 0
+            copyto!(A, gramian)
+            @inbounds for d in 1:k
+                A[d, d] += max(λ, eps(T))
+            end
+            LinearAlgebra.copytri!(A, 'U')
+            _, info = LAPACK.potrf!('U', A)
+        end
+        if info == 0
+            LAPACK.potrs!('U', A, b)
+        else
+            fill!(b, zero(T))
+        end
         @inbounds for f in 1:k
             target[f, j] = b[f]
         end

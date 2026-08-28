@@ -306,9 +306,23 @@ function _als_sweep_cholesky!(
         # Mirror upper triangle
         LinearAlgebra.copytri!(gram, 'U')
 
-        # In-place Cholesky solve
-        LAPACK.potrf!('U', gram)
-        LAPACK.potrs!('U', gram, rhs)
+        # In-place Cholesky solve, with a singular-gramian fallback
+        # (λ ≈ 0 with very few ratings can produce a singular gram).
+        _, info = LAPACK.potrf!('U', gram)
+        if info != 0
+            copyto!(gram, base_gram)
+            floor_val = max(λ, eps(T))
+            @inbounds for d in 1:k
+                gram[d, d] += floor_val
+            end
+            LinearAlgebra.copytri!(gram, 'U')
+            _, info = LAPACK.potrf!('U', gram)
+        end
+        if info == 0
+            LAPACK.potrs!('U', gram, rhs)
+        else
+            fill!(rhs, zero(T))
+        end
 
         if is_nnls
             rhs .= max.(rhs, zero(T))

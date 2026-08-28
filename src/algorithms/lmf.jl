@@ -81,6 +81,10 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
         "LogisticMF requires positive user and item dimensions, got $(size(X))"))
     nnz(X) > 0 || throw(ArgumentError("LogisticMF requires at least one observed interaction"))
     k = model.rank
+    old_user_factors = model.user_factors
+    old_item_factors = model.item_factors
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
     try
 
@@ -170,6 +174,11 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     end
     model.is_fitted = true
     model
+    catch
+        model.user_factors = old_user_factors
+        model.item_factors = old_item_factors
+        model.is_fitted = old_is_fitted
+        rethrow()
     finally
         run_callbacks_train_end(callbacks, model)
     end

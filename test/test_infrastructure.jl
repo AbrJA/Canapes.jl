@@ -99,6 +99,8 @@ end
     for fit_model in [
         IALS(rank=2, max_iter=1, verbose=false),
         EALS(rank=2, max_iter=1, verbose=false),
+        BPR(rank=2, max_iter=1, verbose=false),
+        LogisticMF(rank=2, max_iter=1, verbose=false),
     ]
         fit!(fit_model, X; rng=MersenneTwister(2))
         old_user_factors = copy(fit_model.user_factors)

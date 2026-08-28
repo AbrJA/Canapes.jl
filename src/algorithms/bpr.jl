@@ -111,6 +111,11 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
     k = model.rank
+    old_user_factors = model.user_factors
+    old_item_factors = model.item_factors
+    old_loss_history = model.loss_history
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
     try
 
@@ -280,6 +285,12 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.is_fitted = true
     model
+    catch
+        model.user_factors = old_user_factors
+        model.item_factors = old_item_factors
+        model.loss_history = old_loss_history
+        model.is_fitted = old_is_fitted
+        rethrow()
     finally
         run_callbacks_train_end(callbacks, model)
     end

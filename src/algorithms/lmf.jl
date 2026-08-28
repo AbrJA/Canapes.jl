@@ -187,7 +187,7 @@ end
 """
 Update all user factors with one batched Adagrad step per user.
 Matches implicit's lmf_update: accumulate gradient from positives + negatives + reg,
-then single Adagrad update. Uses pre-allocated per-thread buffers for zero allocation.
+then single Adagrad update. Uses pre-allocated per-chunk buffers for zero allocation.
 """
 function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
                             X_csr::SparseMatricesCSR.SparseMatrixCSR,
@@ -197,16 +197,18 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
                             k::Int, n_users::Int, n_interactions::Int,
                             thread_rngs::Vector, deriv_bufs::Vector{Vector{T}}) where {T}
     n_items = size(V, 2)
+    nt = Threads.nthreads()
+    chunk_size = cld(n_users, nt)
 
-    Threads.@threads :static for u in 1:n_users
-        tid = Threads.threadid()
-        local_rng = thread_rngs[tid]
+    Threads.@threads for chunk in 1:nt
+        local_rng = thread_rngs[chunk]
+        deriv = deriv_bufs[chunk]
+        for u in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_users)
         rng_u = nzrange(X_csr, u)
         user_seen = length(rng_u)
         user_seen == 0 && continue
 
         # Use pre-allocated buffer (zero alloc)
-        deriv = deriv_bufs[tid]
         @inbounds @simd for f in 1:k
             deriv[f] = zero(T)
         end
@@ -250,12 +252,13 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
             grad2_U[f, u] += d * d
             U[f, u] += (lr / sqrt(ada_eps + grad2_U[f, u])) * d
         end
+        end
     end
 end
 
 """
 Update all item factors with one batched Adagrad step per item.
-Uses pre-allocated per-thread buffers for zero allocation.
+Uses pre-allocated per-chunk buffers for zero allocation.
 """
 function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
                             Xt_csr::SparseMatricesCSR.SparseMatrixCSR,
@@ -265,15 +268,17 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
                             k::Int, n_items::Int, n_interactions::Int,
                             thread_rngs::Vector, deriv_bufs::Vector{Vector{T}}) where {T}
     n_users = size(U, 2)
+    nt = Threads.nthreads()
+    chunk_size = cld(n_items, nt)
 
-    Threads.@threads :static for j in 1:n_items
-        tid = Threads.threadid()
-        local_rng = thread_rngs[tid]
+    Threads.@threads for chunk in 1:nt
+        local_rng = thread_rngs[chunk]
+        deriv = deriv_bufs[chunk]
+        for j in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_items)
         rng_j = nzrange(Xt_csr, j)
         item_seen = length(rng_j)
         item_seen == 0 && continue
 
-        deriv = deriv_bufs[tid]
         @inbounds @simd for f in 1:k
             deriv[f] = zero(T)
         end
@@ -315,6 +320,7 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
             grad2_V[f, j] += d * d
             V[f, j] += (lr / sqrt(ada_eps + grad2_V[f, j])) * d
         end
+        end
     end
 end
 
@@ -354,17 +360,19 @@ end
 
 function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
                             X_csr::SparseMatricesCSR.SparseMatrixCSR, n_users::Int, k::Int) where {T}
-    nt = Threads.maxthreadid()
+    nt = Threads.nthreads()
     partial = zeros(T, nt)
-    Threads.@threads :static for u in 1:n_users
-        tid = Threads.threadid()
-        @fastmath @inbounds for idx in nzrange(X_csr, u)
-            j = Int(X_csr.colval[idx])
-            s = zero(T)
-            @simd for f in 1:k
-                s += U[f, u] * V[f, j]
+    chunk_size = cld(n_users, nt)
+    Threads.@threads for chunk in 1:nt
+        @fastmath @inbounds for u in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_users)
+            for idx in nzrange(X_csr, u)
+                j = Int(X_csr.colval[idx])
+                s = zero(T)
+                @simd for f in 1:k
+                    s += U[f, u] * V[f, j]
+                end
+                partial[chunk] -= log(one(T) / (one(T) + exp(-s)) + T(1e-10))
             end
-            partial[tid] -= log(one(T) / (one(T) + exp(-s)) + T(1e-10))
         end
     end
     sum(partial) / max(one(T), T(nnz(X_csr)))

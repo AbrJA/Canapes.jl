@@ -195,7 +195,7 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
         epoch_losses = zeros(T, nt)
         epoch_correct = zeros(Int, nt)
 
-        Threads.@threads :static for chunk in 1:nt
+        Threads.@threads for chunk in 1:nt
             local_rng = thread_rngs[chunk]
             local_loss = zero(T)
             local_correct = 0

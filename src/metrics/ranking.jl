@@ -40,7 +40,7 @@ function ap_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads :static for u in 1:n_users
+    Threads.@threads for u in 1:n_users
         @inbounds result[u] = _ap_single(predictions, actual_t, u, k_eff)
     end
     result
@@ -91,7 +91,7 @@ function ndcg_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads :static for u in 1:n_users
+    Threads.@threads for u in 1:n_users
         @inbounds result[u] = _ndcg_single(predictions, actual_t, u, k_eff)
     end
     result
@@ -138,7 +138,7 @@ function precision_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads :static for u in 1:n_users
+    Threads.@threads for u in 1:n_users
         @inbounds result[u] = _precision_single(predictions, actual_t, u, k_eff)
     end
     result
@@ -173,7 +173,7 @@ function recall_at_k(predictions::AbstractMatrix{<:Integer},
     n_users = size(predictions, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    Threads.@threads :static for u in 1:n_users
+    Threads.@threads for u in 1:n_users
         @inbounds begin
             relevant = Set(_relevant_items(actual_t, u))
             if isempty(relevant)

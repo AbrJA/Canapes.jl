@@ -310,7 +310,7 @@ function _eals_update_users!(U::Matrix{T}, V::Matrix{T},
     nt = Threads.maxthreadid()
     pred_bufs = [Vector{T}(undef, 0) for _ in 1:nt]
 
-    Threads.@threads :static for u in 1:n_users
+    Threads.@threads for u in 1:n_users
         tid = Threads.threadid()
         rng_u = nzrange(X_csr, u)
         n_nz = length(rng_u)
@@ -400,7 +400,7 @@ function _eals_update_items!(V::Matrix{T}, U::Matrix{T},
     nt = Threads.maxthreadid()
     pred_bufs = [Vector{T}(undef, 0) for _ in 1:nt]
 
-    Threads.@threads :static for j in 1:n_items
+    Threads.@threads for j in 1:n_items
         tid = Threads.threadid()
         rng_j = nzrange(X, j)
         n_nz = length(rng_j)

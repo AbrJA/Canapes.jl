@@ -17,7 +17,7 @@
 #   • In-place LAPACK.potrf! + LAPACK.potrs! → no extra matrices in Chol path
 #   • Coordinate-descent NonNegative (true bounded NonNegative, not a clamp)
 #   • BLAS.syrk! for YᵀY (symmetric rank-k update)
-#   • Base.Threads.@threads :static for stable thread IDs
+#   • Base.Threads.@threads (dynamic) — nestable and safe under concurrency
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
@@ -221,7 +221,7 @@ function _als_sweep_cholesky!(
     gram_bufs = [Matrix{T}(undef, k, k) for _ in 1:nt]
     rhs_bufs  = [Vector{T}(undef, k)    for _ in 1:nt]
 
-    Base.Threads.@threads :static for u in 1:n_entities
+    Base.Threads.@threads for u in 1:n_entities
         tid  = Threads.threadid()
         gram = gram_bufs[tid]
         rhs  = rhs_bufs[tid]
@@ -339,7 +339,7 @@ function _als_sweep_cg!(
     p_bufs    = [Vector{T}(undef, k)        for _ in 1:nt]
     Ap_bufs   = [Vector{T}(undef, k)        for _ in 1:nt]
 
-    Base.Threads.@threads :static for u in 1:n_entities
+    Base.Threads.@threads for u in 1:n_entities
         tid  = Threads.threadid()
         rhs  = rhs_bufs[tid]
         idxs = idx_bufs[tid]

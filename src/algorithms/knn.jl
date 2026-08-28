@@ -153,7 +153,7 @@ function _cosine_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv,
     local_cols = [Int[] for _ in 1:nt]
     local_vals = [T[] for _ in 1:nt]
 
-    Threads.@threads :static for j in 1:n_items
+    Threads.@threads for j in 1:n_items
         tid = Threads.threadid()
         norm_j = col_norms[j]
         norm_j == zero(T) && continue
@@ -213,7 +213,7 @@ function _jaccard_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv
     local_cols = [Int[] for _ in 1:nt]
     local_vals = [T[] for _ in 1:nt]
 
-    Threads.@threads :static for j in 1:n_items
+    Threads.@threads for j in 1:n_items
         tid = Threads.threadid()
         nj = col_nnz[j]
         nj == 0 && continue

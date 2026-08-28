@@ -234,7 +234,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads :static for u in 1:n
+    Threads.@threads for u in 1:n
         tid = Threads.threadid()
         A = A_bufs[tid]
         b = b_bufs[tid]
@@ -293,7 +293,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads :static for j in 1:n
+    Threads.@threads for j in 1:n
         tid = Threads.threadid()
         A = A_bufs[tid]
         b = b_bufs[tid]
@@ -362,7 +362,7 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads :static for u in 1:n
+    Threads.@threads for u in 1:n
         tid = Threads.threadid()
         b = b_bufs[tid]
         r = r_bufs[tid]
@@ -462,7 +462,7 @@ function _ials_update_factors_cg!(target::Matrix{T}, source::Matrix{T},
         gramian[d, d] += λ
     end
 
-    Threads.@threads :static for j in 1:n
+    Threads.@threads for j in 1:n
         tid = Threads.threadid()
         b = b_bufs[tid]
         r = r_bufs[tid]

@@ -63,6 +63,9 @@ using Pkg
     @testset "Tables" begin
         include("test_tables.jl")
     end
+    @testset "Concurrency" begin
+        include("test_concurrency.jl")
+    end
     @testset "GPU" begin
         include("test_gpu.jl")
     end

@@ -245,7 +245,7 @@ function _gpu_ials_update_buffered!(target::Matrix{T}, source::Matrix{T}, R,
                                     b_bufs::Vector{Vector{T}},
                                     get_range, get_col, get_val) where {T}
     n = size(target, 2)
-    Threads.@threads :static for u in 1:n
+    Threads.@threads for u in 1:n
         tid = Threads.threadid()
         A = A_bufs[tid]
         b = b_bufs[tid]
@@ -402,7 +402,7 @@ function _gpu_wrmf_sweep!(
     nz = nonzeros(A)
 
     # ── Per-entity Cholesky solves on CPU with pre-allocated buffers ──
-    Base.Threads.@threads :static for u in 1:n_entities
+    Base.Threads.@threads for u in 1:n_entities
         tid = Threads.threadid()
         gram = gram_bufs[tid]
         rhs = rhs_bufs[tid]
@@ -555,7 +555,7 @@ function Gideon.recommend_gpu(model, X::SparseMatrixCSC; k::Int=10, batch_size::
         end
 
         # Top-k selection (CPU, parallelized)
-        Threads.@threads :static for local_u in 1:batch_n
+        Threads.@threads for local_u in 1:batch_n
             @inbounds preds[batch_start + local_u - 1, :] .=
                 partialsortperm(@view(S_batch[local_u, :]), 1:k_out; rev=true)
         end

@@ -154,6 +154,20 @@ fit!(model, X; callbacks=[early_stop, loss_history, checkpoint])
 loss_history.losses  # Vector of per-iteration losses
 ```
 
+## Concurrency
+
+- **Separate models, in parallel** — fitting independent models concurrently
+  (e.g. inside a `Threads.@threads` loop) is supported; training loops are
+  dynamic and safe to nest.
+- **Reads on a fitted model** — `recommend` / `score` are read-only and safe
+  to call concurrently from multiple threads.
+- **Mutating one model** — calling `fit!` on the same model instance from
+  multiple threads is unsupported unless you synchronize access externally.
+- **Transactional `fit!`** — a failed `fit!` or refit leaves the previous
+  fitted state intact.
+- **Reproducibility** — fits are deterministic for a given `rng` seed and
+  thread count, except `BPR` (Hogwild! lock-free SGD is intentionally racy).
+
 ## Tables.jl Integration
 
 ```julia

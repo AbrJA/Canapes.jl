@@ -394,6 +394,25 @@ best_params, best_score, _ = random_search(
 
 ---
 
+## Concurrency
+
+- **Separate models, in parallel** — fitting independent models concurrently
+  (e.g. inside a `Threads.@threads` loop) is supported. Training uses dynamic
+  `Threads.@threads` loops that are safe to nest.
+- **Reads on a fitted model** — `recommend` / `score` on a fitted model are
+  read-only and safe to call concurrently from multiple threads.
+- **Mutating one model** — calling `fit!` on the same model instance from
+  multiple threads at once is **unsupported** unless you synchronize access
+  externally.
+- **Transactional `fit!`** — training writes to local buffers and publishes
+  model state only on success. A failed `fit!` or `fit!` refit leaves the
+  previous fitted state intact.
+- **Reproducibility** — fits are deterministic for a given `rng` seed and
+  thread count. `BPR` is the exception: its Hogwild! lock-free SGD is
+  intentionally racy, so results may differ across thread counts.
+
+---
+
 ## Testing
 
 ```bash

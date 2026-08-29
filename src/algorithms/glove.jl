@@ -5,10 +5,14 @@
 # Reference: Pennington, Socher, Manning (2014)
 #   "GloVe: Global Vectors for Word Representation"
 #
-# Loss:
-#   L = Σ_{i,j} f(X_{ij}) (wᵢᵀ w̃ⱼ + bᵢ + b̃ⱼ - log X_{ij})²
+# Loss (½ convention, matching the Stanford C implementation, Python ports,
+# and rsparse's GloVe.cpp):
+#   L = ½ Σ_{i,j} f(X_{ij}) (wᵢᵀ w̃ⱼ + bᵢ + b̃ⱼ - log X_{ij})²
 #
 # where f(x) = (x/x_max)^α if x < x_max, else 1.
+# The ½ makes the gradient of each squared term equal to the residual itself
+# (no floating factor of 2), so `learning_rate` has the same semantics as the
+# reference implementations and loss curves are directly comparable.
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
@@ -233,8 +237,9 @@ function _glove_epoch!(model::GloVe{T},
                 for f in 1:k
                     diff = muladd(W[f, i], Wc[f, j], diff)
                 end
-                cost_buf[p] = weight * diff^2
-                grad_buf[p] = T(2) * weight * diff
+                # ½-convention loss; gradient = weight·diff (no factor of 2).
+                cost_buf[p] = T(0.5) * weight * diff^2
+                grad_buf[p] = weight * diff
             end
         end
     end

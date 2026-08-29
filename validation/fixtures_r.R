@@ -279,6 +279,9 @@ write.csv(data.frame(y = y_fm), file.path(fixture_dir, "fm_sparse_y.csv"),
 write.csv(t(V_user), file.path(fixture_dir, "fm_sparse_V_user.csv"), row.names = FALSE)
 write.csv(t(V_item), file.path(fixture_dir, "fm_sparse_V_item.csv"), row.names = FALSE)
 
+# Seed the RNG right before fitting: rsparse's FM init draws unseeded runif
+# (fill_float_vector_randn), which made the fixture nondeterministic across runs.
+set.seed(4242)
 fm_r <- FactorizationMachine$new(learning_rate_w = 0.2, rank = k_fm,
                                  lambda_w = 0, lambda_v = 0,
                                  family = "gaussian", intercept = TRUE)

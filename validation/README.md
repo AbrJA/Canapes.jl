@@ -1,146 +1,109 @@
 # Validation
 
-This directory contains optional reference-based validation scripts for Gideon.jl. These are **not part of the test suite**—they're tools for validating changes and performance against reference implementations.
+This directory contains optional reference-based validation scripts for Gideon.jl.
+They are **not part of the test suite** — they compare Gideon against the R
+`rsparse` package and the Python `implicit`/scikit-learn/scipy implementations to
+answer "is my implementation numerically equivalent to a known-good reference?".
 
-By default, R fixtures are stored in `/tmp/gideon_fixtures`.
-You can override this with `GIDEON_R_FIXTURE_DIR`.
-By default, Python fixtures are stored in `/tmp/gideon_fixtures/python`.
-You can override this with `GIDEON_PY_FIXTURE_DIR`.
+By default, R fixtures are stored in `/tmp/gideon_fixtures`
+(override with `GIDEON_R_FIXTURE_DIR`); Python fixtures in
+`/tmp/gideon_fixtures/python` (override with `GIDEON_PY_FIXTURE_DIR`).
 
-## Quick Start (One Command)
+## Quick Start
 
-Run everything (generate fixtures + compare against R and Python):
+Run everything (generate fixtures + compare against both references):
 
 ```bash
-julia --project=. validation/run.jl --prepare --all
+julia --project=. validation/run.jl --all
 ```
 
 Run only one reference:
 
 ```bash
-julia --project=. validation/run.jl --prepare --r
-julia --project=. validation/run.jl --prepare --python
+julia --project=. validation/run.jl --r
+julia --project=. validation/run.jl --python
 ```
 
-If dependencies are missing (`Rscript`, `python3`, or Python `implicit`), the runner prints warnings and skips that part.
+Generate fixtures only:
+
+```bash
+julia --project=. validation/run.jl --prepare
+```
+
+`--prepare` implies both fixture sets unless `--r` / `--python` is given.
+The runner exits with a non-zero status if any requested step fails or cannot
+run (missing `uvr`/`Rscript`, `python3`, or Python `implicit`), and prints a summary
+table of every step.
 
 ## Structure
 
-- **`validate_r.jl`** — Validates Gideon algorithms against R implementations (rsparse package)
-- **`validate_py.jl`** — Validates Gideon algorithms against Python implementations (implicit package)
-- **`run.jl`** — Single entrypoint for prepare+run workflow
+- **`run.jl`** — single entrypoint: prepares fixtures and runs each comparison
+  in its own subprocess (exit codes propagate; one failure does not stop the rest)
+- **`validate_r.jl`** — compares against R `rsparse`
+- **`validate_py.jl`** — compares against Python `implicit` / sklearn / scipy
+- **`common.jl`** — shared helpers (fixture readers, correlation, top-k overlap,
+  metric parity) and centralized thresholds
 - **`fixtures_r.R`** — R fixture generator
 - **`fixtures_py.py`** — Python fixture generator
 
-## Running R Reference Validation
+## What Is Compared
 
-### Step 1: Generate Fixtures
+### R (rsparse)
 
-Fixtures are R reference outputs saved as CSV files. Generate them once:
+| Model | Check | Criterion |
+|---|---|---|
+| WMF (Cholesky) | converged loss, warm-start loss | ≤ 1.05× R |
+| WMF (CG) | converged loss | ≤ 1.05× R |
+| FTRL | weight + prediction correlation | ≥ 0.9995 |
+| FM (XOR) | solution agreement across 5 seeds | ≥ 4/5 agree |
+| FM (sparse high-dim) | independent dense-reference forward pass + held-out recovery of a known rank-2 latent interaction + prediction agreement with R | rel. err < 1e-3, cor ≥ 0.95, cor(jl,R) ≥ 0.99 |
+| GloVe | final cost (same ½·Σ f·diff² convention as rsparse) | ≤ R × 1.15 |
+| SoftImpute / SoftSVD | singular values, Frobenius norm, reconstruction correlation | relative thresholds |
+| Ranking metrics | AP@k / NDCG@k | exact (atol 1e-6) |
 
-```bash
-Rscript validation/fixtures_r.R
-```
+### Python (implicit / sklearn / scipy)
 
-This creates files in `/tmp/gideon_fixtures/` (or `GIDEON_R_FIXTURE_DIR` if set):
-- `rsparse_capabilities.csv` (detected model/class availability in your R environment)
-- `wrmf_chol_loss.txt`, `wrmf_chol_user.csv`, `wrmf_chol_item.csv`
-- `wrmf_cg_loss.txt`, `wrmf_cg_user.csv`, `wrmf_cg_item.csv`
-- `X_small.csv`, `X_small_dims.csv`
-- `X_ftrl.csv`, `X_ftrl_dims.csv`, `y_ftrl.csv`, `ftrl_weights.csv`, `ftrl_preds.csv`
-- `fm_xor_preds.csv` (generated with `rsparse::FactorizationMachine`)
-- `glove_X.csv`, `glove_dims.csv`, `glove_final_cost.txt`
-- `metrics_ref.csv`
+| Model | Check | Criterion (default) |
+|---|---|---|
+| WMF-Cholesky vs ALS | score correlation + top-k overlap | ≥ 0.45 / 0.20 |
+| BPR | score correlation + top-k overlap + NDCG/Recall@10 parity | ≥ 0.20 / 0.10, Δ ≤ 0.05 / 0.07 |
+| IALS | same as BPR | ≥ 0.35 / 0.15, Δ ≤ 0.06 / 0.06 |
+| EALS | same as BPR | ≥ 0.15 / 0.10, Δ ≤ 0.06 / 0.06 |
+| LogisticMF | correlation + overlap (meaningful bounds, was -1.0/0.08); NDCG/Recall parity diagnostic by design | ≥ 0.40 / 0.40 |
+| EASE | relative Frobenius error of the closed-form B matrix | ≤ 1e-6 (exact) |
+| SLIM | weight-matrix correlation + metric parity (needs sklearn) | ≥ 0.6, Δ ≤ 0.08 |
+| SoftImpute | reconstruction correlation + singular-value error (diagnostic by default) | ≥ 0.75, ≤ 0.40 |
+| PureSVD | singular values + reconstruction vs scipy `svds` | rel. err < 0.05, cor ≥ 0.99 |
+| ItemKNN | W / score correlation + top-k overlap | ≥ 0.95 / 0.95 / 0.70 |
+| ADMMSLIM | W Frobenius error + W/score correlation + overlap | < 0.05, ≥ 0.99 / 0.99 / 0.85 |
 
-**Requirements:**
-- R with `rsparse` package
-- May take 2-5 minutes depending on system
+All thresholds can be overridden via `GIDEON_PY_*` environment variables
+(see `validate_py.jl` for the full list). Diagnostic-only comparisons are
+enforced by setting `GIDEON_PY_LMF_STRICT=1` or `GIDEON_PY_SOFT_STRICT=1`.
 
-The FM fixture is generated with `rsparse::FactorizationMachine`.
+## Requirements
 
-### Step 2: Run Validation
+- R with the `rsparse` package for `--r`. Prefer [uvr](https://github.com/astral-sh/uvr)
+  (project R environment defined in `uvr.toml`, run as `uvr run validation/fixtures_r.R`),
+  or install R yourself so `Rscript` is on `PATH`. Fixture generation takes 2–5 minutes.
+- Python 3 with `numpy`, `scipy`, and `implicit` for `--python` (e.g. via
+  `uv run` or the repo's `.venv`); `scikit-learn` for the SLIM and ItemKNN fixtures only.
 
-```bash
-julia --project=. validation/validate_r.jl
-```
+## Behavior on Missing Pieces
 
-## Running Python Reference Validation
-
-### Step 1: Generate Python Fixtures
-
-```bash
-python3 validation/fixtures_py.py
-```
-
-This creates files in `/tmp/gideon_fixtures/python/` (or `GIDEON_PY_FIXTURE_DIR` if set).
-
-### Step 2: Run Validation
-
-```bash
-julia --project=. validation/validate_py.jl
-```
-
-This compares score behavior for:
-- WMF (Julia) vs ALS (Python implicit)
-- IALS (Julia) vs ALS-based Python reference
-- EALS (Julia) vs ALS-surrogate Python reference
-- BPR (Julia) vs BPR (Python implicit)
-- LogisticMF (Julia) vs LogisticMatrixFactorization (Python implicit, optional)
-- EASE (Julia) vs deterministic NumPy EASE implementation
-- SLIM (Julia) vs scikit-learn ElasticNet reference (optional)
-- SoftImpute (Julia) vs iterative soft-threshold SVD reference
-
-The script reports score correlation and top-k overlap.
-For EASE it also reports matrix-level relative Frobenius error.
-For LogisticMF, top-k overlap is the primary pass criterion by default; score correlation is reported for diagnostics.
-For BPR and LogisticMF, it additionally compares split-based ranking quality (NDCG@10 and Recall@10)
-on the same train/test split generated from Python fixtures.
-By default, LogisticMF split-metric deltas are diagnostic only; set `GIDEON_PY_LMF_STRICT=1`
-to enforce threshold-based pass/fail for those deltas.
-By default, SoftImpute parity is diagnostic only; set `GIDEON_PY_SOFT_STRICT=1`
-to enforce reconstruction/singular-value thresholds.
-
-Note: SLIM parity requires `scikit-learn` in the Python environment. If unavailable,
-SLIM fixture generation/parity is skipped gracefully.
-
-Output shows:
-- Test pass/fail status
-- Comparison metrics (Julia vs R):
-  - Loss ratios for WMF/GloVe
-  - Correlation for FTRL
-  - Agreement rate for FM
-
-### Example Output
-
-```
-WMF CholeskySolver: Julia=123.45, R=120.0, ratio=1.0288
-FTRL weights correlation: 0.99951
-GloVe cost: Julia=456.78, R=450.0, ratio=1.0151
-```
-
-## When to Run Validation
-
-- **Before major releases**: Ensure no regression vs R reference
-- **After algorithm changes**: Validate numerical correctness
-- **Performance investigation**: Check implementation efficiency
-- **CI/CD**: Add as optional step before tagging releases
-
-## Reference Implementation Versions
-
-**R package versions used:**
-- `rsparse`: 0.5.0+
-- See `validation/fixtures_r.R` for exact versions
+- **Missing core fixtures** (e.g. never prepared): the comparison scripts fail
+  loudly with a non-zero exit code — a validation run never silently passes
+  with zero assertions.
+- **Optional fixtures** (FM, FTRL, GloVe, SLIM, metrics, SoftImpute, PureSVD,
+  ItemKNN, ADMMSLIM — generated only when the underlying R/Python model is
+  available): skipped with an explicit `@info` message.
+- **Missing tooling** (`uvr`/`Rscript`, `python3`, `implicit`): the runner marks the
+  affected step as skipped/failed and exits non-zero.
 
 ## Notes
 
-- Fixtures are **NOT** stored in git—generate locally only when validating
-- R fixtures are placed in `/tmp/gideon_fixtures` by default
-- Override path with `GIDEON_R_FIXTURE_DIR=/custom/path`
-- Python fixtures are placed in `/tmp/gideon_fixtures/python` by default
-- Override path with `GIDEON_PY_FIXTURE_DIR=/custom/path`
-- Tolerance bounds are tight:
-  - WMF: ≤ 1.05× R (was 1.10×)
-  - FTRL: ≥ 0.9995 correlation (was 0.999)
-  - GloVe: ≤ 2.0× R (was 3.0×)
-- If fixtures are missing, validation gracefully skips with warning
-- FM comparison is optional and skipped when `fm_xor_preds.csv` is unavailable
+- Fixtures are **NOT** stored in git — generate locally when validating
+- Each comparison runs in its own Julia subprocess, so a failure in R validation
+  does not prevent Python validation from running
+- `validation/` is not wired into CI; run it before releases and after any
+  change to an algorithm's math or training loop

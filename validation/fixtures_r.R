@@ -1,7 +1,8 @@
 #!/usr/bin/env Rscript
 # validation/fixtures_r.R
 # Generates R reference fixtures for Gideon.jl validation (NOT part of test suite).
-# Run from project root: Rscript validation/fixtures_r.R
+# Run from project root: uvr run validation/fixtures_r.R
+#                       (or: Rscript validation/fixtures_r.R)
 #
 # Outputs to /tmp/gideon_fixtures/ by default (directory is created if absent).
 # You can override with env var GIDEON_R_FIXTURE_DIR.
@@ -245,6 +246,47 @@ writeLines(as.character(svd_frob),
 cat(sprintf("   rank=%d  frob=%.6f  d=[%s]\n",
             length(svd_result$d), svd_frob,
             paste(round(svd_result$d, 4), collapse = ", ")))
+
+# ── 10. FM sparse high-dimensional (one-hot user/item, latent interaction) ───
+cat("10. FM sparse high-dimensional (4000x160, 100 iter)...\n")
+n_users <- 80L
+n_items <- 80L
+p_fm <- n_users + n_items
+k_fm <- 2L
+n_fm <- 4000L
+
+# Well-posed regime: one-hot (user, item) rows whose target is a rank-k latent
+# interaction y_ui = w0 + Σ_f V[f,u]·V[f,i] + noise. 62.5% pair coverage — a
+# correct FM must recover the structure (oracle cor ≈ 1.0; SoftSVD reaches 0.95).
+set.seed(321)
+V_user <- matrix(rnorm(n_users * k_fm, 0, 1), nrow = k_fm)   # k × n_users
+V_item <- matrix(rnorm(n_items * k_fm, 0, 1), nrow = k_fm)   # k × n_items
+all_pairs <- cbind(rep(1:n_users, each = n_items), rep(1:n_items, n_users))
+set.seed(322)
+sel <- sample.int(nrow(all_pairs), n_fm, replace = FALSE)    # unique pairs
+u_idx <- all_pairs[sel, 1]
+i_idx <- all_pairs[sel, 2]
+X_fm <- sparseMatrix(i = rep(1:n_fm, each = 2),
+                     j = as.vector(rbind(u_idx, n_users + i_idx)),
+                     x = 1, dims = c(n_fm, p_fm))
+y_fm <- 0.1 + colSums(V_user[, u_idx] * V_item[, i_idx]) + rnorm(n_fm, 0, 0.05)
+write_triplet(X_fm, file.path(fixture_dir, "fm_sparse_X.csv"))
+write.csv(data.frame(nr = n_fm, nc = p_fm),
+          file.path(fixture_dir, "fm_sparse_dims.csv"), row.names = FALSE)
+write.csv(data.frame(y = y_fm), file.path(fixture_dir, "fm_sparse_y.csv"),
+          row.names = FALSE)
+# Save the ground-truth latent factors so Julia can compute the oracle bound.
+write.csv(t(V_user), file.path(fixture_dir, "fm_sparse_V_user.csv"), row.names = FALSE)
+write.csv(t(V_item), file.path(fixture_dir, "fm_sparse_V_item.csv"), row.names = FALSE)
+
+fm_r <- FactorizationMachine$new(learning_rate_w = 0.2, rank = k_fm,
+                                 lambda_w = 0, lambda_v = 0,
+                                 family = "gaussian", intercept = TRUE)
+fm_r$fit(X_fm, y_fm, n_iter = 100)
+preds_fm <- fm_r$predict(X_fm)
+write.csv(data.frame(p = preds_fm), file.path(fixture_dir, "fm_sparse_preds.csv"),
+          row.names = FALSE)
+cat(sprintf("   cor(preds, y)=%.4f\n", cor(preds_fm, y_fm)))
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 cat(sprintf("\nFixtures written to %s:\n", fixture_dir))

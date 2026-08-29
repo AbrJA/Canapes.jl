@@ -18,7 +18,8 @@ Gideon.jl is a high-performance Julia toolkit for sparse statistical learning, l
 ## Features
 
 - **Unified API** — `fit!` / `recommend` / `score` / `transform` for recommenders; `fit!` / `predict` for regression models.
-- **Production-grade performance** — zero-allocation inner loops, `@inbounds @simd` vectorization, BLAS-2 gram updates, per-thread pre-allocated buffers.
+- **Production-grade performance** — zero-allocation inner loops, `muladd`-based deterministic kernels, batched BLAS gram assembly, per-thread pre-allocated buffers.
+- **Deterministic training** — `muladd` reductions (strict scalar order) make fits reproducible across builds and platforms; GloVe is bit-identical across thread counts.
 - **GPU acceleration** — optional CUDA.jl extension for EASE, IALS, WMF (via package extensions).
 - **R-validated correctness** — the full test suite includes a Tier-2 fixture layer that compares numerically against pre-computed R / rsparse outputs.
 - **Sparse-native** — all algorithms operate directly on `SparseMatrixCSC`; no dense conversion needed.
@@ -27,6 +28,7 @@ Gideon.jl is a high-performance Julia toolkit for sparse statistical learning, l
 - **Cross-validation & search** — built-in temporal split, k-fold CV, grid search, and random search with warm-starting.
 - **Callback system** — extensible training hooks for early stopping, checkpointing, learning rate scheduling, and custom logging.
 - **Similarity queries** — `similar_items` / `similar_users` for nearest-neighbor exploration via cosine similarity.
+- **Benchmark harness** — a tracked `benchmark/run.jl` harness measures `fit!` / `recommend` time and allocations at three fixed scales across commits.
 
 ---
 
@@ -42,10 +44,13 @@ Gideon.jl is a high-performance Julia toolkit for sparse statistical learning, l
 | `GloVe` | Co-occurrence embedding (Hogwild AdaGrad) | Pennington, Socher & Manning (2014) |
 | `EASE` | Embarrassingly Shallow Autoencoders | Steck (2019) |
 | `SLIM` | Sparse Linear Methods (elastic net) | Ning & Karypis (2011) |
+| `ADMMSLIM` | ADMM-based SLIM (joint solve, 10–100× faster) | Steck et al. (2020) |
+| `ItemKNN` | Item-based K-Nearest Neighbors (cosine / Jaccard) | Deshpande & Karypis (2004) |
 | `FTRL` | Follow The Regularized Leader (online GLM) | McMahan et al. (2013) |
 | `FM` | 2nd-order FM (AdaGrad SGD) | Rendle (2010) |
 | `SoftImpute` | Low-rank matrix completion (with imputation) | Hastie et al. (2014) |
 | `SoftSVD` | Low-rank SVD (power-iteration style) | Hastie et al. (2014) |
+| `PureSVD` | Truncated SVD (SoftSVD with λ = 0) | Cremonesi et al. (2010) |
 
 ---
 
@@ -256,19 +261,27 @@ Gideon.jl
 │   │   ├── eals.jl        # Element-wise ALS (popularity-weighted)
 │   │   ├── bpr.jl         # Bayesian Personalized Ranking (pairwise SGD)
 │   │   ├── lmf.jl         # Logistic MF with negative sampling
-│   │   ├── glove.jl       # GloVe Hogwild AdaGrad
+│   │   ├── glove.jl       # GloVe Hogwild AdaGrad (deterministic)
 │   │   ├── ease.jl        # EASE (closed-form autoencoder)
 │   │   ├── slim.jl        # SLIM (elastic-net item-item)
+│   │   ├── admmslim.jl    # ADMMSLIM (joint ADMM solve, 10–100× faster)
+│   │   ├── knn.jl         # ItemKNN (cosine / Jaccard neighbors)
 │   │   ├── ftrl.jl        # Follow The Regularized Leader (online)
 │   │   ├── fm.jl          # Factorization Machines
-│   │   └── soft_impute.jl # SoftImpute / SoftSVD (nuclear-norm matrix completion)
+│   │   └── soft_impute.jl # SoftImpute / SoftSVD / PureSVD
 │   └── metrics/
 │       └── ranking.jl     # AP@K, MAP@K, NDCG@K, Precision@K, Recall@K
 ├── ext/
 │   └── GideonCUDAExt.jl   # GPU acceleration (EASE, IALS, WMF, predict)
+├── benchmark/
+│   ├── run.jl             # Tracked performance harness (3 fixed scales)
+│   ├── compare.jl         # Diff results across git SHAs
+│   └── logs/              # JSONL benchmark records
 └── test/
     ├── runtests.jl
-    └── r_correctness.jl   # Numerical validation against R / rsparse
+    ├── test_fixtures.jl        # R / rsparse numerical fixture comparisons
+    ├── test_reference_contracts.jl  # implicit-style recommender contracts
+    └── validate_docs.jl        # Runs every docs code example
 ```
 
 ### Type Hierarchy
@@ -277,9 +290,9 @@ Gideon.jl
 AbstractSparseModel
 ├── AbstractRecommender
 │   ├── AbstractMatrixFactorization
-│   │   ├── AbstractSoftALS           →  SoftImpute, SoftSVD
+│   │   ├── AbstractSoftALS           →  SoftImpute, SoftSVD, PureSVD
 │   │   └── (others)                  →  WMF, IALS, EALS, LogisticMF, BPR, GloVe
-│   └── AbstractItemSimilarity        →  EASE, SLIM
+│   └── AbstractItemSimilarity        →  EASE, SLIM, ADMMSLIM, ItemKNN
 └── AbstractSparseRegression      →  FTRL, FM
 ```
 
@@ -378,15 +391,19 @@ best_params, best_score, _ = random_search(
 
 | Technique | Where used |
 |-----------|-----------|
-| Pre-allocated per-thread Gram / RHS / Cholesky buffers | WMF ALS sweep |
+| Pre-allocated per-thread Gram / RHS / Cholesky buffers, hoisted to fit level | WMF, IALS, EALS ALS sweeps |
+| Batched BLAS gram assembly (incremental rank-1 + `BLAS.syrk!`) | WMF-Cholesky |
 | `BLAS.syr!` rank-1 Gram accumulation | WMF Cholesky solver |
-| `BLAS.syrk!` item Gram `YᵀY` | WMF, IALS |
 | Fast-path manual SIMD dot (`@inbounds @simd`) for sparse users with < 32 nnz | WMF CG `_implicit_matvec!` |
-| `@inbounds @simd` vectorized dot / gradient loops | WMF, LogisticMF, GloVe, BPR, EALS |
+| `muladd` reductions (strict scalar order) — deterministic, no `@fastmath` | All training loops |
+| Memory-bounded batched GEMM top-k scoring | EASE, ADMMSLIM |
+| Unified top-k paths (`_predict_sparse_score_topk`, `_predict_batched_gemm_topk`) | EASE, ADMMSLIM, SLIM, ItemKNN |
+| `@inbounds @simd` vectorized element-wise / gradient loops | WMF, LogisticMF, GloVe, BPR, EALS |
 | CSR dual storage for O(nnz_u) per-user row access | All algorithms, metrics |
-| `Threads.@threads :static` outer loops | WMF, IALS, EALS, BPR user/item sweeps |
+| `Threads.@threads` outer loops with shared chunked-buffer helpers | WMF, IALS, EALS, BPR, GloVe |
 | Element-wise coordinate descent O(d) per update | EALS |
 | Gramian caching (avoids per-user recomputation) | IALS, EALS |
+| Deterministic 3-phase reordered epoch (gradient → main → context) | GloVe |
 | Zero-allocation Fisher-Yates shuffle | GloVe epoch shuffling |
 | Numerical stability (epsilon floors in AdaGrad) | GloVe, FM |
 | PrecompileTools workloads | All algorithms (reduces TTFX) |
@@ -407,26 +424,51 @@ best_params, best_score, _ = random_search(
 - **Transactional `fit!`** — training writes to local buffers and publishes
   model state only on success. A failed `fit!` or `fit!` refit leaves the
   previous fitted state intact.
-- **Reproducibility** — fits are deterministic for a given `rng` seed and
-  thread count. `BPR` is the exception: its Hogwild! lock-free SGD is
-  intentionally racy, so results may differ across thread counts.
+- **Reproducibility** — fits are deterministic for a given `rng` seed. Training
+  kernels use `muladd` reductions (strict scalar order), so results match across
+  builds and platforms; `GloVe` is additionally bit-identical across thread
+  counts. `BPR` is the exception: its Hogwild! lock-free SGD is intentionally
+  racy, so results may differ across thread counts.
 
 ---
 
 ## Testing
 
 ```bash
-julia --project=. --threads=4 -e 'using Pkg; Pkg.test()'
+julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'
 ```
 
-The suite runs **796 tests** covering:
+The suite runs **1802 tests** covering:
 
 - Unit correctness (dimensions, NaN / Inf guards, convergence monotonicity)
 - R / rsparse numerical fixture comparisons (weights, predictions, loss values)
+- Implicit-style recommender contracts and deterministic-fidelity fixtures
 - Static analysis via [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) and [JET.jl](https://github.com/aviatesk/JET.jl)
-- All algorithms: WMF, IALS, EALS, BPR, LogisticMF, GloVe, EASE, SLIM, FTRL, FM, SoftImpute
-- Infrastructure: serialization, cross-validation, callbacks, Tables.jl integration
+- All algorithms: WMF, IALS, EALS, BPR, LogisticMF, GloVe, EASE, SLIM, ADMMSLIM, ItemKNN, FTRL, FM, SoftImpute, SoftSVD, PureSVD
+- Infrastructure: serialization, cross-validation, callbacks, Tables.jl integration, concurrency guarantees
 - GPU stubs (full GPU tests when CUDA available)
+
+Documentation examples are validated separately:
+
+```bash
+julia --project=test -t8 test/validate_docs.jl
+```
+
+## Benchmarking
+
+A tracked performance harness measures `fit!` / `recommend` time and allocations
+at three fixed scales (hundreds / thousands / millions of interactions) with
+deterministic seeds:
+
+```bash
+julia --project=. --threads=8 benchmark/run.jl
+
+# Compare runs across git SHAs
+julia --project=. benchmark/compare.jl --strict
+```
+
+Results are appended as JSONL records to `benchmark/logs/results.jsonl`
+(git SHA, environment, config, and metrics).
 
 ---
 

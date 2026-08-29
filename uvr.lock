@@ -1,0 +1,114 @@
+[r]
+version = "4.6.1"
+
+[[package]]
+name = "Matrix"
+version = "1.7.6"
+source = "cran"
+raw_version = "1.7-6"
+url = "https://cran.r-project.org/src/contrib/Matrix_1.7-6.tar.gz"
+checksum = "md5:92502b5e17bc36390d9e52c0f2c2e0f0"
+requires = ["lattice"]
+
+[[package]]
+name = "MatrixExtra"
+version = "0.1.15"
+source = "cran"
+raw_version = "0.1.15"
+url = "https://cran.r-project.org/src/contrib/MatrixExtra_0.1.15.tar.gz"
+checksum = "md5:ba2eeff74b764fcbfef95690a376c755"
+requires = [
+    "Matrix",
+    "Rcpp",
+    "RhpcBLASctl",
+    "float",
+    "Rcpp",
+]
+
+[[package]]
+name = "R6"
+version = "2.6.1"
+source = "cran"
+raw_version = "2.6.1"
+url = "https://cran.r-project.org/src/contrib/R6_2.6.1.tar.gz"
+checksum = "md5:f01b1787f12797c29194d63c9afd5d70"
+
+[[package]]
+name = "Rcpp"
+version = "1.1.2"
+source = "cran"
+raw_version = "1.1.2"
+url = "https://cran.r-project.org/src/contrib/Rcpp_1.1.2.tar.gz"
+checksum = "md5:353d35176db9c570705a0a324c06fdca"
+
+[[package]]
+name = "RcppArmadillo"
+version = "15.4.2-4.1"
+source = "cran"
+raw_version = "15.4.2-1"
+url = "https://cran.r-project.org/src/contrib/RcppArmadillo_15.4.2-1.tar.gz"
+checksum = "md5:b446a94020b100db656ff06e30d2f52f"
+requires = [
+    "Rcpp",
+    "Rcpp",
+]
+
+[[package]]
+name = "RhpcBLASctl"
+version = "0.23.42"
+source = "cran"
+raw_version = "0.23-42"
+url = "https://cran.r-project.org/src/contrib/RhpcBLASctl_0.23-42.tar.gz"
+checksum = "md5:825ec304404cad180a6bfb5aef5204b7"
+
+[[package]]
+name = "data.table"
+version = "1.18.6-4.1"
+source = "cran"
+raw_version = "1.18.6.1"
+url = "https://cran.r-project.org/src/contrib/data.table_1.18.6.1.tar.gz"
+checksum = "md5:0c0ad7916017c1657610ab16c36fecdd"
+
+[[package]]
+name = "float"
+version = "0.3.3"
+source = "cran"
+raw_version = "0.3-3"
+url = "https://cran.r-project.org/src/contrib/float_0.3-3.tar.gz"
+checksum = "md5:a17a804643a5f04194926b9c451c9b6a"
+
+[[package]]
+name = "lattice"
+version = "0.23.1"
+source = "cran"
+raw_version = "0.23-1"
+url = "https://cran.r-project.org/src/contrib/lattice_0.23-1.tar.gz"
+checksum = "md5:e449ab6441f74836e93869dd34cdf3ba"
+
+[[package]]
+name = "lgr"
+version = "0.5.2"
+source = "cran"
+raw_version = "0.5.2"
+url = "https://cran.r-project.org/src/contrib/lgr_0.5.2.tar.gz"
+checksum = "md5:5edb5e4a6ce4ebce4af5f89524f101a7"
+requires = ["R6"]
+
+[[package]]
+name = "rsparse"
+version = "0.5.3"
+source = "cran"
+raw_version = "0.5.3"
+url = "https://cran.r-project.org/src/contrib/rsparse_0.5.3.tar.gz"
+checksum = "md5:57b35b55aa833a4fc97a52e396e8a138"
+requires = [
+    "Matrix",
+    "MatrixExtra",
+    "Rcpp",
+    "data.table",
+    "float",
+    "RhpcBLASctl",
+    "lgr",
+    "Rcpp",
+    "RcppArmadillo",
+]

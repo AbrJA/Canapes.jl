@@ -9,3 +9,4 @@ Manifest.toml
 
 /test/fixtures/*
 usage/*
+/.uvr/library/

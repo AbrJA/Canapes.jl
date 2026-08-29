@@ -230,9 +230,10 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         end
 
         # Negatives: deriv -= σ(s) * v
-        # Cap at k: with k-dimensional factors, O(k) negatives suffice for a good
-        # gradient estimate (matches implicit's effective behavior).
-        n_neg_samples = min(k, user_seen * n_neg)
+        # Sample min(n_items, seen * n_neg) negatives like implicit (lmf.pyx:
+        # `range(min(n_items, user_seen_item * neg_prop))`), with rejection
+        # sampling so a user's own interactions are never drawn.
+        n_neg_samples = min(n_items, user_seen * n_neg)
         @inbounds for _ in 1:n_neg_samples
             j = _lmf_sample_unobserved(local_rng, n_items, X_csr, u,
                                         all_items, n_interactions)
@@ -298,9 +299,9 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         end
 
         # Negatives: deriv -= σ(s) * u
-        # Cap at k: with k-dimensional factors, O(k) negatives suffice for a good
-        # gradient estimate (matches implicit's effective behavior).
-        n_neg_samples = min(k, item_seen * n_neg)
+        # Sample min(n_users, seen * n_neg) negatives like implicit (lmf.pyx),
+        # with rejection sampling so an item's own interactions are never drawn.
+        n_neg_samples = min(n_users, item_seen * n_neg)
         @inbounds for _ in 1:n_neg_samples
             u = _lmf_sample_unobserved(local_rng, n_users, Xt_csr, j,
                                         all_users, n_interactions)

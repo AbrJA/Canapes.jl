@@ -165,8 +165,11 @@ loss_history.losses  # Vector of per-iteration losses
   multiple threads is unsupported unless you synchronize access externally.
 - **Transactional `fit!`** — a failed `fit!` or refit leaves the previous
   fitted state intact.
-- **Reproducibility** — fits are deterministic for a given `rng` seed and
-  thread count, except `BPR` (Hogwild! lock-free SGD is intentionally racy).
+- **Reproducibility** — fits are deterministic for a given `rng` seed.
+  Training kernels use `muladd` reductions (strict scalar order), so results
+  match across builds and platforms; `GloVe` is additionally bit-identical
+  across thread counts. `BPR` is the exception: Hogwild! lock-free SGD is
+  intentionally racy.
 
 ## Tables.jl Integration
 

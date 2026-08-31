@@ -66,6 +66,9 @@ using Pkg
     @testset "Finite input" begin
         include("test_finite_input.jl")
     end
+    @testset "Properties" begin
+        include("test_properties.jl")
+    end
     @testset "Tables" begin
         include("test_tables.jl")
     end

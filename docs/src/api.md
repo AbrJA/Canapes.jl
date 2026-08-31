@@ -11,6 +11,13 @@ Pages = [
 ]
 ```
 
+## Namespaced singletons
+
+```@docs
+LossFamilies
+Sampling
+```
+
 ## Callbacks
 
 ```@autodocs

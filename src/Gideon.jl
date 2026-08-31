@@ -53,8 +53,8 @@ export
     AbstractSoftALS,
     ALSSolver, CholeskySolver, CGSolver, NonNegativeSolver,
     FeedbackType, Implicit, Explicit,
-    LossFamily,
-    NegativeSampling,
+    LossFamily, LossFamilies,
+    NegativeSampling, Sampling,
 
     # Models
     WMF,

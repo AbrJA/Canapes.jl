@@ -90,74 +90,105 @@ Enum for feedback type: `Implicit` or `Explicit`.
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LossFamily types (GLM link functions)
+# LossFamilies — GLM link functions
+# Submodule: `LossFamilies.<TAB>` lists exactly the three families, keeps the
+# root namespace free of generic names that collide with Distributions.jl.
+# `LossFamily` below is a root alias for the abstract type.
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    LossFamily
+    LossFamilies
 
-Abstract type for GLM family (link function). Concrete subtypes:
-- [`Binomial`](@ref) — logistic (sigmoid) link
-- [`Gaussian`](@ref) — identity link
-- [`Poisson`](@ref) — exponential link
+GLM loss families (link functions) for the regression models
+(`LossFamilies.Binomial`, `LossFamilies.Gaussian`, `LossFamilies.Poisson`).
+Used as `family=LossFamilies.Binomial()` in the FTRL/FM constructors.
 """
-abstract type LossFamily end
+module LossFamilies
 
-"""
-    Binomial <: LossFamily
+    """
+        LossFamilies.Family
 
-Logistic link function: sigmoid(x). For binary classification.
-"""
-struct Binomial <: LossFamily end
+    Abstract type for GLM family (link function). Concrete subtypes:
+    - `LossFamilies.Binomial` — logistic (sigmoid) link
+    - `LossFamilies.Gaussian` — identity link
+    - `LossFamilies.Poisson` — exponential link
+    """
+    abstract type Family end
 
-"""
-    Gaussian <: LossFamily
+    """
+        LossFamilies.Binomial
 
-Identity link function: x. For regression.
-"""
-struct Gaussian <: LossFamily end
+    Logistic link function: sigmoid(x). For binary classification.
+    """
+    struct Binomial <: Family end
 
-"""
-    Poisson <: LossFamily
+    """
+        LossFamilies.Gaussian
 
-Exponential link function: exp(x). For count data.
-"""
-struct Poisson <: LossFamily end
+    Identity link function: x. For regression.
+    """
+    struct Gaussian <: Family end
+
+    """
+        LossFamilies.Poisson
+
+    Exponential link function: exp(x). For count data.
+    """
+    struct Poisson <: Family end
+
+end
+
+const LossFamily = LossFamilies.Family
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Negative sampling types (for BPR)
+# Sampling — negative sampling strategies (for BPR)
+# Submodule: `Sampling.<TAB>` lists exactly the available strategies.
+# `NegativeSampling` below is a root alias for the abstract type.
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    NegativeSampling
+    Sampling
 
-Abstract type for negative sampling strategies. Concrete subtypes:
-- [`Uniform`](@ref) — uniform random sampling
-- [`Popular`](@ref) — popularity-biased sampling (proportional to √frequency)
-- [`Dynamic`](@ref) — Dynamic Negative Sampling (hardest negatives)
+Negative sampling strategies for BPR (`Sampling.Uniform`,
+`Sampling.Popular`, `Sampling.Dynamic`). Used as
+`negative_sampling=Sampling.Uniform()` in the BPR constructor.
 """
-abstract type NegativeSampling end
+module Sampling
 
-"""
-    Uniform <: NegativeSampling
+    """
+        Sampling.NegativeSampling
 
-Uniform random negative sampling. Simple and fast.
-"""
-struct Uniform <: NegativeSampling end
+    Abstract type for negative sampling strategies. Concrete subtypes:
+    - `Sampling.Uniform` — uniform random sampling
+    - `Sampling.Popular` — popularity-biased sampling (proportional to √frequency)
+    - `Sampling.Dynamic` — Dynamic Negative Sampling (hardest negatives)
+    """
+    abstract type NegativeSampling end
 
-"""
-    Popular <: NegativeSampling
+    """
+        Sampling.Uniform
 
-Popularity-biased negative sampling. Samples proportional to √(item frequency).
-"""
-struct Popular <: NegativeSampling end
+    Uniform random negative sampling. Simple and fast.
+    """
+    struct Uniform <: NegativeSampling end
 
-"""
-    Dynamic <: NegativeSampling
+    """
+        Sampling.Popular
 
-Dynamic Negative Sampling (DNS). Selects the hardest negative from a candidate pool.
-"""
-struct Dynamic <: NegativeSampling end
+    Popularity-biased negative sampling. Samples proportional to √(item frequency).
+    """
+    struct Popular <: NegativeSampling end
+
+    """
+        Sampling.Dynamic
+
+    Dynamic Negative Sampling (DNS). Selects the hardest negative from a candidate pool.
+    """
+    struct Dynamic <: NegativeSampling end
+
+end
+
+const NegativeSampling = Sampling.NegativeSampling
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Generic API — every model must implement these

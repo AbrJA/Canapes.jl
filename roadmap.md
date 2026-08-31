@@ -221,6 +221,25 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — Namespaced singleton submodules (LossFamilies, Sampling)
+Adopted the submodule pattern for the collision-prone singletons:
+- `module LossFamilies` (Family abstract + Binomial/Gaussian/Poisson) and
+  `module Sampling` (NegativeSampling abstract + Uniform/Popular/Dynamic),
+  both exported — `LossFamilies.<TAB>` lists exactly 3 options, `Sampling.<TAB>`
+  exactly 3, vs 67 mixed at the root. `LossFamily`/`NegativeSampling` remain
+  exported as root aliases so signatures keep reading `family::LossFamily`.
+- Canonical call site: `family=LossFamilies.Binomial()`,
+  `negative_sampling=Sampling.Uniform()`. The singletons are NOT imported
+  into the root namespace (single canonical path; `Gideon.Binomial` no longer
+  resolves). Tests/validation import them via
+  `using Gideon.LossFamilies: Binomial` / `using Gideon.Sampling: Uniform`.
+- `Implicit`/`Explicit` (FeedbackType) deliberately stay at root: no
+  collision, and FeedbackType already carries the context.
+- Note: saved models serialize type positions — pre-1.0, no released files
+  are affected.
+Suite green (17,456), doctests + docs build clean (submodules added to
+api.md @docs), validation green.
+
 ### 2026-08-31 — Naming pass IV (function simplification) + BPR parity-gate robustness
 - `interactions_to_sparse`/`sparse_to_interactions` →
   `triplets_to_sparse`/`sparse_to_triplets` — the two longest public names

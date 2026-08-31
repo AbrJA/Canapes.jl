@@ -4,7 +4,8 @@
 using Pkg
 Pkg.develop(path=joinpath(@__DIR__, ".."))
 using Gideon, SparseArrays, Random, LinearAlgebra, Test
-using Gideon: Binomial, Gaussian, Poisson   # internal (unexported) family singletons
+using Gideon.LossFamilies: Binomial, Gaussian, Poisson   # family singletons
+using Gideon.Sampling: Popular, Dynamic
 
 println("=" ^ 60)
 println("Validating documentation code examples")

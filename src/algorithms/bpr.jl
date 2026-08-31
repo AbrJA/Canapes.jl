@@ -24,16 +24,16 @@ Learns user and item embeddings optimized for ranking (AUC) rather than
 pointwise prediction. Uses SGD with negative sampling of (user, pos, neg) triplets.
 
 # Negative Sampling Strategies
-- `Uniform()` — standard uniform random sampling (Rendle et al. 2009)
-- `Popular()` — popularity-biased sampling (items sampled proportional to sqrt of frequency)
-- `Dynamic()` — Dynamic Negative Sampling: sample `dynamic_candidates` negatives, pick the
+- `Sampling.Uniform()` — standard uniform random sampling (Rendle et al. 2009)
+- `Sampling.Popular()` — popularity-biased sampling (items sampled proportional to sqrt of frequency)
+- `Sampling.Dynamic()` — Dynamic Negative Sampling: sample `dynamic_candidates` negatives, pick the
   one with highest score as the "hardest" negative (Zhang et al. 2013)
 
 # Constructor
 ```julia
 BPR(; rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
       lr=0.05, max_iter=100, n_samples=0,
-      negative_sampling=Uniform(), dynamic_candidates=5,
+      negative_sampling=Sampling.Uniform(), dynamic_candidates=5,
       tol=-1.0, verbose=true)
 ```
 
@@ -45,8 +45,8 @@ BPR(; rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
 - `lr::T` — SGD step size
 - `max_iter::Int` — number of epochs
 - `n_samples::Int` — samples per epoch (0 = nnz(X))
-- `negative_sampling::NegativeSampling` — `Uniform()`, `Popular()`, or `Dynamic()`
-- `dynamic_candidates::Int` — number of candidates for Dynamic() strategy
+- `negative_sampling::NegativeSampling` — `Sampling.Uniform()`, `Sampling.Popular()`, or `Sampling.Dynamic()`
+- `dynamic_candidates::Int` — number of candidates for Sampling.Dynamic() strategy
 - `tol::T` — AUC-based early stopping tolerance (-1 disables)
 """
 mutable struct BPR{T<:AbstractFloat} <: AbstractMatrixFactorization
@@ -76,7 +76,7 @@ function BPR(;
     lr::Float64 = 0.05,
     max_iter::Int = 100,
     n_samples::Int = 0,
-    negative_sampling::NegativeSampling = Uniform(),
+    negative_sampling::NegativeSampling = Sampling.Uniform(),
     dynamic_candidates::Int = 5,
     tol::Float64 = -1.0,
     verbose::Bool = true,
@@ -218,7 +218,7 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
 
                 # Sample negative item (inline for uniform; call function for others)
                 sorted_items = user_item_sorted[u]
-                j_int = if neg_strategy isa Uniform
+                j_int = if neg_strategy isa Sampling.Uniform
                     j = rand(local_rng, Int32(1):Int32(n_items))
                     while _insorted(sorted_items, j)
                         j = rand(local_rng, Int32(1):Int32(n_items))
@@ -316,7 +316,7 @@ function _bpr_sample_negative_fast(rng::AbstractRNG, n_items::Int,
                               pop_cumsum, pop_total, U, V, u, k)
 end
 
-function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Uniform, dns_k,
+function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Uniform, dns_k,
                                     pop_cumsum, pop_total, U, V, u, k)
     j = rand(rng, Int32(1):Int32(n_items))
     for _ in 1:n_items
@@ -326,7 +326,7 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Uniform, dns_k,
     throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
 end
 
-function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Popular, dns_k,
+function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Popular, dns_k,
                                    pop_cumsum::Vector{T}, pop_total::T, U, V, u, k) where {T}
     j = Int32(_sample_from_cumsum(rng, pop_cumsum, pop_total, n_items))
     for _ in 1:n_items
@@ -336,7 +336,7 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Popular, dns_k,
     throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
 end
 
-function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Dynamic, dns_k,
+function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Dynamic, dns_k,
                                    pop_cumsum::Vector{T}, pop_total::T,
                                    U::Matrix{T}, V::Matrix{T}, u, k) where {T}
     best_j = Int32(0)

@@ -452,8 +452,10 @@ if _HAS_CUDA
         @test size(preds_gpu) == (50, 10)
         @test all(preds_gpu .>= 1)
         @test all(preds_gpu .<= 40)
-        # Should match CPU predictions exactly (same algorithm)
-        @test preds_gpu == preds_cpu
+        # Same top-k items per user as the CPU path. cuBLAS and OpenBLAS can
+        # differ in the last ulp, so exact order may differ only on ties;
+        # per-user SET equality is the robust contract.
+        @test all(u -> Set(preds_gpu[u, :]) == Set(preds_cpu[u, :]), 1:size(X, 1))
     end
 
     @testset "GPU recommend_gpu masks seen items" begin

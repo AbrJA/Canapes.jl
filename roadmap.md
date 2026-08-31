@@ -221,6 +221,28 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — GPU hardening (parity tests, input contracts, implementation fixes)
+Audit of the CUDA extension found the GPU paths structurally correct but
+underspecified and partially unvalidated:
+- **Fixes (ext/GideonCUDAExt.jl)**: GPU `fit_gpu!`/`score_gpu`/`recommend_gpu`
+  now share the CPU validators (`_require_nonempty_dimensions`,
+  `_require_finite_input`, `_require_fitted`, `_require_fit_memory`,
+  DimensionMismatch on item counts). WMF-GPU was NOT transactional (assigned
+  factors before the training loop) — now saves/restores state like the CPU
+  paths. `fit_gpu!(WMF/IALS)` with `CGSolver` now throws `ArgumentError`
+  instead of silently falling back to Cholesky. EASE-GPU memory estimate now
+  includes the densified X copy.
+- **Parity tests** (measured first: EASE 6.5e-9, IALS/WMF factor deltas
+  ~1e-6-9e-7, NNLS ~1.5e-7): `fit_gpu!` vs `fit!` with same seeds, `atol=1e-4`
+  for EASE/IALS/WMF-Cholesky/WMF-NNLS; `score_gpu` and `recommend_gpu` vs CPU.
+  The old exact-equality `recommend_gpu == CPU` test was replaced by per-user
+  SET equality (cuBLAS vs OpenBLAS can differ in the last ulp on ties).
+- **Contract tests**: unfitted → ArgumentError, NaN/empty → ArgumentError
+  (transactional), solver guard → ArgumentError, dims mismatch →
+  DimensionMismatch, k clamp.
+- Test suite: 17,487 (was 17,456). GPU tests still run only with CUDA present
+  (CI has no GPU runner — the stubs-only path covers that).
+
 ### 2026-08-31 — Submodule abstract naming refined
 `LossFamilies` → `Links` and `Sampling.NegativeSampling` → `Sampling.Strategy`,
 making the two singleton groups follow one naming scheme: plural-noun

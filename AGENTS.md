@@ -72,6 +72,11 @@ scales (hundreds/thousands/millions). **Validate any perf change with it.**
   `min(n_items, seen·n_neg)` negatives like `implicit` (lmf.pyx) — the old
   `min(k, seen·n_neg)` cap silently starved the gradient. Rejection sampling
   on unobserved items is a deliberate improvement; keep it.
+- **GPU ext**: `fit_gpu!` supports only `CholeskySolver` / `NonNegativeSolver`
+  (WMF) and `CholeskySolver` (IALS) — CG throws `ArgumentError` rather than
+  silently switching to Cholesky. GPU entry points share the CPU validators
+  (`_require_*`) and are transactional. GPU tests run only when CUDA is
+  present (not in CI — CI has no GPU runner).
 - **ADMMSLIM**: training is necessarily dense (ADMM joint solve over the
   n×n Gram); the fitted `W` is stored sparse (soft-thresholded exact zeros,
   `dropzeros!(sparse(Z))`). `recommend` dispatches adaptively via

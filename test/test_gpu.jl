@@ -19,6 +19,93 @@ catch
 end
 
 if HAS_CUDA
+    @testset "GPU fit parity vs CPU" begin
+        rng = MersenneTwister(42)
+        X = sprand(rng, 100, 80, 0.05)
+
+        # EASE (fully on GPU)
+        me = EASE(λ=100.0, verbose=false)
+        fit_gpu!(me, X)
+        mec = EASE(λ=100.0, verbose=false)
+        fit!(mec, X)
+        @test me.B ≈ mec.B atol=1e-6
+
+        # IALS (Gramian on GPU, solves on CPU)
+        mi = IALS(rank=8, max_iter=5, α=10.0, verbose=false)
+        fit_gpu!(mi, X; rng=MersenneTwister(1))
+        mic = IALS(rank=8, max_iter=5, α=10.0, verbose=false)
+        fit!(mic, X; rng=MersenneTwister(1))
+        @test mi.user_factors ≈ mic.user_factors atol=1e-4
+        @test mi.item_factors ≈ mic.item_factors atol=1e-4
+        @test mi.user_factors' * mi.item_factors ≈
+              mic.user_factors' * mic.item_factors atol=1e-4
+
+        # WMF Cholesky
+        mw = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
+        fit_gpu!(mw, X; rng=MersenneTwister(1))
+        mwc = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
+        fit!(mwc, X; rng=MersenneTwister(1))
+        @test mw.user_factors ≈ mwc.user_factors atol=1e-4
+        @test mw.item_factors ≈ mwc.item_factors atol=1e-4
+        @test mw.user_factors' * mw.item_factors ≈
+              mwc.user_factors' * mwc.item_factors atol=1e-4
+
+        # WMF NonNegativeSolver
+        mn = WMF(rank=4, max_iter=5, solver=NonNegativeSolver(), verbose=false)
+        fit_gpu!(mn, X; rng=MersenneTwister(2))
+        mnc = WMF(rank=4, max_iter=5, solver=NonNegativeSolver(), verbose=false)
+        fit!(mnc, X; rng=MersenneTwister(2))
+        @test mn.user_factors ≈ mnc.user_factors atol=1e-4
+        @test mn.item_factors ≈ mnc.item_factors atol=1e-4
+    end
+
+    @testset "GPU input contracts" begin
+        rng = MersenneTwister(42)
+        X = sprand(rng, 50, 30, 0.1)
+        X_bad = copy(X)
+        nonzeros(X_bad)[1] = NaN
+
+        # Unfitted models are rejected by scoring paths
+        m_uf = IALS(rank=4, max_iter=3, verbose=false)
+        @test_throws ArgumentError score_gpu(m_uf, X)
+        @test_throws ArgumentError recommend_gpu(m_uf, X)
+
+        # NaN and empty inputs are rejected by fit_gpu! and leave the model
+        # unfitted (transactional)
+        for m in (EASE(λ=100.0, verbose=false),
+                  IALS(rank=4, max_iter=1, verbose=false),
+                  WMF(rank=4, max_iter=1, verbose=false))
+            @test_throws ArgumentError fit_gpu!(m, X_bad)
+            @test !m.is_fitted
+            @test_throws ArgumentError fit_gpu!(m, spzeros(0, 0))
+            @test !m.is_fitted
+        end
+
+        # A failed GPU refit keeps the previously fitted state intact
+        m = WMF(rank=4, max_iter=2, verbose=false)
+        fit!(m, X; rng=MersenneTwister(1))
+        U_before = copy(m.user_factors)
+        @test_throws ArgumentError fit_gpu!(m, X_bad)
+        @test m.is_fitted
+        @test m.user_factors == U_before
+
+        # Unsupported solvers fail loudly instead of silently using Cholesky
+        @test_throws ArgumentError fit_gpu!(
+            IALS(rank=4, solver=CGSolver(), max_iter=1, verbose=false), X)
+        @test_throws ArgumentError fit_gpu!(
+            WMF(rank=4, solver=CGSolver(), max_iter=1, verbose=false), X)
+
+        # Dimension mismatch on a fitted model
+        m = IALS(rank=4, max_iter=2, verbose=false)
+        fit!(m, X; rng=MersenneTwister(1))
+        X_wide = sprand(rng, 50, 40, 0.1)
+        @test_throws DimensionMismatch score_gpu(m, X_wide)
+        @test_throws DimensionMismatch recommend_gpu(m, X_wide)
+
+        # k clamps to n_items
+        @test size(recommend_gpu(m, X; k=1000)) == (50, 30)
+    end
+
     @testset "GPU EASE" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 30, 0.1)

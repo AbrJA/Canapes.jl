@@ -89,12 +89,23 @@ Falls back to CPU if insufficient GPU memory.
 """
 function Gideon.fit_gpu!(model::Gideon.EASE{T}, X::SparseMatrixCSC{Tv,Ti}) where {T,Tv,Ti}
     n_users, n_items = size(X)
+    Gideon._require_nonempty_dimensions(X, "EASE-GPU")
+    Gideon._require_finite_input(X, "EASE-GPU")
+    # Same fit-time peak estimate as the CPU path (G, factor, P, B) plus the
+    # densified X copy on the GPU.
+    Gideon._require_fit_memory(Gideon._fit_memory_estimate(n_items, 4, T),
+                               model.max_memory, "EASE-GPU")
+
+    old_B = model.B
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
+    try
 
     model.verbose && @info "[EASE-GPU] Computing Gramian via cuSPARSE ($(n_items) items)..."
 
-    # Memory check: need ~3 dense n_items×n_items matrices on GPU
+    # Memory check: dense n_users×n_items X + ~3 dense n_items×n_items on GPU
     free_mem = CUDA.free_memory()
-    estimated_mem = _estimate_gpu_memory(n_items * n_items * 3, T)
+    estimated_mem = _estimate_gpu_memory(n_items * n_items * 3 + n_users * n_items, T)
 
     if estimated_mem > free_mem * 0.8
         @warn "[EASE-GPU] Insufficient GPU memory (need ~$(estimated_mem ÷ 1_000_000)MB, " *
@@ -139,6 +150,11 @@ function Gideon.fit_gpu!(model::Gideon.EASE{T}, X::SparseMatrixCSC{Tv,Ti}) where
     model.is_fitted = true
     model.verbose && @info "[EASE-GPU] Done. B matrix: $(n_items)×$(n_items)"
     model
+    catch
+        model.B = old_B
+        model.is_fitted = old_is_fitted
+        rethrow()
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -154,6 +170,17 @@ with pre-allocated per-thread buffers for the CPU-side per-user Cholesky solves.
 function Gideon.fit_gpu!(model::Gideon.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
                          rng::Random.AbstractRNG = Random.default_rng()) where {T,Tv,Ti}
     n_users, n_items = size(X)
+    Gideon._require_nonempty_dimensions(X, "IALS-GPU")
+    Gideon._require_finite_input(X, "IALS-GPU")
+    model.solver isa Gideon.CholeskySolver || throw(ArgumentError(
+        "fit_gpu!(IALS) supports only CholeskySolver, got $(model.solver)"))
+
+    old_U = model.user_factors
+    old_V = model.item_factors
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
+    try
+
     k = model.rank
     α = model.α
     λ = model.λ
@@ -233,6 +260,12 @@ function Gideon.fit_gpu!(model::Gideon.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     model.item_factors = V
     model.is_fitted = true
     model
+    catch
+        model.user_factors = old_U
+        model.item_factors = old_V
+        model.is_fitted = old_is_fitted
+        rethrow()
+    end
 end
 
 """
@@ -321,10 +354,21 @@ function Gideon.fit_gpu!(model::Gideon.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
                          U_init::Union{Nothing, Matrix{T}} = nothing,
                          V_init::Union{Nothing, Matrix{T}} = nothing) where {T,Tv,Ti}
     n_users, n_items = size(X)
+    Gideon._require_nonempty_dimensions(X, "WMF-GPU")
+    Gideon._require_finite_input(X, "WMF-GPU")
+    model.solver isa Union{Gideon.CholeskySolver, Gideon.NonNegativeSolver} || throw(
+        ArgumentError("fit_gpu!(WMF) supports only CholeskySolver and NonNegativeSolver, got $(model.solver)"))
+
+    old_U = model.user_factors
+    old_V = model.item_factors
+    old_is_fitted = model.is_fitted
+    model.is_fitted = false
+    try
+
     k = model.rank
     λ = model.λ
     α = model.α
-    is_implicit = model.feedback == Gideon.IMPLICIT
+    is_implicit = model.feedback == Gideon.Implicit
 
     # Initialize factors
     model.user_factors = isnothing(U_init) ? Gideon.init_factors(rng, k, n_users) : copy(U_init)
@@ -370,6 +414,12 @@ function Gideon.fit_gpu!(model::Gideon.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.is_fitted = true
     model
+    catch
+        model.user_factors = old_U
+        model.item_factors = old_V
+        model.is_fitted = old_is_fitted
+        rethrow()
+    end
 end
 
 """
@@ -388,7 +438,7 @@ function _gpu_wrmf_sweep!(
     k = model.rank
     λ = model.λ
     α = model.α
-    is_implicit = model.feedback == Gideon.IMPLICIT
+    is_implicit = model.feedback == Gideon.Implicit
     is_nnls = model.solver isa Gideon.NonNegativeSolver
 
     # ── Compute YᵀY on GPU via cuBLAS syrk ──
@@ -481,9 +531,12 @@ Memory: O(n_users × n_items) on GPU. For very large problems, use
 `recommend_gpu` which streams results in batches.
 """
 function Gideon.score_gpu(model, X::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
+    Gideon._require_fitted(model.is_fitted)
     T = eltype(model.user_factors)
     n_users = size(model.user_factors, 2)
     n_items = size(model.item_factors, 2)
+    size(X, 2) == n_items || throw(DimensionMismatch(
+        "X has $(size(X, 2)) items but the fitted model has $n_items"))
 
     # Check GPU memory
     free_mem = CUDA.free_memory()
@@ -517,9 +570,12 @@ top-k on CPU.
 - `batch_size::Int` — users per batch (0 = auto based on GPU memory)
 """
 function Gideon.recommend_gpu(model, X::SparseMatrixCSC; k::Int=10, batch_size::Int=0)
+    Gideon._require_fitted(model.is_fitted)
     T_elem = eltype(model.user_factors)
     n_users = size(model.user_factors, 2)
     n_items = size(model.item_factors, 2)
+    size(X, 2) == n_items || throw(DimensionMismatch(
+        "X has $(size(X, 2)) items but the fitted model has $n_items"))
     k_out = min(k, n_items)
     rank = size(model.user_factors, 1)
 

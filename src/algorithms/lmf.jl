@@ -226,8 +226,8 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
             c_uj = T(X_csr.nzval[idx])
             # Compute dot product
             s = zero(T)
-            for g in 1:k
-                s = muladd(U[g, u], V[g, j], s)
+            @inbounds @simd for g in 1:k
+                s += U[g, u] * V[g, j]
             end
             # c * (1 - σ(s)) = c * σ(-s)
             z = c_uj / (one(T) + exp(s))
@@ -245,8 +245,8 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
             j = _lmf_sample_unobserved(local_rng, n_items, X_csr, u,
                                         all_items, n_interactions)
             s = zero(T)
-            for g in 1:k
-                s = muladd(U[g, u], V[g, j], s)
+            @inbounds @simd for g in 1:k
+                s += U[g, u] * V[g, j]
             end
             σ_s = one(T) / (one(T) + exp(-s))
             @simd for f in 1:k
@@ -296,8 +296,8 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
             u = Int(Xt_csr.colval[idx])
             c_uj = T(Xt_csr.nzval[idx])
             s = zero(T)
-            for g in 1:k
-                s = muladd(U[g, u], V[g, j], s)
+            @inbounds @simd for g in 1:k
+                s += U[g, u] * V[g, j]
             end
             z = c_uj / (one(T) + exp(s))
             @simd for f in 1:k
@@ -313,8 +313,8 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
             u = _lmf_sample_unobserved(local_rng, n_users, Xt_csr, j,
                                         all_users, n_interactions)
             s = zero(T)
-            for g in 1:k
-                s = muladd(U[g, u], V[g, j], s)
+            @inbounds @simd for g in 1:k
+                s += U[g, u] * V[g, j]
             end
             σ_s = one(T) / (one(T) + exp(-s))
             @simd for f in 1:k

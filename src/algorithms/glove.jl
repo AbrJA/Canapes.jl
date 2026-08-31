@@ -242,8 +242,8 @@ function _glove_epoch!(model::GloVe{T},
                 x_ij = T(X_csr.nzval[p])
                 weight = x_ij < x_max ? (x_ij / x_max)^α : one(T)
                 diff = b[i] + bc[j] - log(x_ij)
-                for f in 1:k
-                    diff = muladd(W[f, i], Wc[f, j], diff)
+                @inbounds @simd for f in 1:k
+                    diff += W[f, i] * Wc[f, j]
                 end
                 # ½-convention loss; gradient = weight·diff (no factor of 2).
                 cost_buf[p] = T(0.5) * weight * diff^2

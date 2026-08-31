@@ -17,8 +17,9 @@ Gideon.jl is a production-oriented Julia toolkit for sparse statistical learning
 recommender systems: matrix factorization, item-item models, low-rank completion, and
 sparse regression — all on `SparseMatrixCSC` with a single unified API.
 
-It is built for the constraints of real recommendation pipelines: **deterministic**
-training that reproduces across builds and platforms, **memory-bounded** scoring paths
+It is built for the constraints of real recommendation pipelines: **reproducible**
+training (fixed seed + environment; GloVe bit-identical across thread counts),
+**memory-bounded** scoring paths
 that never materialize a full dense score matrix, **optional GPU** acceleration, and
 numerical correctness **validated against R (rsparse) and Python (implicit, sklearn,
 scipy)** references.
@@ -28,7 +29,7 @@ scipy)** references.
 | | |
 |---|---|
 | **One API for everything** | `fit!` / `recommend` / `score` / `predict` / `transform` across 15 algorithms |
-| **Deterministic by design** | `muladd` reductions in strict scalar order — same results across builds, platforms, and thread counts (GloVe is bit-identical; BPR is the documented Hogwild exception) |
+| **Reproducible by design** | training is reproducible for a fixed seed and environment (no `@fastmath` — NaN/Inf-correct); GloVe is bit-identical across thread counts; BPR is the documented Hogwild exception |
 | **Reference-validated** | weights, predictions, and losses compared numerically against R and Python reference implementations |
 | **Sparse-native, memory-safe** | no dense conversions, batched top-k scoring, fit-time `max_memory` guards, sparse fitted weights |
 | **Concurrency-safe** | transactional `fit!`, read-only `recommend`/`score`, safe nesting |
@@ -339,7 +340,7 @@ no per-model boilerplate:
 
 **Concurrency guarantees:** separate models train in parallel safely; reads on a fitted
 model are thread-safe; concurrent `fit!` on the *same* instance is unsupported; training
-is deterministic for a given seed (BPR excepted — Hogwild by design).
+is reproducible for a given seed and environment (BPR excepted — Hogwild by design).
 
 ---
 
@@ -351,7 +352,7 @@ is deterministic for a given seed (BPR excepted — Hogwild by design).
 | Batched BLAS gram assembly (incremental rank-1 + `BLAS.syrk!`) | WMF-Cholesky |
 | `BLAS.syr!` rank-1 Gram accumulation | WMF Cholesky solver |
 | Fast-path manual SIMD dot for sparse users with < 32 nnz | WMF CG `_implicit_matvec!` |
-| `muladd` reductions (strict scalar order) — deterministic, no `@fastmath` | All training loops |
+| SIMD-vectorized reductions (`@simd`), no `@fastmath` — reproducible per environment, NaN/Inf-correct | All training loops |
 | Memory-bounded batched GEMM top-k scoring | EASE |
 | Unified top-k paths (`_predict_sparse_score_topk`, `_predict_batched_gemm_topk`) | EASE, SLIM, ItemKNN, ADMMSLIM |
 | Sparse fitted weights (`SparseMatrixCSC`, soft-thresholded exact zeros) | SLIM, ADMMSLIM |
@@ -450,8 +451,8 @@ The suite runs **17,450 tests** in ~3 minutes, covering:
   (`--threads=8`) — parallelism is exercised — plus `git diff --check`.
 - **Performance changes** must be validated with `benchmark/run.jl` and, where relevant,
   `validation/run.jl` for numerical parity.
-- Keep training kernels deterministic: `muladd` reductions, no `@fastmath`, no
-  `@simd` on reductions.
+- Keep training kernels SIMD-vectorized but `@fastmath`-free (NaN/Inf-correct),
+  with reductions reproducible per environment.
 - See [AGENTS.md](AGENTS.md) for the threading/determinism conventions and known pitfalls.
 
 ---

@@ -234,8 +234,8 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
 
                 # Compute x̂_uij = x̂_ui - x̂_uj
                 x_uij = zero(T)
-                for f in 1:k
-                    x_uij = muladd(U[f, u], V[f, i] - V[f, j_int], x_uij)
+                @inbounds @simd for f in 1:k
+                    x_uij += U[f, u] * (V[f, i] - V[f, j_int])
                 end
 
                 # σ(-x_uij) = 1/(1 + exp(x_uij))
@@ -351,8 +351,8 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Dynamic, dns_k,
         _insorted(sorted_items, j) && continue
         candidates_found += 1
         score = zero(T)
-        @inbounds for f in 1:k
-            score = muladd(U[f, u], V[f, Int(j)], score)
+        @inbounds @simd for f in 1:k
+            score += U[f, u] * V[f, Int(j)]
         end
         if score > best_score
             best_score = score

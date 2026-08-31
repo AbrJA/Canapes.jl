@@ -39,13 +39,18 @@ scales (hundreds/thousands/millions). **Validate any perf change with it.**
 - Hot loops that mutate shared state must be partitioned by ownership (each
   thread writes only disjoint slices/words) or be race-free by construction.
 
-## Determinism conventions (commits 28da68a, c11747f, b8dab7c)
+## Determinism conventions (commits 28da68a, c11747f, b8dab7c, 2026-08-31)
 
-- Training loops use `muladd` reductions (strict scalar order), NOT `@simd`
-  reductions and NOT `@fastmath` — deterministic across builds/platforms.
+- Training kernels use `@simd` **reductions** over rank-k dot products (NOT
+  strict-serial `muladd` chains and NOT `@fastmath`): reproducible per
+  environment (same binary → same result), NaN/Inf-correct, and ~8× faster
+  than serial FMA chains on the dot kernels (measured; LogisticMF fit dropped
+  19-50% end-to-end). Bit-identity across SIMD widths/builds is not claimed —
+  BLAS paths already differ across BLAS builds.
 - `@simd` is fine on element-wise loops and in loss-monitoring-only code.
 - **GloVe** uses a 3-phase reordered epoch (gradient pass → main pass → context
-  pass) with word ownership: bit-identical across thread counts.
+  pass) with word ownership: per-pair reductions are computed by the owning
+  thread, so the result stays bit-identical across thread counts.
 - **BPR** is Hogwild (documented non-deterministic). Determinism tests live in
   `test/test_glove.jl` and `test/test_fixtures.jl`.
 
@@ -81,7 +86,10 @@ scales (hundreds/thousands/millions). **Validate any perf change with it.**
 - **rsparse quirks**: its FM init uses Armadillo's `std::random_device` RNG
   (nondeterministic — gate FM parity with margin, cor ≥ 0.95); its GloVe
   cost records the ½·loss convention; its FM fails to converge on very sparse
-  low-coverage problems (upstream, not ours).
+  low-coverage problems (upstream, not ours — the agreement gate is skipped
+  when rsparse itself does not recover the structure, since Julia's own
+  correctness is enforced by the dense-reference and held-out-recovery
+  gates).
 
 ## Current state
 
@@ -95,8 +103,9 @@ scales (hundreds/thousands/millions). **Validate any perf change with it.**
   metrics, FM) and Python parity (ALS, BPR, IALS, EALS, LMF, EASE, SLIM,
   PureSVD, ItemKNN, ADMMSLIM). See `roadmap.md` session log.
 - Remaining known tradeoffs:
-  - LogisticMF training is ~50% slower than pre-`@fastmath` removal
-    (deliberate determinism).
+  - Reproducibility is per-environment (same seed + binary): cross-SIMD-width
+    bit-identity is not promised; persist with `save_model`/`load_model` to
+    move models across environments bit-identically.
   - WMF Cholesky can produce NaN factors on scale-mixed extreme inputs
     (gramian near-singular within float eps); candidates for the λ=0
     singular-gramian guard treatment.

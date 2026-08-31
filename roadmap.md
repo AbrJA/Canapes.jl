@@ -221,6 +221,30 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — Determinism policy: `@simd` reductions instead of strict-order muladd
+- Rationale (measured): serial `muladd` dot kernels are ~8× slower than
+  `@simd` reductions and `@simd ≈ @fastmath` in speed. Strict cross-build
+  bit-identity was partially illusory anyway (BLAS kernels differ across
+  OpenBLAS/MKL/Accelerate builds), while run-to-run reproducibility per
+  environment — what tests, CI and prod actually rely on — is preserved by
+  `@simd` (same binary → same result).
+- Change: rank-k dot reductions in lmf.jl (4 sites), wrmf.jl, glove.jl and
+  bpr.jl switched from `muladd` chains to `@simd` reductions. `@fastmath`
+  stays off (NaN/Inf-correct semantics). GloVe keeps word ownership, so its
+  bit-identical-across-thread-counts guarantee still holds (verified by the
+  determinism tests).
+- Measured impact (`benchmark/run.jl`): LogisticMF fit −19% (millions) to
+  −50% (hundreds); GloVe −2% to −19%; BPR −28% (thousands); no regressions
+  on untouched models (fluctuations within single-run harness noise).
+- README/AGENTS claims softened from "same results across builds and
+  platforms" to "reproducible for a fixed seed and environment; persist with
+  save_model/load_model to move models across environments bit-identically".
+- Validation gate fix: rsparse's FM failed to converge on the sparse
+  high-dim fixture (cor 0.058 — the documented upstream limitation); the
+  agreement gate now only applies when rsparse itself recovers the structure
+  (cor_r ≥ 0.95), with Julia's correctness enforced by the dense-reference
+  and held-out-recovery gates. `validation/run.jl --all` green end-to-end.
+
 ### 2026-08-31 — Tables.jl hard dependency (follow-up review)
 - `interactions_to_sparse` failed on `DataFrame` ("AbstractDataFrame is not
   iterable") and overclaimed "Tables.jl-compatible": only NamedTuple column

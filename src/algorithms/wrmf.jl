@@ -512,8 +512,8 @@ function _implicit_matvec!(
             w = weights[pos]
             iszero(w) && continue
             d = zero(T)
-            for f in 1:k
-                d = muladd(Y[f, i], v[f], d)
+            @inbounds @simd for f in 1:k
+                d += Y[f, i] * v[f]
             end
             wd = w * d
             @simd for f in 1:k

@@ -69,7 +69,7 @@ end
     @testset "WMF: converges on rank-1 data" begin
         X = _rank1_data(20, 15)
         m = WMF(rank=3, λ=0.01, max_iter=10, solver=CholeskySolver(),
-                 feedback=IMPLICIT, convergence_tol=0.0, verbose=false)
+                 feedback=IMPLICIT, tol=0.0, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         loss_initial = _wrmf_loss_ref(m.user_factors, m.item_factors, X, 0.01, 0.0)
         @test isfinite(loss_initial)
@@ -168,7 +168,7 @@ end
         # Simple binary classification data
         X = sparse([1.0 0.0; 0.0 1.0; 1.0 1.0; 0.0 0.0])
         y = [1.0, 0.0, 1.0, 0.0]
-        m = FTRL(learning_rate=0.1, λ=0.001, verbose=false)
+        m = FTRL(lr=0.1, λ=0.001, verbose=false)
         for _ in 1:3
             update!(m, X, y; rng=MersenneTwister(42))
         end
@@ -180,7 +180,7 @@ end
         # XOR problem (non-linearly separable)
         X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
         y = [0.0, 1.0, 1.0, 0.0]
-        m = FM(learning_rate_w=1.0, rank=2, max_iter=50,
+        m = FM(lr_w=1.0, rank=2, max_iter=50,
                 λ_w=0.0, λ_v=0.0, family=Binomial(), intercept=true, verbose=false)
         fit!(m, X, y; rng=MersenneTwister(42))
         preds = predict(m, X)
@@ -225,7 +225,7 @@ end
         @test all(isfinite, m_chol.user_factors)
         @test all(isfinite, m_chol.item_factors)
         # CG solver
-        m_cg = WMF(rank=3, λ=0.01, max_iter=10, solver=ConjugateGradient(), cg_steps=3,
+        m_cg = WMF(rank=3, λ=0.01, max_iter=10, solver=CGSolver(), cg_steps=3,
                     feedback=IMPLICIT, verbose=false)
         fit!(m_cg, X; rng=MersenneTwister(42))
         @test all(isfinite, m_cg.user_factors)

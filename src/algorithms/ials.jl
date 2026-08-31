@@ -31,12 +31,12 @@ O(nnz_per_user × d² + d³) per user, which is dramatically faster for sparse d
 
 # Solver Options
 - `CholeskySolver()` — exact solve via Cholesky decomposition, O(d³) per user. Best for d ≤ 128.
-- `ConjugateGradient()` — approximate solve via Conjugate Gradient, O(d² × cg_steps) per user.
+- `CGSolver()` — approximate solve via Conjugate Gradient, O(d² × cg_steps) per user.
   Best for large d (≥ 128). Uses warm-start from previous iteration's solution.
 
 # Constructor
 ```julia
-IALS(; rank=64, λ=0.01, α=40.0, max_iter=15, convergence_tol=0.005,
+IALS(; rank=64, λ=0.01, α=40.0, max_iter=15, tol=0.005,
        solver=CholeskySolver(), cg_steps=3, verbose=true)
 ```
 
@@ -45,9 +45,9 @@ IALS(; rank=64, λ=0.01, α=40.0, max_iter=15, convergence_tol=0.005,
 - `λ::T` — L2 regularization
 - `α::T` — confidence scaling: c_{ui} = 1 + α·r_{ui}
 - `max_iter::Int` — maximum ALS iterations
-- `convergence_tol::T` — relative change in loss for early stopping (-1 disables)
-- `solver::ALSSolver` — `CholeskySolver()` or `ConjugateGradient()`
-- `cg_steps::Int` — CG inner iterations (only for ConjugateGradient() solver)
+- `tol::T` — relative change in loss for early stopping (-1 disables)
+- `solver::ALSSolver` — `CholeskySolver()` or `CGSolver()`
+- `cg_steps::Int` — CG inner iterations (only for CGSolver() solver)
 - `user_factors::Matrix{T}` — (rank × n_users) after fitting
 - `item_factors::Matrix{T}` — (rank × n_items) after fitting
 """
@@ -56,7 +56,7 @@ mutable struct IALS{T<:AbstractFloat} <: AbstractMatrixFactorization
     const λ::T
     const α::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const solver::ALSSolver
     const cg_steps::Int
     const verbose::Bool
@@ -71,7 +71,7 @@ function IALS(;
     λ::Float64 = 0.01,
     α::Float64 = 40.0,
     max_iter::Int = 15,
-    convergence_tol::Float64 = 0.005,
+    tol::Float64 = 0.005,
     solver::ALSSolver = CholeskySolver(),
     cg_steps::Int = 3,
     verbose::Bool = true,
@@ -80,10 +80,10 @@ function IALS(;
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     α >= 0.0 || throw(ArgumentError("α must be non-negative, got $α"))
-    solver isa Union{CholeskySolver, ConjugateGradient} || throw(ArgumentError("IALS supports only CholeskySolver() or ConjugateGradient() solvers"))
+    solver isa Union{CholeskySolver, CGSolver} || throw(ArgumentError("IALS supports only CholeskySolver() or CGSolver() solvers"))
     cg_steps >= 1 || throw(ArgumentError("cg_steps must be ≥ 1, got $cg_steps"))
     T = dtype
-    IALS{T}(rank, T(λ), T(α), max_iter, T(convergence_tol), solver, cg_steps, verbose,
+    IALS{T}(rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, verbose,
             Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
 end
 
@@ -136,7 +136,7 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     X_csr = to_csr(X)
     # CSC is already column-oriented (item columns)
 
-    monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     # Pre-allocate per-thread work buffers
     nt = Threads.nthreads()
@@ -151,7 +151,7 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     Z_bufs = [Matrix{T}(undef, k, max_nnz) for _ in 1:nt]
     w_bufs = [Vector{T}(undef, 2 * max_nnz) for _ in 1:nt]
 
-    use_cg = model.solver isa ConjugateGradient
+    use_cg = model.solver isa CGSolver
     cg_steps = model.cg_steps
 
     for iter in 1:model.max_iter

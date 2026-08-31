@@ -15,7 +15,7 @@
 #   • BLAS.syr! for O(k²) rank-1 gram accumulation (vectorised BLAS-2)
 #   • BLAS.axpy! for O(k) rhs accumulation
 #   • In-place LAPACK.potrf! + LAPACK.potrs! → no extra matrices in Chol path
-#   • Coordinate-descent NonNegative (true bounded NonNegative, not a clamp)
+#   • Coordinate-descent NNLS (true bounded non-negative, not a clamp)
 #   • BLAS.syrk! for YᵀY (symmetric rank-k update)
 #   • Base.Threads.@threads (dynamic) — nestable and safe under concurrency
 # ──────────────────────────────────────────────────────────────────────────────
@@ -26,13 +26,13 @@
 Weighted Regularized Matrix Factorization via Alternating Least Squares.
 
 Supports implicit feedback (Hu et al. 2008) and explicit feedback (MSE).
-Three solvers available: CholeskySolver (exact), Conjugate Gradient (approximate, fast),
-and NonNegative (non-negative matrix factorization).
+Three solvers available: CholeskySolver (exact), CGSolver (approximate, fast),
+and NonNegativeSolver (non-negative least squares).
 
 # Constructor
 ```julia
-WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, convergence_tol=0.005,
-       solver=ConjugateGradient(), cg_steps=3, feedback=IMPLICIT, verbose=true)
+WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, tol=0.005,
+       solver=CGSolver(), cg_steps=3, feedback=IMPLICIT, verbose=true)
 ```
 
 # Fields
@@ -40,8 +40,8 @@ WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, convergence_tol=0.005,
 - `λ::T`              — regularisation strength
 - `α::T`              — confidence weight for implicit feedback
 - `max_iter::Int`      — maximum ALS iterations
-- `convergence_tol::T` — relative loss tolerance for early stopping (<0 disables)
-- `solver::ALSSolver`  — `CholeskySolver()`, `ConjugateGradient()`, or `NonNegative()`
+- `tol::T` — relative loss tolerance for early stopping (<0 disables)
+- `solver::ALSSolver`  — `CholeskySolver()`, `CGSolver()`, or `NonNegativeSolver()`
 - `cg_steps::Int`      — max CG inner iterations (only for CG solver)
 - `feedback::FeedbackType` — `IMPLICIT` or `EXPLICIT`
 - `user_factors::Matrix{T}`  — rank × n_users (set after `fit!`)
@@ -53,7 +53,7 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
-julia> model = WMF(rank=8, λ=0.1, α=40.0, max_iter=2, solver=ConjugateGradient(), verbose=false);
+julia> model = WMF(rank=8, λ=0.1, α=40.0, max_iter=2, solver=CGSolver(), verbose=false);
 
 julia> fit!(model, X; rng=MersenneTwister(2));
 
@@ -68,7 +68,7 @@ mutable struct WMF{T<:AbstractFloat} <: AbstractMatrixFactorization
     const λ::T
     const α::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const solver::ALSSolver
     const cg_steps::Int
     const feedback::FeedbackType
@@ -83,8 +83,8 @@ function WMF(;
     λ::Float64 = 0.1,
     α::Float64 = 1.0,
     max_iter::Int = 10,
-    convergence_tol::Float64 = 0.005,
-    solver::ALSSolver = ConjugateGradient(),
+    tol::Float64 = 0.005,
+    solver::ALSSolver = CGSolver(),
     cg_steps::Int = 3,
     feedback::FeedbackType = IMPLICIT,
     verbose::Bool = true,
@@ -97,7 +97,7 @@ function WMF(;
     cg_steps >= 1 || throw(ArgumentError("cg_steps must be ≥ 1, got $cg_steps"))
     T = dtype
     WMF{T}(
-        rank, T(λ), T(α), max_iter, T(convergence_tol), solver, cg_steps, feedback, verbose,
+        rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, feedback, verbose,
         Matrix{T}(undef, 0, 0),
         Matrix{T}(undef, 0, 0),
         false,
@@ -146,7 +146,7 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
                   maximum(length(nzrange(Xt, u)) for u in 1:n_users; init=0))
     ws = _als_workspace(model, k, Threads.nthreads(), max_nnz)
 
-    monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     for iter in 1:model.max_iter
         iter_start = time_ns()
@@ -202,9 +202,9 @@ function _als_sweep!(
     _als_sweep!(model.solver, model, A, factors, fixed, n_entities, ws)
 end
 
-_als_sweep!(::ConjugateGradient, model, A, factors, fixed, n_entities, ws) =
+_als_sweep!(::CGSolver, model, A, factors, fixed, n_entities, ws) =
     _als_sweep_cg!(model, A, factors, fixed, n_entities, ws)
-_als_sweep!(::Union{CholeskySolver, NonNegative}, model, A, factors, fixed, n_entities, ws) =
+_als_sweep!(::Union{CholeskySolver, NonNegativeSolver}, model, A, factors, fixed, n_entities, ws) =
     _als_sweep_cholesky!(model, A, factors, fixed, n_entities, ws)
 
 """
@@ -214,7 +214,7 @@ Per-thread work buffers for one ALS sweep, allocated once per `fit!` and reused
 across every sweep/iteration to avoid repeated buffer allocation.
 """
 function _als_workspace(model::WMF{T}, k::Int, nt::Int, max_nnz::Int) where {T}
-    if model.solver isa ConjugateGradient
+    if model.solver isa CGSolver
         (; rhs_bufs = _thread_buffers(() -> Vector{T}(undef, k), nt),
            idx_bufs = _thread_buffers(() -> Vector{Int}(undef, max_nnz), nt),
            wgt_bufs = _thread_buffers(() -> Vector{T}(undef, max_nnz), nt),
@@ -243,7 +243,7 @@ function _als_sweep_cholesky!(
     λ = model.λ
     α = model.α
     is_implicit = model.feedback == IMPLICIT
-    is_nnls     = model.solver isa NonNegative
+    is_nnls     = model.solver isa NonNegativeSolver
 
     # YᵀY via BLAS syrk (symmetric rank-k: C = α·A·Aᵀ + β·C)
     YtY = Matrix{T}(undef, k, k)
@@ -344,7 +344,7 @@ end
 """
     _nnls_cd!(x, YtY, Y, rv, nz, col_range, k, α, λ, is_implicit; max_iter=50)
 
-Block-coordinate descent NonNegative: minimises ‖Ax - b‖² s.t. x ≥ 0.
+Block-coordinate descent NNLS: minimises ‖Ax - b‖² s.t. x ≥ 0.
 Updates `x` in-place.
 """
 function _nnls_cd!(

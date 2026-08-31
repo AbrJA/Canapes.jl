@@ -50,7 +50,7 @@ if HAS_CUDA
 
     @testset "GPU WMF nonnegative solver" begin
         X = sprand(MersenneTwister(42), 20, 15, 0.1)
-        model = WMF(rank=4, max_iter=1, solver=NonNegative(), verbose=false)
+        model = WMF(rank=4, max_iter=1, solver=NonNegativeSolver(), verbose=false)
         fit_gpu!(model, X; rng=MersenneTwister(1))
         @test model.is_fitted
         @test all(>=(0), model.user_factors)

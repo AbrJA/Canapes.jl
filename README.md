@@ -114,7 +114,7 @@ using Gideon, SparseArrays, Random
 
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)   # 1 K users, 500 items, 2% density
 
-# CG-ALS (default, fastest at scale); Cholesky for max stability; NonNegative for NNLS
+# CG-ALS (default, fastest at scale); CholeskySolver for max stability; NonNegativeSolver for NNLS
 model = WMF(rank=20, λ=0.1, α=1.0, max_iter=15)
 fit!(model, X; rng=MersenneTwister(1))
 
@@ -137,8 +137,8 @@ ease = EASE(λ=200.0, verbose=false)
 fit!(ease, X)
 
 # SLIM: sparse, interpretable weights; ADMMSLIM: same solution, 10-100x faster
-slim    = SLIM(λ_1=0.01, λ_2=0.1, max_iter=50, verbose=false)
-admm    = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=50, verbose=false)
+slim    = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=50, verbose=false)
+admm    = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=50, verbose=false)
 fit!(slim, X);  fit!(admm, X)
 nnz(admm.W)                      # fitted weights are stored sparse
 score(admm, X)                   # SparseMatrixCSC, not a dense matrix
@@ -156,7 +156,7 @@ using Gideon, SparseArrays, Random
 C = sprand(MersenneTwister(1), 5000, 5000, 0.005)   # square, positive co-occurrences
 C = C + C'
 
-glove = GloVe(rank=100, learning_rate=0.05, x_max=100.0, max_iter=20)
+glove = GloVe(rank=100, lr=0.05, x_max=100.0, max_iter=20)
 fit!(glove, C; rng=MersenneTwister(2))
 
 E = embeddings(glove)             # 100 × 5000 — main + context average (standard convention)
@@ -168,7 +168,7 @@ E = embeddings(glove)             # 100 × 5000 — main + context average (stan
 using Gideon, SparseArrays, Random
 
 X = sprand(MersenneTwister(3), 800, 300, 0.03)
-lmf = LogisticMF(rank=15, α=1.0, λ=0.1, learning_rate=0.01, max_iter=20, n_negative=5)
+lmf = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5)
 fit!(lmf, X; rng=MersenneTwister(3))
 ```
 
@@ -182,13 +182,13 @@ rng = MersenneTwister(7)
 X_train = sprand(rng, 10_000, 50_000, 0.001)
 y_train = rand(rng, Bool, 10_000) .|> Float64
 
-ftrl = FTRL(learning_rate=0.1, learning_rate_decay=0.5, λ=1e-4, l1_ratio=0.9)
+ftrl = FTRL(lr=0.1, lr_decay=0.5, λ=1e-4, l1_ratio=0.9)
 update!(ftrl, X_train, y_train; rng)          # one pass; call again for more epochs
 ŷ = predict(ftrl, X_train)                    # probabilities ∈ (0, 1)
 
 # FM: second-order feature interactions
-fm = FM(rank=8, learning_rate_w=0.1, learning_rate_v=0.05,
-        λ_w=1e-5, λ_v=1e-5, family=Binomial())
+fm = FM(rank=8, lr_w=0.1, lr_v=0.05,
+        λ_w=1e-5, λ_v=1e-5, family=Gideon.Binomial())
 fit!(fm, X_train, y_train; rng=MersenneTwister(9))
 ```
 

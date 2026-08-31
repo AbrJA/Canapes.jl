@@ -3,7 +3,7 @@
 @testset "Basic fit" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
-    model = SLIM(λ_1=0.01, λ_2=0.1, max_iter=20, verbose=false)
+    model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=20, verbose=false)
     fit!(model, X)
 
     @test model.is_fitted
@@ -17,7 +17,7 @@ end
 @testset "Non-negativity constraint" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 15, 0.2)
-    model = SLIM(λ_1=0.01, λ_2=0.1, nonneg=true, max_iter=30, verbose=false)
+    model = SLIM(λ_l1=0.01, λ_l2=0.1, nonneg=true, max_iter=30, verbose=false)
     fit!(model, X)
     # All weights should be non-negative
     @test all(nonzeros(model.W) .>= 0.0)
@@ -27,8 +27,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
 
-    m_sparse = SLIM(λ_1=0.5, λ_2=0.1, max_iter=30, verbose=false)
-    m_dense = SLIM(λ_1=0.001, λ_2=0.1, max_iter=30, verbose=false)
+    m_sparse = SLIM(λ_l1=0.5, λ_l2=0.1, max_iter=30, verbose=false)
+    m_dense = SLIM(λ_l1=0.001, λ_l2=0.1, max_iter=30, verbose=false)
     fit!(m_sparse, X)
     fit!(m_dense, X)
 
@@ -38,7 +38,7 @@ end
 @testset "predict returns valid indices" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 20, 0.15)
-    model = SLIM(λ_1=0.01, λ_2=0.1, max_iter=20, verbose=false)
+    model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=20, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=5)
     @test size(preds) == (40, 5)
@@ -49,7 +49,7 @@ end
 @testset "score is sparse" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 15, 0.2)
-    model = SLIM(λ_1=0.05, λ_2=0.1, max_iter=20, verbose=false)
+    model = SLIM(λ_l1=0.05, λ_l2=0.1, max_iter=20, verbose=false)
     fit!(model, X)
     S = score(model, X)
     @test S isa SparseMatrixCSC

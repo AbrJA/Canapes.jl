@@ -19,9 +19,9 @@ the `family` parameter. Uses per-coordinate adaptive learning rates (AdaGrad).
 
 # Constructor
 ```julia
-FM(; rank=4, learning_rate_w=0.2, learning_rate_v=learning_rate_w,
+FM(; rank=4, lr_w=0.2, lr_v=lr_w,
                        λ_w=0.0, λ_v=0.0, family=Binomial(), intercept=true,
-                       max_iter=10, convergence_tol=-1.0, verbose=true)
+                       max_iter=10, tol=-1.0, verbose=true)
 ```
 
 # Example
@@ -32,7 +32,7 @@ julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
 julia> y = rand(MersenneTwister(3), [0.0, 1.0], 200);
 
-julia> model = FM(rank=4, family=Binomial(), max_iter=2, verbose=false);
+julia> model = FM(rank=4, max_iter=2, verbose=false);
 
 julia> fit!(model, X, y; rng=MersenneTwister(2));
 
@@ -42,14 +42,14 @@ julia> size(predict(model, X))
 """
 mutable struct FM{T<:AbstractFloat} <: AbstractSparseRegression
     const rank::Int
-    learning_rate_w::T
-    learning_rate_v::T
+    lr_w::T
+    lr_v::T
     const λ_w::T
     const λ_v::T
     const family::Family
     const intercept::Bool
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const verbose::Bool
     n_features::Int
     w0::T
@@ -62,14 +62,14 @@ end
 
 function FM(;
     rank::Int = 4,
-    learning_rate_w::Float64 = 0.2,
-    learning_rate_v::Float64 = learning_rate_w,
+    lr_w::Float64 = 0.2,
+    lr_v::Float64 = lr_w,
     λ_w::Float64 = 0.0,
     λ_v::Float64 = 0.0,
     family::Family = Binomial(),
     intercept::Bool = true,
     max_iter::Int = 10,
-    convergence_tol::Float64 = -1.0,
+    tol::Float64 = -1.0,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
 )
@@ -77,8 +77,8 @@ function FM(;
     family isa Union{Binomial, Gaussian} || throw(ArgumentError("FM supports Binomial() or Gaussian() families"))
     T = dtype
     FM{T}(
-        rank, T(learning_rate_w), T(learning_rate_v), T(λ_w), T(λ_v), family, intercept,
-        max_iter, T(convergence_tol), verbose,
+        rank, T(lr_w), T(lr_v), T(λ_w), T(λ_v), family, intercept,
+        max_iter, T(tol), verbose,
         0, T(0), T[], Matrix{T}(undef,0,0),
         T[], Matrix{T}(undef,0,0), false,
     )
@@ -162,7 +162,7 @@ function update!(model::FM{T}, X::SparseMatrixCSC{Tv,Ti},
 
         # ---- Backward pass (AdaGrad updates) ----
         if model.intercept
-            model.w0 -= model.learning_rate_w * grad_mult
+            model.w0 -= model.lr_w * grad_mult
         end
 
         for idx in col_range
@@ -170,7 +170,7 @@ function update!(model::FM{T}, X::SparseMatrixCSC{Tv,Ti},
             xval = T(nzv[idx])
             gj = grad_mult * xval + model.λ_w * model.w[j]
             model.grad_w2[j] += gj^2
-            model.w[j] -= model.learning_rate_w * gj / sqrt(model.grad_w2[j])
+            model.w[j] -= model.lr_w * gj / sqrt(model.grad_w2[j])
         end
 
         for idx in col_range
@@ -179,7 +179,7 @@ function update!(model::FM{T}, X::SparseMatrixCSC{Tv,Ti},
             @inbounds for f in 1:k
                 g_vfj = grad_mult * (sum_vx[f] * xval - model.V[f, j] * xval^2) + model.λ_v * model.V[f, j]
                 model.grad_v2[f, j] += g_vfj^2
-                model.V[f, j] -= model.learning_rate_v * g_vfj / sqrt(model.grad_v2[f, j])
+                model.V[f, j] -= model.lr_v * g_vfj / sqrt(model.grad_v2[f, j])
             end
         end
     end
@@ -213,7 +213,7 @@ function fit!(model::FM{T}, X::SparseMatrixCSC, y::AbstractVector;
         total_seconds = (time_ns() - train_start) / 1e9
 
         # Compute training loss for convergence check
-        if model.convergence_tol > zero(T) || !isempty(callbacks)
+        if model.tol > zero(T) || !isempty(callbacks)
             preds = predict(model, X)
             loss = if model.family isa Binomial
                 -sum(y .* log.(preds .+ T(1e-10)) .+ (one(T) .- y) .* log.(one(T) .- preds .+ T(1e-10))) / length(y)
@@ -223,7 +223,7 @@ function fit!(model::FM{T}, X::SparseMatrixCSC, y::AbstractVector;
             if model.verbose
                 log_iteration("FM", i, model.max_iter, Float64(loss), epoch_seconds, total_seconds)
             end
-            if i > 1 && abs(prev_loss - loss) / (abs(prev_loss) + T(1e-12)) < model.convergence_tol
+            if i > 1 && abs(prev_loss - loss) / (abs(prev_loss) + T(1e-12)) < model.tol
                 model.verbose && @info "[FM] converged at epoch $i"
                 break
             end

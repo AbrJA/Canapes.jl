@@ -66,7 +66,7 @@ scales (hundreds/thousands/millions). **Validate any perf change with it.**
   commit 9690e02). Don't assert pairwise == full for WMF.
 - **GloVe ½-convention** (2026-08-29): the loss is `½ Σ f(x)·diff²` and the
   gradient carries no factor of 2 — matching rsparse/Stanford C exactly, so
-  `learning_rate` semantics and `loss_history` values are comparable to
+  `lr` semantics and `loss_history` values are comparable to
   rsparse. Keep this convention when touching glove.jl.
 - **LogisticMF negative sampling** (2026-08-29): sample
   `min(n_items, seen·n_neg)` negatives like `implicit` (lmf.pyx) — the old

@@ -3,7 +3,7 @@
 @testset "Basic fit" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
-    model = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=30, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(model, X)
 
     @test model.is_fitted
@@ -20,7 +20,7 @@ end
 @testset "Non-negativity constraint" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 15, 0.2)
-    model = ADMMSLIM(λ_1=0.01, λ_2=100.0, nonneg=true, max_iter=30, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, nonneg=true, max_iter=30, verbose=false)
     fit!(model, X)
     # All weights should be non-negative
     @test all(model.W .>= -1e-10)
@@ -30,8 +30,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
 
-    m_sparse = ADMMSLIM(λ_1=0.5, λ_2=100.0, max_iter=50, verbose=false)
-    m_dense = ADMMSLIM(λ_1=0.001, λ_2=100.0, max_iter=50, verbose=false)
+    m_sparse = ADMMSLIM(λ_l1=0.5, λ_l2=100.0, max_iter=50, verbose=false)
+    m_dense = ADMMSLIM(λ_l1=0.001, λ_l2=100.0, max_iter=50, verbose=false)
     fit!(m_sparse, X)
     fit!(m_dense, X)
 
@@ -43,7 +43,7 @@ end
 @testset "recommend returns valid indices" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 20, 0.15)
-    model = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=30, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=5)
 
@@ -55,7 +55,7 @@ end
 @testset "score returns sparse matrix" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 15, 0.2)
-    model = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=20, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(model, X)
     S = score(model, X)
 
@@ -70,15 +70,15 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 20, 0.15)
 
-    # Dense-ish W (low λ_1) → dense batched-GEMM path
-    m_dense = ADMMSLIM(λ_1=0.001, λ_2=100.0, max_iter=30, verbose=false)
+    # Dense-ish W (low λ_l1) → dense batched-GEMM path
+    m_dense = ADMMSLIM(λ_l1=0.001, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_dense, X)
     @test !Gideon._use_sparse_score_path(m_dense.W, X)
     @test recommend(m_dense, X; k=5) ==
           Gideon._predict_batched_gemm_topk(X, Matrix(m_dense.W), 5)
 
-    # Truly sparse W (high λ_1) → sparse-score path
-    m_sparse = ADMMSLIM(λ_1=0.5, λ_2=100.0, max_iter=30, verbose=false)
+    # Truly sparse W (high λ_l1) → sparse-score path
+    m_sparse = ADMMSLIM(λ_l1=0.5, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_sparse, X)
     @test Gideon._use_sparse_score_path(m_sparse.W, X)
     @test recommend(m_sparse, X; k=5) ==
@@ -93,7 +93,7 @@ end
 @testset "Sparse W survives persistence round-trip" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 15, 0.2)
-    model = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=20, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(model, X)
 
     tmpfile = tempname() * ".jls"
@@ -108,12 +108,12 @@ end
     end
 end
 
-@testset "Higher λ_2 → smaller weights" begin
+@testset "Higher λ_l2 → smaller weights" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
 
-    m_low = ADMMSLIM(λ_1=0.01, λ_2=10.0, max_iter=50, verbose=false)
-    m_high = ADMMSLIM(λ_1=0.01, λ_2=1000.0, max_iter=50, verbose=false)
+    m_low = ADMMSLIM(λ_l1=0.01, λ_l2=10.0, max_iter=50, verbose=false)
+    m_high = ADMMSLIM(λ_l1=0.01, λ_l2=1000.0, max_iter=50, verbose=false)
     fit!(m_low, X)
     fit!(m_high, X)
 
@@ -125,8 +125,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 10, 0.25)
 
-    m_slim = SLIM(λ_1=0.05, λ_2=1.0, max_iter=200, nonneg=true, verbose=false)
-    m_admm = ADMMSLIM(λ_1=0.05, λ_2=1.0, ρ=1.0, max_iter=200, nonneg=true, verbose=false)
+    m_slim = SLIM(λ_l1=0.05, λ_l2=1.0, max_iter=200, nonneg=true, verbose=false)
+    m_admm = ADMMSLIM(λ_l1=0.05, λ_l2=1.0, ρ=1.0, max_iter=200, nonneg=true, verbose=false)
     fit!(m_slim, X)
     fit!(m_admm, X)
 
@@ -150,8 +150,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 15, 0.2)
 
-    m1 = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=20, verbose=false)
-    m2 = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=20, verbose=false)
+    m1 = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
+    m2 = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(m1, X)
     fit!(m2, X)
 
@@ -159,7 +159,7 @@ end
 end
 
 @testset "Invalid parameters" begin
-    @test_throws ArgumentError ADMMSLIM(λ_1=-0.1)
-    @test_throws ArgumentError ADMMSLIM(λ_2=-1.0)
+    @test_throws ArgumentError ADMMSLIM(λ_l1=-0.1)
+    @test_throws ArgumentError ADMMSLIM(λ_l2=-1.0)
     @test_throws ArgumentError ADMMSLIM(ρ=0.0)
 end

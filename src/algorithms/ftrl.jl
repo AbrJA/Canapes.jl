@@ -21,8 +21,8 @@ Supports three families:
 
 # Constructor
 ```julia
-FTRL(; learning_rate=0.1, learning_rate_decay=0.5, λ=0.0, l1_ratio=1.0,
-       dropout=0.0, family=Binomial(), clip_gradient=1000.0, verbose=true)
+FTRL(; lr=0.1, lr_decay=0.5, λ=0.0, l1_ratio=1.0,
+       dropout=0.0, family=Binomial(), grad_clip=1000.0, verbose=true)
 ```
 
 # Example
@@ -33,7 +33,7 @@ julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
 julia> y = rand(MersenneTwister(3), [0.0, 1.0], 200);
 
-julia> model = FTRL(learning_rate=0.1, λ=0.01, l1_ratio=0.5, family=Binomial(), max_iter=2, verbose=false);
+julia> model = FTRL(lr=0.1, λ=0.01, l1_ratio=0.5, max_iter=2, verbose=false);
 
 julia> fit!(model, X, y; rng=MersenneTwister(2));
 
@@ -45,13 +45,13 @@ julia> length(coef(model))
 ```
 """
 mutable struct FTRL{T<:AbstractFloat} <: AbstractSparseRegression
-    learning_rate::T
-    const learning_rate_decay::T
+    lr::T
+    const lr_decay::T
     const λ::T
     const l1_ratio::T
     const dropout::T
     const family::Family
-    const clip_gradient::T
+    const grad_clip::T
     const max_iter::Int
     const verbose::Bool
     n_features::Int
@@ -61,13 +61,13 @@ mutable struct FTRL{T<:AbstractFloat} <: AbstractSparseRegression
 end
 
 function FTRL(;
-    learning_rate::Float64 = 0.1,
-    learning_rate_decay::Float64 = 0.5,
+    lr::Float64 = 0.1,
+    lr_decay::Float64 = 0.5,
     λ::Float64 = 0.0,
     l1_ratio::Float64 = 1.0,
     dropout::Float64 = 0.0,
     family::Family = Binomial(),
-    clip_gradient::Float64 = 1000.0,
+    grad_clip::Float64 = 1000.0,
     max_iter::Int = 1,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
@@ -75,12 +75,12 @@ function FTRL(;
     0.0 <= dropout < 1.0 || throw(ArgumentError("dropout must be in [0, 1), got $dropout"))
     0.0 <= l1_ratio <= 1.0 || throw(ArgumentError("l1_ratio must be in [0, 1], got $l1_ratio"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
-    learning_rate > 0.0 || throw(ArgumentError("learning_rate must be positive, got $learning_rate"))
-    learning_rate_decay > 0.0 || throw(ArgumentError("learning_rate_decay must be positive, got $learning_rate_decay"))
-    clip_gradient > 0.0 || throw(ArgumentError("clip_gradient must be positive, got $clip_gradient"))
+    lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
+    lr_decay > 0.0 || throw(ArgumentError("lr_decay must be positive, got $lr_decay"))
+    grad_clip > 0.0 || throw(ArgumentError("grad_clip must be positive, got $grad_clip"))
     T = dtype
-    FTRL{T}(T(learning_rate), T(learning_rate_decay), T(λ), T(l1_ratio), T(dropout),
-            family, T(clip_gradient), max_iter, verbose,
+    FTRL{T}(T(lr), T(lr_decay), T(λ), T(l1_ratio), T(dropout),
+            family, T(grad_clip), max_iter, verbose,
             0, T[], T[], false)
 end
 
@@ -115,13 +115,13 @@ function update!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVector;
 
     z = model.z
     n_acc = model.n
-    lr = model.learning_rate
-    β  = model.learning_rate_decay
+    lr = model.lr
+    β  = model.lr_decay
     λ  = model.λ
     λ1 = λ * model.l1_ratio
     λ2 = λ * (one(T) - model.l1_ratio)
     do_dropout = model.dropout > zero(T)
-    clip = model.clip_gradient
+    clip = model.grad_clip
     family = model.family
 
     rv = rowvals(Xt)
@@ -253,8 +253,8 @@ Return the model coefficient vector derived from the FTRL state.
 function coef(model::FTRL{T}) where {T}
     _require_fitted(model.is_initialized)
     w = Vector{T}(undef, model.n_features)
-    lr = model.learning_rate
-    β  = model.learning_rate_decay
+    lr = model.lr
+    β  = model.lr_decay
     λ1 = model.λ * model.l1_ratio
     λ2 = model.λ * (one(T) - model.l1_ratio)
     @inbounds for j in 1:model.n_features

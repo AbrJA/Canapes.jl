@@ -50,10 +50,10 @@ export
     AbstractMatrixFactorization,
     AbstractItemSimilarity,
     AbstractSparseRegression,
-    ALSSolver, CholeskySolver, ConjugateGradient, NonNegative,
+    ALSSolver, CholeskySolver, CGSolver, NonNegativeSolver,
     FeedbackType, IMPLICIT, EXPLICIT,
-    Family, Binomial, Gaussian, Poisson,
-    NegativeSampling, Uniform, Popular, Dynamic,
+    Family,
+    NegativeSampling,
 
     # Models
     WMF,
@@ -111,9 +111,6 @@ export
     LossHistoryCallback,
     CheckpointCallback,
     LearningRateCallback,
-    run_callbacks,
-    run_callbacks_train_begin,
-    run_callbacks_train_end,
 
     # Serialization
     save_model,
@@ -121,18 +118,10 @@ export
 
     # Sparse utilities
     to_csr,
-    sparse_row_norms,
-    sparse_col_nnz,
 
     # Tables.jl integration
     interactions_to_sparse,
-    sparse_to_interactions,
-    sparse_row_nnz,
-    dual_representation,
-
-    # Helpers
-    sigmoid,
-    init_factors
+    sparse_to_interactions
 
 # ── GPU stubs (implemented by ext/GideonCUDAExt.jl when CUDA is loaded) ──
 function fit_gpu! end

@@ -48,12 +48,12 @@ Gideon.on_epoch_end(::FailingCallback, ::Gideon.CallbackInfo) =
 
     @testset "LearningRateCallback" begin
         cb = LearningRateCallback(decay=0.5, min_lr=0.001)
-        model = BPR(rank=3, learning_rate=1.0, verbose=false)
+        model = BPR(rank=3, lr=1.0, verbose=false)
         info = Gideon.CallbackInfo(1, 0.5, 0.0, model)
         on_epoch_end(cb, info)
-        @test model.learning_rate ≈ 0.5
+        @test model.lr ≈ 0.5
         on_epoch_end(cb, info)
-        @test model.learning_rate ≈ 0.25
+        @test model.lr ≈ 0.25
     end
 
     @testset "run_callbacks" begin

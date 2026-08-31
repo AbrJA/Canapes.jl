@@ -179,7 +179,7 @@ end
     end
 
     @testset "LogisticMF recommend" begin
-        model = LogisticMF(rank=4, max_iter=3, learning_rate=0.01, verbose=false)
+        model = LogisticMF(rank=4, max_iter=3, lr=0.01, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         preds = recommend(model, X; k=5)
         @test size(preds) == (40, 5)
@@ -215,7 +215,7 @@ end
     end
 
     @testset "WMF CG transform" begin
-        model = WMF(rank=8, max_iter=5, solver=ConjugateGradient(), verbose=false)
+        model = WMF(rank=8, max_iter=5, solver=CGSolver(), verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         X_new = sprand(MersenneTwister(7), 3, 60, 0.1)
         U_new = Gideon.transform(model, X_new)
@@ -295,7 +295,7 @@ end
 @testset "SLIM recommend" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 20, 0.15)
-    model = SLIM(λ_1=1.0, λ_2=0.5, max_iter=5, verbose=false)
+    model = SLIM(λ_l1=1.0, λ_l2=0.5, max_iter=5, verbose=false)
     fit!(model, X)
     @test model.is_fitted
 
@@ -313,7 +313,7 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 20, 0.2)
 
-    model = SoftImpute(rank=5, λ=1.0, max_iter=50, convergence_tol=1e-5, verbose=false)
+    model = SoftImpute(rank=5, λ=1.0, max_iter=50, tol=1e-5, verbose=false)
     fit!(model, X; rng=rng)
     @test model.is_fitted
     @test size(model.U, 1) == 30
@@ -328,7 +328,7 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 20, 0.2)
 
-    model = SoftSVD(rank=5, λ=1.0, max_iter=50, convergence_tol=1e-5, verbose=false)
+    model = SoftSVD(rank=5, λ=1.0, max_iter=50, tol=1e-5, verbose=false)
     fit!(model, X; rng=rng)
     @test model.is_fitted
     @test size(model.U, 1) == 30
@@ -356,7 +356,7 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 15, 0.2)
 
-    model = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=20, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(model, X)
     @test model.is_fitted
     preds = recommend(model, X; k=3)

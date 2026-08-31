@@ -31,7 +31,7 @@ that handles missing data properly.
 
 # Constructor
 ```julia
-SoftImpute(; rank=10, λ=0.0, max_iter=100, convergence_tol=1e-3,
+SoftImpute(; rank=10, λ=0.0, max_iter=100, tol=1e-3,
              final_svd=true, verbose=true)
 ```
 
@@ -39,7 +39,7 @@ SoftImpute(; rank=10, λ=0.0, max_iter=100, convergence_tol=1e-3,
 - `rank::Int` — target rank for the low-rank approximation
 - `λ::T` — nuclear-norm penalty (soft-threshold on singular values)
 - `max_iter::Int` — maximum iterations
-- `convergence_tol::T` — relative Frobenius norm change for early stopping
+- `tol::T` — relative Frobenius norm change for early stopping
 - `final_svd::Bool` — re-factorize result via full SVD at end
 - `U::Matrix{T}` — left singular vectors (m × rank) after fitting
 - `d::Vector{T}` — singular values after fitting
@@ -63,7 +63,7 @@ mutable struct SoftImpute{T<:AbstractFloat} <: AbstractSoftALS{T}
     const rank::Int
     const λ::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const final_svd::Bool
     const verbose::Bool
     U::Matrix{T}
@@ -78,7 +78,7 @@ function SoftImpute(;
     rank::Int = 10,
     λ::Float64 = 0.0,
     max_iter::Int = 100,
-    convergence_tol::Float64 = 1e-3,
+    tol::Float64 = 1e-3,
     final_svd::Bool = true,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
@@ -86,7 +86,7 @@ function SoftImpute(;
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     T = dtype
-    SoftImpute{T}(rank, T(λ), max_iter, T(convergence_tol), final_svd, verbose,
+    SoftImpute{T}(rank, T(λ), max_iter, T(tol), final_svd, verbose,
                   Matrix{T}(undef,0,0), T[], Matrix{T}(undef,0,0),
                   Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
 end
@@ -104,7 +104,7 @@ style — no imputation correction at observed entries. Faster per iteration tha
 
 # Constructor
 ```julia
-SoftSVD(; rank=10, λ=0.0, max_iter=100, convergence_tol=1e-3,
+SoftSVD(; rank=10, λ=0.0, max_iter=100, tol=1e-3,
           final_svd=true, verbose=true)
 ```
 
@@ -129,7 +129,7 @@ mutable struct SoftSVD{T<:AbstractFloat} <: AbstractSoftALS{T}
     const rank::Int
     const λ::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const final_svd::Bool
     const verbose::Bool
     U::Matrix{T}
@@ -144,7 +144,7 @@ function SoftSVD(;
     rank::Int = 10,
     λ::Float64 = 0.0,
     max_iter::Int = 100,
-    convergence_tol::Float64 = 1e-3,
+    tol::Float64 = 1e-3,
     final_svd::Bool = true,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
@@ -152,7 +152,7 @@ function SoftSVD(;
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     T = dtype
-    SoftSVD{T}(rank, T(λ), max_iter, T(convergence_tol), final_svd, verbose,
+    SoftSVD{T}(rank, T(λ), max_iter, T(tol), final_svd, verbose,
                Matrix{T}(undef,0,0), T[], Matrix{T}(undef,0,0),
                Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
 end
@@ -162,7 +162,7 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    PureSVD(; rank=10, max_iter=100, convergence_tol=1e-3, verbose=true)
+    PureSVD(; rank=10, max_iter=100, tol=1e-3, verbose=true)
 
 Truncated SVD via power iteration. Equivalent to `SoftSVD(λ=0, final_svd=false)`.
 Computes the top-`rank` singular triplets of a sparse matrix.
@@ -181,9 +181,9 @@ julia> size(model.U * Diagonal(model.d) * model.V')
 (200, 100)
 ```
 """
-function PureSVD(; rank::Int=10, max_iter::Int=100, convergence_tol::Float64=1e-3,
+function PureSVD(; rank::Int=10, max_iter::Int=100, tol::Float64=1e-3,
                   verbose::Bool=true, dtype::Type{<:AbstractFloat}=Float32)
-    SoftSVD(rank=rank, λ=0.0, max_iter=max_iter, convergence_tol=convergence_tol,
+    SoftSVD(rank=rank, λ=0.0, max_iter=max_iter, tol=tol,
             final_svd=false, verbose=verbose, dtype=dtype)
 end
 
@@ -236,7 +236,7 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
 
     Xt::SparseMatrixCSC{Tv,Ti} = SparseMatrixCSC(X')  # n × m for the item-side step
 
-    monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     for iter in 1:model.max_iter
         iter_start = time_ns()

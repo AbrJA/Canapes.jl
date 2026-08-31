@@ -16,7 +16,7 @@ end
 @testset "Loss decreases" begin
     rng = MersenneTwister(7)
     X = sprand(rng, 80, 60, 0.08)
-    model = IALS(rank=5, λ=0.1, α=10.0, max_iter=10, convergence_tol=-1.0, verbose=false)
+    model = IALS(rank=5, λ=0.1, α=10.0, max_iter=10, tol=-1.0, verbose=false)
     fit!(model, X; rng=rng)
     @test model.is_fitted
 end
@@ -57,7 +57,7 @@ end
 @testset "Convergence tolerance" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 60, 50, 0.05)
-    model = IALS(rank=5, λ=0.01, α=10.0, max_iter=100, convergence_tol=0.01, verbose=false)
+    model = IALS(rank=5, λ=0.01, α=10.0, max_iter=100, tol=0.01, verbose=false)
     fit!(model, X; rng=rng)
     @test model.is_fitted
 end
@@ -65,7 +65,7 @@ end
 @testset "CG solver" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 40, 0.1)
-    model = IALS(rank=16, λ=0.01, α=10.0, max_iter=5, solver=ConjugateGradient(), cg_steps=5, verbose=false)
+    model = IALS(rank=16, λ=0.01, α=10.0, max_iter=5, solver=CGSolver(), cg_steps=5, verbose=false)
     fit!(model, X; rng=rng)
     @test model.is_fitted
     @test all(isfinite, model.user_factors)

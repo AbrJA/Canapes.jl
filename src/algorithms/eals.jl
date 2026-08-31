@@ -38,7 +38,7 @@ O(d) per element instead of O(d³) per user.
 
 # Constructor
 ```julia
-EALS(; rank=64, λ=0.01, w0=1.0, max_iter=15, convergence_tol=0.005,
+EALS(; rank=64, λ=0.01, w0=1.0, max_iter=15, tol=0.005,
        popularity_exponent=0.5, verbose=true)
 ```
 
@@ -47,7 +47,7 @@ EALS(; rank=64, λ=0.01, w0=1.0, max_iter=15, convergence_tol=0.005,
 - `λ::T` — L2 regularization strength
 - `w0::T` — overall weight for unobserved entries (scales popularity weights)
 - `max_iter::Int` — maximum iterations
-- `convergence_tol::T` — relative loss change for early stopping (-1 disables)
+- `tol::T` — relative loss change for early stopping (-1 disables)
 - `popularity_exponent::T` — exponent for popularity weighting (0.5 = sqrt)
 - `user_factors::Matrix{T}` — (rank × n_users) after fitting
 - `item_factors::Matrix{T}` — (rank × n_items) after fitting
@@ -73,7 +73,7 @@ mutable struct EALS{T<:AbstractFloat} <: AbstractMatrixFactorization
     const λ::T
     const w0::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const popularity_exponent::T
     const verbose::Bool
     # Factors (rank × n)
@@ -89,7 +89,7 @@ function EALS(;
     λ::Float64 = 0.01,
     w0::Float64 = 1.0,
     max_iter::Int = 15,
-    convergence_tol::Float64 = 0.005,
+    tol::Float64 = 0.005,
     popularity_exponent::Float64 = 0.5,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
@@ -99,7 +99,7 @@ function EALS(;
     w0 > 0.0 || throw(ArgumentError("w0 must be positive, got $w0"))
     popularity_exponent >= 0.0 || throw(ArgumentError("popularity_exponent must be non-negative, got $popularity_exponent"))
     T = dtype
-    EALS{T}(rank, T(λ), T(w0), max_iter, T(convergence_tol), T(popularity_exponent), verbose,
+    EALS{T}(rank, T(λ), T(w0), max_iter, T(tol), T(popularity_exponent), verbose,
             Matrix{T}(undef, 0, 0), Matrix{T}(undef, 0, 0), T[], false)
 end
 
@@ -159,7 +159,7 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
     # Per-thread prediction cache, allocated once and reused across sweeps
     pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), Threads.nthreads())
 
-    monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     λ_val = model.λ::T
 

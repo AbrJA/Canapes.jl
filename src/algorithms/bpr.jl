@@ -26,15 +26,15 @@ pointwise prediction. Uses SGD with negative sampling of (user, pos, neg) triple
 # Negative Sampling Strategies
 - `Uniform()` — standard uniform random sampling (Rendle et al. 2009)
 - `Popular()` — popularity-biased sampling (items sampled proportional to sqrt of frequency)
-- `Dynamic()` — Dynamic Negative Sampling: sample `dns_candidates` negatives, pick the
+- `Dynamic()` — Dynamic Negative Sampling: sample `dynamic_candidates` negatives, pick the
   one with highest score as the "hardest" negative (Zhang et al. 2013)
 
 # Constructor
 ```julia
 BPR(; rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
-      learning_rate=0.05, max_iter=100, n_samples=0,
-      negative_sampling=Uniform(), dns_candidates=5,
-      convergence_tol=-1.0, verbose=true)
+      lr=0.05, max_iter=100, n_samples=0,
+      negative_sampling=Uniform(), dynamic_candidates=5,
+      tol=-1.0, verbose=true)
 ```
 
 # Fields
@@ -42,24 +42,24 @@ BPR(; rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
 - `λ_user::T` — L2 regularization for user factors
 - `λ_pos::T` — L2 regularization for positive item factors
 - `λ_neg::T` — L2 regularization for negative item factors
-- `learning_rate::T` — SGD step size
+- `lr::T` — SGD step size
 - `max_iter::Int` — number of epochs
 - `n_samples::Int` — samples per epoch (0 = nnz(X))
 - `negative_sampling::NegativeSampling` — `Uniform()`, `Popular()`, or `Dynamic()`
-- `dns_candidates::Int` — number of candidates for Dynamic() strategy
-- `convergence_tol::T` — AUC-based early stopping tolerance (-1 disables)
+- `dynamic_candidates::Int` — number of candidates for Dynamic() strategy
+- `tol::T` — AUC-based early stopping tolerance (-1 disables)
 """
 mutable struct BPR{T<:AbstractFloat} <: AbstractMatrixFactorization
     const rank::Int
     const λ_user::T
     const λ_pos::T
     const λ_neg::T
-    learning_rate::T
+    lr::T
     const max_iter::Int
     const n_samples::Int
     const negative_sampling::NegativeSampling
-    const dns_candidates::Int
-    const convergence_tol::T
+    const dynamic_candidates::Int
+    const tol::T
     const verbose::Bool
     # Factors
     user_factors::Matrix{T}
@@ -73,21 +73,21 @@ function BPR(;
     λ_user::Float64 = 0.01,
     λ_pos::Float64 = 0.01,
     λ_neg::Float64 = 0.01,
-    learning_rate::Float64 = 0.05,
+    lr::Float64 = 0.05,
     max_iter::Int = 100,
     n_samples::Int = 0,
     negative_sampling::NegativeSampling = Uniform(),
-    dns_candidates::Int = 5,
-    convergence_tol::Float64 = -1.0,
+    dynamic_candidates::Int = 5,
+    tol::Float64 = -1.0,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
-    learning_rate > 0.0 || throw(ArgumentError("learning_rate must be positive, got $learning_rate"))
-    dns_candidates >= 1 || throw(ArgumentError("dns_candidates must be ≥ 1, got $dns_candidates"))
+    lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
+    dynamic_candidates >= 1 || throw(ArgumentError("dynamic_candidates must be ≥ 1, got $dynamic_candidates"))
     T = dtype
-    BPR{T}(rank, T(λ_user), T(λ_pos), T(λ_neg), T(learning_rate), max_iter, n_samples,
-            negative_sampling, dns_candidates, T(convergence_tol), verbose,
+    BPR{T}(rank, T(λ_user), T(λ_pos), T(λ_neg), T(lr), max_iter, n_samples,
+            negative_sampling, dynamic_candidates, T(tol), verbose,
             Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), T[], false)
 end
 
@@ -183,14 +183,14 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
     pop_total = pop_cumsum[end]
 
     samples_per_epoch = model.n_samples > 0 ? model.n_samples : n_eligible
-    monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=3)
+    monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=3)
 
-    lr = model.learning_rate
+    lr = model.lr
     λ_u = model.λ_user
     λ_p = model.λ_pos
     λ_n = model.λ_neg
     neg_strategy = model.negative_sampling
-    dns_k = model.dns_candidates
+    dns_k = model.dynamic_candidates
 
     # ── Per-thread RNGs for thread safety ──
     nt = Threads.nthreads()

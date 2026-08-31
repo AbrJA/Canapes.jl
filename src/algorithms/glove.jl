@@ -11,7 +11,7 @@
 #
 # where f(x) = (x/x_max)^α if x < x_max, else 1.
 # The ½ makes the gradient of each squared term equal to the residual itself
-# (no floating factor of 2), so `learning_rate` has the same semantics as the
+# (no floating factor of 2), so `lr` has the same semantics as the
 # reference implementations and loss curves are directly comparable.
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -25,8 +25,8 @@ the log-count matrix with a weighting function that caps frequent pairs.
 
 # Constructor
 ```julia
-GloVe(; rank=50, x_max=100.0, learning_rate=0.05, α=0.75, λ=0.0,
-        max_iter=25, convergence_tol=-1.0, shuffle=false, verbose=true)
+GloVe(; rank=50, x_max=100.0, lr=0.05, α=0.75, λ=0.0,
+        max_iter=25, tol=-1.0, shuffle=false, verbose=true)
 ```
 
 # Example
@@ -53,11 +53,11 @@ julia> size(embeddings(model))
 mutable struct GloVe{T<:AbstractFloat} <: AbstractMatrixFactorization
     const rank::Int
     const x_max::T
-    learning_rate::T
+    lr::T
     const α::T
     const λ::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const shuffle::Bool
     const verbose::Bool
     # Embeddings (rank × n)
@@ -77,21 +77,21 @@ end
 function GloVe(;
     rank::Int = 50,
     x_max::Float64 = 100.0,
-    learning_rate::Float64 = 0.05,
+    lr::Float64 = 0.05,
     α::Float64 = 0.75,
     λ::Float64 = 0.0,
     max_iter::Int = 25,
-    convergence_tol::Float64 = -1.0,
+    tol::Float64 = -1.0,
     shuffle::Bool = false,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     x_max > 0.0 || throw(ArgumentError("x_max must be positive, got $x_max"))
-    learning_rate > 0.0 || throw(ArgumentError("learning_rate must be positive, got $learning_rate"))
+    lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     T = dtype
     GloVe{T}(
-        rank, T(x_max), T(learning_rate), T(α), T(λ), max_iter, T(convergence_tol), shuffle, verbose,
+        rank, T(x_max), T(lr), T(α), T(λ), max_iter, T(tol), shuffle, verbose,
         Matrix{T}(undef,0,0), Matrix{T}(undef,0,0),
         T[], T[],
         Matrix{T}(undef,0,0), Matrix{T}(undef,0,0),
@@ -160,7 +160,7 @@ function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
     # Optional within-word pair permutation (seeded, deterministic).
     shuffle_perm = model.shuffle ? _glove_within_word_perm(X_csr, rng) : nothing
 
-    monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     for iter in 1:model.max_iter
         iter_start = time_ns()
@@ -168,7 +168,7 @@ function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
                                    shuffle_perm)
 
         if isnan(epoch_cost)
-            error("GloVe: cost became NaN — try a smaller learning_rate")
+            error("GloVe: cost became NaN — try a smaller lr")
         end
 
         avg_cost = epoch_cost / nnz_count
@@ -219,7 +219,7 @@ function _glove_epoch!(model::GloVe{T},
                        shuffle_perm::Union{Nothing,Vector{Int32}};
                        nt::Int = Threads.nthreads()) where {T}
     k  = model.rank
-    lr = model.learning_rate
+    lr = model.lr
     x_max = model.x_max
     α  = model.α
     λ  = model.λ

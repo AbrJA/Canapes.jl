@@ -4,6 +4,7 @@
 # (or directly: julia --project=. validation/validate_r.jl)
 
 using Gideon, SparseArrays, LinearAlgebra, Random
+using Gideon: Binomial, Gaussian   # internal (unexported) family singletons
 using Test
 include(joinpath(@__DIR__, "common.jl"))
 
@@ -63,7 +64,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
     @testset "WMF CholeskySolver: loss ≤ R × 1.05" begin
         r_loss = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_chol_loss.txt"))
         m = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=50,
-                solver=CholeskySolver(), feedback=IMPLICIT, convergence_tol=1e-6, verbose=false)
+                solver=CholeskySolver(), feedback=IMPLICIT, tol=1e-6, verbose=false)
         fit!(m, X_ref; rng=MersenneTwister(42))
         jl_loss = _wrmf_loss_ref(m.user_factors, m.item_factors, X_ref, λ_r, α_r)
         @test isfinite(jl_loss)
@@ -79,7 +80,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
         r_loss = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_chol_loss.txt"))
 
         m_ws = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=1,
-                   solver=CholeskySolver(), feedback=IMPLICIT, convergence_tol=-1.0, verbose=false)
+                   solver=CholeskySolver(), feedback=IMPLICIT, tol=-1.0, verbose=false)
         fit!(m_ws, X_ref; rng=MersenneTwister(1), U_init=U_r, V_init=V_r)
         jl_loss_ws = _wrmf_loss_ref(m_ws.user_factors, m_ws.item_factors, X_ref, λ_r, α_r)
         @test jl_loss_ws <= r_loss * 1.05
@@ -89,8 +90,8 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
     @testset "WMF CG: loss ≤ R × 1.05" begin
         r_loss_cg = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_cg_loss.txt"))
         m_cg = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=50,
-                   solver=ConjugateGradient(), cg_steps=10,
-                   convergence_tol=1e-6, verbose=false)
+                   solver=CGSolver(), cg_steps=10,
+                   tol=1e-6, verbose=false)
         fit!(m_cg, X_ref; rng=MersenneTwister(42))
         jl_loss_cg = _wrmf_loss_ref(m_cg.user_factors, m_cg.item_factors, X_ref, λ_r, α_r)
         @test isfinite(jl_loss_cg)
@@ -111,7 +112,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             r_w = _read_col(ftrl_files[4], "w")
             r_preds = _read_col(ftrl_files[5], "p")
 
-            m_ftrl = FTRL(learning_rate=0.1, learning_rate_decay=0.5,
+            m_ftrl = FTRL(lr=0.1, lr_decay=0.5,
                           λ=0.01, l1_ratio=0.5, verbose=false)
             for _ in 1:5
                 update!(m_ftrl, X_ftrl, y_ftrl; rng=MersenneTwister(42))
@@ -141,7 +142,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
                         r_preds_fm[2] > 0.7 && r_preds_fm[3] > 0.7
             for seed in 1:5
                 m = FM(
-                    learning_rate_w=10.0, rank=2, max_iter=200,
+                    lr_w=10.0, rank=2, max_iter=200,
                     λ_w=0.0, λ_v=0.0, family=Binomial(), intercept=true, verbose=false)
                 fit!(m, x_xor, y_xor; rng=MersenneTwister(seed))
                 p = predict(m, x_xor)
@@ -168,7 +169,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             # with 60 epochs and keeps decreasing below it — a robust gate.
             r_cost = _read_scalar(glove_files[1])
             X_glove = _load_sparse(glove_files[2], glove_files[3])
-            m_glove = GloVe(rank=5, x_max=10.0, learning_rate=0.15, max_iter=60, verbose=false)
+            m_glove = GloVe(rank=5, x_max=10.0, lr=0.15, max_iter=60, verbose=false)
             fit!(m_glove, X_glove; rng=MersenneTwister(42))
             jl_cost = last(m_glove.loss_history)
             @test isfinite(jl_cost)
@@ -197,7 +198,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             X_tr = X_fm[tr, :]; y_tr = y_fm[tr]
             X_te = X_fm[te, :]; y_te = y_fm[te]
 
-            m_fm = FM(learning_rate_w=0.2, rank=4, λ_w=0.0, λ_v=0.0,
+            m_fm = FM(lr_w=0.2, rank=4, λ_w=0.0, λ_v=0.0,
                       family=Gaussian(), intercept=true, max_iter=50, verbose=false)
             fit!(m_fm, X_tr, y_tr; rng)
             jl_preds = predict(m_fm, X_te)
@@ -268,7 +269,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             r_frob = _read_scalar(si_files[3])
 
             m_si = SoftImpute(rank=5, λ=1.0, max_iter=100,
-                              convergence_tol=1e-6, final_svd=true, verbose=false)
+                              tol=1e-6, final_svd=true, verbose=false)
             fit!(m_si, X_ref; rng=MersenneTwister(42))
 
             jl_d = m_si.d
@@ -314,7 +315,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             r_frob = _read_scalar(svd_files[3])
 
             m_svd = SoftSVD(rank=5, λ=1.0, max_iter=100,
-                            convergence_tol=1e-6, final_svd=true, verbose=false)
+                            tol=1e-6, final_svd=true, verbose=false)
             fit!(m_svd, X_ref; rng=MersenneTwister(42))
 
             jl_d = m_svd.d

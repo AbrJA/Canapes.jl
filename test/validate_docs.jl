@@ -4,6 +4,7 @@
 using Pkg
 Pkg.develop(path=joinpath(@__DIR__, ".."))
 using Gideon, SparseArrays, Random, LinearAlgebra, Test
+using Gideon: Binomial, Gaussian, Poisson   # internal (unexported) family singletons
 
 println("=" ^ 60)
 println("Validating documentation code examples")
@@ -148,15 +149,15 @@ println("\n[algorithms.md] WMF")
     @assert size(preds) == (500, 5)
 end
 
-@validate "WMF - ConjugateGradient" begin
+@validate "WMF - CGSolver" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model_cg = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=ConjugateGradient(), cg_steps=3, verbose=false)
+    model_cg = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CGSolver(), cg_steps=3, verbose=false)
     fit!(model_cg, X; rng=MersenneTwister(42))
 end
 
-@validate "WMF - NonNegative" begin
+@validate "WMF - NonNegativeSolver" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model_nn = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegative(), verbose=false)
+    model_nn = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegativeSolver(), verbose=false)
     fit!(model_nn, X; rng=MersenneTwister(42))
 end
 
@@ -208,7 +209,7 @@ println("\n[algorithms.md] BPR")
 
 @validate "BPR" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model = BPR(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, learning_rate=0.05, max_iter=50, verbose=false)
+    model = BPR(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=50, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     preds = recommend(model, X; k=10)
     @assert size(preds) == (500, 10)
@@ -220,7 +221,7 @@ println("\n[algorithms.md] LogisticMF")
 
 @validate "LogisticMF" begin
     X = sprand(MersenneTwister(1), 800, 300, 0.03)
-    model = LogisticMF(rank=15, α=1.0, λ=0.1, learning_rate=0.01, max_iter=20, n_negative=5, verbose=false)
+    model = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     preds = recommend(model, X; k=10)
     scores = score(model, X)
@@ -235,7 +236,7 @@ println("\n[algorithms.md] GloVe")
     X = sprand(MersenneTwister(1), 100, 100, 0.1)
     X = X + X'
     nonzeros(X) .= abs.(nonzeros(X))
-    model = GloVe(rank=50, x_max=100.0, learning_rate=0.05, max_iter=25, verbose=false)
+    model = GloVe(rank=50, x_max=100.0, lr=0.05, max_iter=25, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     E = embeddings(model)
     @assert size(E, 1) == 50
@@ -285,7 +286,7 @@ println("\n[algorithms.md] SLIM")
 
 @validate "SLIM" begin
     X = sprand(MersenneTwister(1), 500, 100, 0.05)
-    model = SLIM(λ_1=0.01, λ_2=0.1, max_iter=100, nonneg=true, verbose=false)
+    model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonneg=true, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=10)
     scores = score(model, X)
@@ -298,7 +299,7 @@ println("\n[algorithms.md] ADMMSLIM")
 
 @validate "ADMMSLIM" begin
     X = sprand(MersenneTwister(1), 500, 100, 0.05)
-    model = ADMMSLIM(λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=50, nonneg=true, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonneg=true, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=10)
     @assert size(preds) == (500, 10)
@@ -329,7 +330,7 @@ println("\n[algorithms.md] FTRL")
 @validate "FTRL - Binomial" begin
     X = sprand(MersenneTwister(1), 1000, 50, 0.1)
     y = rand(MersenneTwister(2), [0.0, 1.0], 1000)
-    model = FTRL(learning_rate=0.1, λ=0.01, family=Binomial(), verbose=false)
+    model = FTRL(lr=0.1, λ=0.01, family=Binomial(), verbose=false)
     fit!(model, X, y)
     p = predict(model, X)
     @assert all(0 .<= p .<= 1)
@@ -338,24 +339,24 @@ end
 @validate "FTRL - update!" begin
     X = sprand(MersenneTwister(1), 1000, 50, 0.1)
     y = rand(MersenneTwister(2), [0.0, 1.0], 1000)
-    model = FTRL(learning_rate=0.1, λ=0.01, family=Binomial(), verbose=false)
+    model = FTRL(lr=0.1, λ=0.01, family=Binomial(), verbose=false)
     update!(model, X, y)
 end
 
 @validate "FTRL - Gaussian" begin
-    model_reg = FTRL(learning_rate=0.1, family=Gaussian(), verbose=false)
+    model_reg = FTRL(lr=0.1, family=Gaussian(), verbose=false)
     @assert model_reg isa FTRL
 end
 
 @validate "FTRL - Poisson" begin
-    model_pois = FTRL(learning_rate=0.1, family=Poisson(), verbose=false)
+    model_pois = FTRL(lr=0.1, family=Poisson(), verbose=false)
     @assert model_pois isa FTRL
 end
 
 @validate "FTRL - coef" begin
     X = sprand(MersenneTwister(1), 100, 10, 0.3)
     y = rand(MersenneTwister(2), [0.0, 1.0], 100)
-    model = FTRL(learning_rate=0.1, family=Binomial(), verbose=false)
+    model = FTRL(lr=0.1, family=Binomial(), verbose=false)
     fit!(model, X, y)
     w = coef(model)
     @assert length(w) > 0
@@ -368,7 +369,7 @@ println("\n[algorithms.md] FM")
 @validate "FM - XOR" begin
     X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
     y = [0.0, 1.0, 1.0, 0.0]
-    model = FM(rank=4, family=Binomial(), max_iter=100, learning_rate_w=0.2, verbose=false)
+    model = FM(rank=4, family=Binomial(), max_iter=100, lr_w=0.2, verbose=false)
     fit!(model, X, y; rng=MersenneTwister(42))
     p = predict(model, X)
     @assert length(p) == 4

@@ -49,8 +49,8 @@ abstract type AbstractSparseRegression <: AbstractSparseModel end
 
 Abstract type for ALS solver strategies. Concrete subtypes:
 - [`CholeskySolver`](@ref) — direct Cholesky factorization (most stable)
-- [`ConjugateGradient`](@ref) — iterative CG solver (fastest at scale)
-- [`NonNegative`](@ref) — non-negative least squares
+- [`CGSolver`](@ref) — iterative CG solver (fastest at scale)
+- [`NonNegativeSolver`](@ref) — non-negative least squares
 """
 abstract type ALSSolver end
 
@@ -62,18 +62,18 @@ Direct Cholesky factorization solver. Maximum numerical stability.
 struct CholeskySolver <: ALSSolver end
 
 """
-    ConjugateGradient <: ALSSolver
+    CGSolver <: ALSSolver
 
 Iterative Conjugate Gradient solver. Fastest for large-scale problems.
 """
-struct ConjugateGradient <: ALSSolver end
+struct CGSolver <: ALSSolver end
 
 """
-    NonNegative <: ALSSolver
+    NonNegativeSolver <: ALSSolver
 
 Non-Negative Least Squares solver. Produces non-negative factor matrices.
 """
-struct NonNegative <: ALSSolver end
+struct NonNegativeSolver <: ALSSolver end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Feedback enum

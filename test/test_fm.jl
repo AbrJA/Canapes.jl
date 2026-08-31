@@ -7,7 +7,7 @@
     n_correct = 0
     for seed in 1:5
         fm = FM(
-            learning_rate_w=10.0, rank=2, max_iter=200,
+            lr_w=10.0, rank=2, max_iter=200,
             λ_w=0.0, λ_v=0.0, family=Binomial(), intercept=true, verbose=false)
         fit!(fm, x, y_xor; rng=MersenneTwister(seed))
         preds = predict(fm, x)
@@ -22,7 +22,7 @@ end
     yg = randn(rng, 100)
     mse(m) = sum((predict(m, Xg) .- yg).^2) / length(yg)
 
-    fm = FM(rank=5, family=Gaussian(), learning_rate_w=0.01, max_iter=50, verbose=false)
+    fm = FM(rank=5, family=Gaussian(), lr_w=0.01, max_iter=50, verbose=false)
     fit!(fm, Xg, yg; rng=MersenneTwister(1))
     preds = predict(fm, Xg)
     @test length(preds) == 100
@@ -35,8 +35,8 @@ end
     yg = randn(rng, 100)
     mse(m) = sum((predict(m, Xg) .- yg).^2) / length(yg)
 
-    m5 = FM(rank=5, family=Gaussian(), learning_rate_w=0.01, max_iter=5, verbose=false)
-    m50 = FM(rank=5, family=Gaussian(), learning_rate_w=0.01, max_iter=50, verbose=false)
+    m5 = FM(rank=5, family=Gaussian(), lr_w=0.01, max_iter=5, verbose=false)
+    m50 = FM(rank=5, family=Gaussian(), lr_w=0.01, max_iter=50, verbose=false)
     fit!(m5, Xg, yg; rng=MersenneTwister(1))
     fit!(m50, Xg, yg; rng=MersenneTwister(1))
     @test mse(m50) < mse(m5)
@@ -49,9 +49,9 @@ end
     X_test = sprand(rng, 30, 20, 0.3)
     y_test = randn(rng, 30)
 
-    fm_noreg = FM(rank=5, family=Gaussian(), learning_rate_w=0.01,
+    fm_noreg = FM(rank=5, family=Gaussian(), lr_w=0.01,
                                      λ_w=0.0, λ_v=0.0, max_iter=100, verbose=false)
-    fm_reg = FM(rank=5, family=Gaussian(), learning_rate_w=0.01,
+    fm_reg = FM(rank=5, family=Gaussian(), lr_w=0.01,
                                    λ_w=0.1, λ_v=0.1, max_iter=100, verbose=false)
     fit!(fm_noreg, X_train, y_train; rng=MersenneTwister(1))
     fit!(fm_reg, X_train, y_train; rng=MersenneTwister(1))
@@ -65,8 +65,8 @@ end
     Xg = sprand(rng, 100, 20, 0.3)
     yg = randn(rng, 100)
 
-    fm = FM(rank=5, family=Gaussian(), learning_rate_w=0.01,
-                               convergence_tol=0.001, max_iter=200, verbose=false)
+    fm = FM(rank=5, family=Gaussian(), lr_w=0.01,
+                               tol=0.001, max_iter=200, verbose=false)
     fit!(fm, Xg, yg; rng=MersenneTwister(1))
     @test fm.is_initialized
 end

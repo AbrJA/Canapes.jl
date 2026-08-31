@@ -1,5 +1,8 @@
 using Test
 using Gideon
+# Names that are internal (not exported) but exercised directly by the tests.
+using Gideon: Binomial, Gaussian, Poisson, Popular, Dynamic, init_factors, sigmoid,
+              dual_representation, sparse_row_norms, sparse_col_nnz, sparse_row_nnz, run_callbacks
 using SparseArrays
 using LinearAlgebra
 using Random

@@ -17,8 +17,8 @@ Logistic Matrix Factorization for implicit feedback via Adagrad with negative sa
 
 # Constructor
 ```julia
-LogisticMF(; rank=10, λ=0.6, α=1.0, learning_rate=1.0, max_iter=30,
-    n_negative=30, convergence_tol=-1.0, verbose=true)
+LogisticMF(; rank=10, λ=0.6, α=1.0, lr=1.0, max_iter=30,
+    n_negative=30, tol=-1.0, verbose=true)
 ```
 
 # Example
@@ -41,10 +41,10 @@ mutable struct LogisticMF{T<:AbstractFloat} <: AbstractMatrixFactorization
     const rank::Int
     const λ::T
     const α::T
-    learning_rate::T
+    lr::T
     const max_iter::Int
     const n_negative::Int
-    const convergence_tol::T
+    const tol::T
     const verbose::Bool
     user_factors::Matrix{T}
     item_factors::Matrix{T}
@@ -55,19 +55,19 @@ function LogisticMF(;
     rank::Int = 10,
     λ::Float64 = 0.6,
     α::Float64 = 1.0,
-    learning_rate::Float64 = 1.0,
+    lr::Float64 = 1.0,
     max_iter::Int = 30,
     n_negative::Int = 30,
-    convergence_tol::Float64 = -1.0,
+    tol::Float64 = -1.0,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
-    learning_rate > 0.0 || throw(ArgumentError("learning_rate must be positive, got $learning_rate"))
+    lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     n_negative >= 1 || throw(ArgumentError("n_negative must be ≥ 1, got $n_negative"))
     Td = dtype
-    LogisticMF{Td}(rank, Td(λ), Td(α), Td(learning_rate), max_iter, n_negative, Td(convergence_tol),
+    LogisticMF{Td}(rank, Td(λ), Td(α), Td(lr), max_iter, n_negative, Td(tol),
             verbose, Matrix{Td}(undef,0,0), Matrix{Td}(undef,0,0), false)
 end
 
@@ -130,7 +130,7 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
         end
     end
 
-    lr = model.learning_rate
+    lr = model.lr
     λ  = model.λ
     n_neg = model.n_negative
     ada_eps = T(1e-6)
@@ -139,7 +139,7 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     grad2_U = zeros(T, k, n_users)::Matrix{T}
     grad2_V = zeros(T, k, n_items)::Matrix{T}
 
-    monitor = ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     # Per-thread RNGs and pre-allocated gradient buffers (zero alloc inner loop)
     nt = Threads.nthreads()

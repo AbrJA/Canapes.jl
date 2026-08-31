@@ -54,8 +54,8 @@ const _PROPERTY_MODELS = [
     (name="LogisticMF",  model=() -> LogisticMF(rank=3, max_iter=2, verbose=false), square=false),
     (name="BPR",         model=() -> BPR(rank=3, max_iter=2, verbose=false), square=false),
     (name="EASE",        model=() -> EASE(λ=100.0, verbose=false), square=false),
-    (name="SLIM",        model=() -> SLIM(λ_1=0.01, max_iter=3, verbose=false), square=false),
-    (name="ADMMSLIM",    model=() -> ADMMSLIM(λ_1=0.01, max_iter=3, verbose=false), square=false),
+    (name="SLIM",        model=() -> SLIM(λ_l1=0.01, max_iter=3, verbose=false), square=false),
+    (name="ADMMSLIM",    model=() -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false), square=false),
     (name="ItemKNN",     model=() -> ItemKNN(k=3, verbose=false), square=false),
     (name="SoftImpute",  model=() -> SoftImpute(rank=3, max_iter=2, verbose=false), square=false),
     (name="GloVe",       model=() -> GloVe(rank=3, max_iter=2, verbose=false), square=true),
@@ -138,8 +138,8 @@ end
     signed_models = [
         () -> WMF(rank=3, max_iter=3, feedback=EXPLICIT, verbose=false),
         () -> EASE(λ=100.0, verbose=false),
-        () -> SLIM(λ_1=0.01, max_iter=3, verbose=false),
-        () -> ADMMSLIM(λ_1=0.01, max_iter=3, verbose=false),
+        () -> SLIM(λ_l1=0.01, max_iter=3, verbose=false),
+        () -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false),
         () -> ItemKNN(k=3, verbose=false),
         () -> SoftImpute(rank=3, max_iter=2, verbose=false),
     ]
@@ -175,8 +175,8 @@ end
         () -> IALS(rank=3, max_iter=2, verbose=false),
         () -> EALS(rank=3, max_iter=2, verbose=false),
         () -> EASE(λ=100.0, verbose=false),
-        () -> SLIM(λ_1=0.01, max_iter=3, verbose=false),
-        () -> ADMMSLIM(λ_1=0.01, max_iter=3, verbose=false),
+        () -> SLIM(λ_l1=0.01, max_iter=3, verbose=false),
+        () -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false),
         () -> ItemKNN(k=3, verbose=false),
         () -> SoftImpute(rank=3, max_iter=2, verbose=false),
     ]

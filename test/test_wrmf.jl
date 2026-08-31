@@ -27,7 +27,7 @@ X = sprand(rng, 100, 80, 0.05)
 end
 
 @testset "Implicit CG" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=ConjugateGradient(), feedback=IMPLICIT, verbose=false)
+    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CGSolver(), feedback=IMPLICIT, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test size(model.user_factors) == (5, 100)
@@ -40,8 +40,8 @@ end
     @test model.is_fitted
 end
 
-@testset "NonNegative" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=3, solver=NonNegative(), feedback=IMPLICIT, verbose=false)
+@testset "NonNegativeSolver" begin
+    model = WMF(rank=5, λ=λ, α=α, max_iter=3, solver=NonNegativeSolver(), feedback=IMPLICIT, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test all(model.user_factors .>= -1e-12)
@@ -78,7 +78,7 @@ end
     losses = Float64[]
     for n_iter in [2, 5, 15, 30]
         m = WMF(rank=4, λ=λ, α=α, max_iter=n_iter, solver=CholeskySolver(),
-                 feedback=IMPLICIT, convergence_tol=-1.0, verbose=false)
+                 feedback=IMPLICIT, tol=-1.0, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         push!(losses, _wrmf_loss(m.user_factors, m.item_factors, X, λ, α))
     end
@@ -88,10 +88,10 @@ end
 end
 
 @testset "CG loss decreases with more iterations" begin
-    m_early = WMF(rank=4, λ=λ, α=α, max_iter=2, solver=ConjugateGradient(),
-                   cg_steps=20, convergence_tol=-1.0, verbose=false)
-    m_conv = WMF(rank=4, λ=λ, α=α, max_iter=30, solver=ConjugateGradient(),
-                  cg_steps=20, convergence_tol=-1.0, verbose=false)
+    m_early = WMF(rank=4, λ=λ, α=α, max_iter=2, solver=CGSolver(),
+                   cg_steps=20, tol=-1.0, verbose=false)
+    m_conv = WMF(rank=4, λ=λ, α=α, max_iter=30, solver=CGSolver(),
+                  cg_steps=20, tol=-1.0, verbose=false)
     fit!(m_early, X; rng=MersenneTwister(1))
     fit!(m_conv, X; rng=MersenneTwister(1))
     l_early = _wrmf_loss(m_early.user_factors, m_early.item_factors, X, λ, α)
@@ -101,9 +101,9 @@ end
 
 @testset "CholeskySolver ≈ CG at convergence" begin
     m_chol = WMF(rank=4, λ=λ, α=α, max_iter=100, solver=CholeskySolver(),
-                  convergence_tol=1e-7, verbose=false)
-    m_cg = WMF(rank=4, λ=λ, α=α, max_iter=100, solver=ConjugateGradient(),
-                cg_steps=50, convergence_tol=1e-7, verbose=false)
+                  tol=1e-7, verbose=false)
+    m_cg = WMF(rank=4, λ=λ, α=α, max_iter=100, solver=CGSolver(),
+                cg_steps=50, tol=1e-7, verbose=false)
     fit!(m_chol, X; rng=MersenneTwister(7))
     fit!(m_cg, X; rng=MersenneTwister(7))
     l_chol = _wrmf_loss(m_chol.user_factors, m_chol.item_factors, X, λ, α)
@@ -112,13 +112,13 @@ end
     @test rel < 0.05
 end
 
-@testset "NonNegative warm-start" begin
+@testset "NonNegativeSolver warm-start" begin
     m_chol = WMF(rank=4, λ=λ, α=α, max_iter=20, solver=CholeskySolver(), verbose=false)
     fit!(m_chol, X; rng=MersenneTwister(1))
     U_warm = abs.(m_chol.user_factors)
     V_warm = abs.(m_chol.item_factors)
 
-    m_nnls = WMF(rank=4, λ=λ, α=α, max_iter=20, solver=NonNegative(), verbose=false)
+    m_nnls = WMF(rank=4, λ=λ, α=α, max_iter=20, solver=NonNegativeSolver(), verbose=false)
     fit!(m_nnls, X; rng=MersenneTwister(1), U_init=U_warm, V_init=V_warm)
     @test all(m_nnls.user_factors .>= -1e-12)
     @test all(m_nnls.item_factors .>= -1e-12)
@@ -160,7 +160,7 @@ end
 end
 
 @testset "Early stopping" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=100, convergence_tol=0.001, verbose=false)
+    model = WMF(rank=5, λ=λ, α=α, max_iter=100, tol=0.001, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     # Should converge before 100 iterations

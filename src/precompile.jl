@@ -15,7 +15,7 @@ import PrecompileTools: @setup_workload, @compile_workload
         X_small = sprand(rng, n_users, n_items, 0.3)
 
         # WMF with CG solver
-        m_cg = WMF(rank=4, λ=0.1, α=1.0, max_iter=2, solver=ConjugateGradient(), verbose=false)
+        m_cg = WMF(rank=4, λ=0.1, α=1.0, max_iter=2, solver=CGSolver(), verbose=false)
         fit!(m_cg, X_small; rng=MersenneTwister(2))
         recommend(m_cg, X_small; k=3)
         transform(m_cg, X_small)
@@ -40,7 +40,7 @@ import PrecompileTools: @setup_workload, @compile_workload
         recommend(m_ease, X_small; k=3)
 
         # SLIM
-        m_slim = SLIM(λ_1=0.1, λ_2=0.5, max_iter=5, verbose=false)
+        m_slim = SLIM(λ_l1=0.1, λ_l2=0.5, max_iter=5, verbose=false)
         fit!(m_slim, X_small)
         recommend(m_slim, X_small; k=3)
 
@@ -58,7 +58,7 @@ import PrecompileTools: @setup_workload, @compile_workload
 
         # FTRL
         y_small = rand(rng, n_users)
-        m_ftrl = FTRL(learning_rate=0.1, max_iter=1, verbose=false)
+        m_ftrl = FTRL(lr=0.1, max_iter=1, verbose=false)
         update!(m_ftrl, X_small, y_small; rng=MersenneTwister(8))
         predict(m_ftrl, X_small)
 
@@ -81,7 +81,7 @@ import PrecompileTools: @setup_workload, @compile_workload
         recommend(m_knn, X_small; k=3)
 
         # ADMM-SLIM
-        m_admm = ADMMSLIM(λ_1=0.1, λ_2=100.0, max_iter=5, verbose=false)
+        m_admm = ADMMSLIM(λ_l1=0.1, λ_l2=100.0, max_iter=5, verbose=false)
         fit!(m_admm, X_small; rng=MersenneTwister(12))
         recommend(m_admm, X_small; k=3)
 

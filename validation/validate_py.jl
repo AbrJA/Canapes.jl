@@ -37,7 +37,7 @@ const SCORE_CASES = [
      max_ndcg=_env_float("GIDEON_PY_EALS_MAX_NDCG_DELTA", 0.06),
      max_recall=_env_float("GIDEON_PY_EALS_MAX_RECALL_DELTA", 0.06)),
     (name="LogisticMF", model=() -> LogisticMF(rank=16, λ=0.6, α=1.0,
-                                                 learning_rate=1.0, max_iter=30,
+                                                 lr=1.0, max_iter=30,
                                                  n_negative=30, verbose=false),
      scores_path="py_lmf_scores.csv", required=false, metrics_path="py_lmf_metrics.json",
      # Meaningful bounds (was -1.0 / 0.08, which accepted any result): the two
@@ -128,7 +128,7 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
             @info "Skipping SLIM parity: py_slim_W.csv not found (scikit-learn may be unavailable)"
         else
             py_w = _read_matrix(slim_path)
-            m = SLIM(λ_1=0.001, λ_2=0.01, max_iter=50, verbose=false)
+            m = SLIM(λ_l1=0.001, λ_l2=0.01, max_iter=50, verbose=false)
             fit!(m, X_train)
             jl_w = Matrix(m.W)
 
@@ -158,7 +158,7 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
             py_recon = _read_matrix(recon_path)
             py_svals = vec(_read_matrix(svals_path))
 
-            m = SoftSVD(rank=10, λ=0.1, max_iter=40, convergence_tol=1e-4,
+            m = SoftSVD(rank=10, λ=0.1, max_iter=40, tol=1e-4,
                         final_svd=false, verbose=false)
             fit!(m, X_train; rng=MersenneTwister(42))
             jl_recon = Matrix(m.U * Diagonal(m.d) * m.V')
@@ -192,7 +192,7 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
             py_svals = vec(_read_matrix(svals_path))
             py_recon = _read_matrix(recon_path)
 
-            m = PureSVD(rank=10, max_iter=200, convergence_tol=1e-6, verbose=false)
+            m = PureSVD(rank=10, max_iter=200, tol=1e-6, verbose=false)
             fit!(m, X_train; rng=MersenneTwister(42))
             jl_recon = Matrix(m.U * Diagonal(m.d) * m.V')
 
@@ -256,8 +256,8 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
             py_W = _read_matrix(w_path)
             py_scores = _read_matrix(scores_path)
 
-            m = ADMMSLIM(λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=100,
-                         convergence_tol=1e-5, nonneg=true, verbose=false)
+            m = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=100,
+                         tol=1e-5, nonneg=true, verbose=false)
             fit!(m, X)
             jl_W = Matrix(m.W)
             jl_scores = Matrix(X * m.W)

@@ -20,11 +20,11 @@ fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=5)
 
 # Conjugate gradient solver (better for large datasets)
-model_cg = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=ConjugateGradient(), cg_steps=3)
+model_cg = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CGSolver(), cg_steps=3)
 fit!(model_cg, X; rng=MersenneTwister(42))
 
 # Non-negative solver
-model_nn = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegative())
+model_nn = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegativeSolver())
 fit!(model_nn, X; rng=MersenneTwister(42))
 
 # Score matrix and similarity search
@@ -80,7 +80,7 @@ BPR
 ```julia
 using Gideon, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 300, 0.03)
-model = BPR(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, learning_rate=0.05, max_iter=50)
+model = BPR(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=50)
 fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 ```
@@ -96,7 +96,7 @@ LogisticMF
 ```julia
 using Gideon, SparseArrays, Random
 X = sprand(MersenneTwister(1), 800, 300, 0.03)
-model = LogisticMF(rank=15, α=1.0, λ=0.1, learning_rate=0.01, max_iter=20, n_negative=5)
+model = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5)
 fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 scores = score(model, X)
@@ -118,7 +118,7 @@ X = sprand(MersenneTwister(1), 100, 100, 0.1)
 X = X + X'
 nonzeros(X) .= abs.(nonzeros(X))  # ensure positive counts
 
-model = GloVe(rank=50, x_max=100.0, learning_rate=0.05, max_iter=25)
+model = GloVe(rank=50, x_max=100.0, lr=0.05, max_iter=25)
 fit!(model, X; rng=MersenneTwister(42))
 E = embeddings(model)  # rank × n_words
 ```
@@ -186,8 +186,8 @@ SLIM
 using Gideon, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
-# λ_1 controls L1 sparsity, λ_2 controls L2 shrinkage
-model = SLIM(λ_1=0.01, λ_2=0.1, max_iter=100, nonneg=true)
+# λ_l1 controls L1 sparsity, λ_l2 controls L2 shrinkage
+model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonneg=true)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 scores = score(model, X)  # sparse SparseMatrixCSC
@@ -209,7 +209,7 @@ X = sprand(MersenneTwister(1), 500, 100, 0.05)
 # ρ controls ADMM convergence speed
 # Training memory is O(n_items²) (dense joint solve); prefer SLIM for very
 # large item counts. The fitted W is stored sparse: score returns SparseMatrixCSC.
-model = ADMMSLIM(λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=50, nonneg=true)
+model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonneg=true)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 ```
@@ -252,7 +252,7 @@ using Gideon, SparseArrays, Random
 # Binary classification
 X = sprand(MersenneTwister(1), 1000, 50, 0.1)
 y = rand(MersenneTwister(2), [0.0, 1.0], 1000)
-model = FTRL(learning_rate=0.1, λ=0.01, family=Binomial())
+model = FTRL(lr=0.1, λ=0.01, family=Gideon.Binomial())
 fit!(model, X, y)
 p = predict(model, X)  # probabilities in [0, 1]
 
@@ -260,10 +260,10 @@ p = predict(model, X)  # probabilities in [0, 1]
 update!(model, X, y)
 
 # Gaussian regression
-model_reg = FTRL(learning_rate=0.1, family=Gaussian())
+model_reg = FTRL(lr=0.1, family=Gideon.Gaussian())
 
 # Poisson regression (count data)
-model_pois = FTRL(learning_rate=0.1, family=Poisson())
+model_pois = FTRL(lr=0.1, family=Gideon.Poisson())
 
 # Access coefficients
 w = coef(model)
@@ -283,13 +283,13 @@ using Gideon, SparseArrays, Random
 # XOR problem with second-order interactions
 X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
 y = [0.0, 1.0, 1.0, 0.0]
-model = FM(rank=4, family=Binomial(), max_iter=100, learning_rate_w=0.2)
+model = FM(rank=4, family=Gideon.Binomial(), max_iter=100, lr_w=0.2)
 fit!(model, X, y; rng=MersenneTwister(42))
 predict(model, X)
 
 # Gaussian regression with feature interactions
 X_reg = sprand(MersenneTwister(1), 500, 20, 0.3)
 y_reg = randn(MersenneTwister(2), 500)
-model_reg = FM(rank=8, family=Gaussian(), max_iter=50)
+model_reg = FM(rank=8, family=Gideon.Gaussian(), max_iter=50)
 fit!(model_reg, X_reg, y_reg; rng=MersenneTwister(42))
 ```

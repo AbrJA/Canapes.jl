@@ -9,7 +9,7 @@
 # Instead of solving n_items independent elastic-net problems (standard SLIM),
 # ADMM-SLIM solves the full item-item weight matrix jointly using ADMM:
 #
-#   min_B  ½‖X - XB‖²_F + λ_1‖B‖₁ + λ_2/2‖B‖²_F
+#   min_B  ½‖X - XB‖²_F + λ_l1‖B‖₁ + λ_l2/2‖B‖²_F
 #   s.t.   diag(B) = 0
 #
 # This is equivalent to SLIM but 10-100× faster because:
@@ -17,7 +17,7 @@
 # 2. Pre-factors (G + ρI)⁻¹ via Cholesky once
 # 3. Iterates ADMM updates (matrix-level, not per-column)
 #
-# The result interpolates between EASE (λ_1=0) and SLIM (λ_1>0).
+# The result interpolates between EASE (λ_l1=0) and SLIM (λ_l1>0).
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
@@ -31,16 +31,16 @@ as coordinate-descent SLIM but in 10-100× less time.
 
 # Constructor
 ```julia
-ADMMSLIM(; λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=50, convergence_tol=1e-4,
+ADMMSLIM(; λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, tol=1e-4,
             nonneg=true, verbose=true, max_memory=nothing)
 ```
 
 # Fields
-- `λ_1::T` — L1 penalty (sparsity inducing, via soft-thresholding)
-- `λ_2::T` — L2 penalty (shrinkage / regularization)
+- `λ_l1::T` — L1 penalty (sparsity inducing, via soft-thresholding)
+- `λ_l2::T` — L2 penalty (shrinkage / regularization)
 - `ρ::T` — ADMM penalty parameter (controls convergence speed)
 - `max_iter::Int` — max ADMM iterations
-- `convergence_tol::T` — relative primal residual tolerance
+- `tol::T` — relative primal residual tolerance
 - `nonneg::Bool` — enforce non-negative weights
 - `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
   (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
@@ -53,7 +53,7 @@ item-item Gram matrix and ADMM variables in memory, so fitting uses
 O(n_items²) memory (≈5 dense n_items² matrices in `T`). The fitted `W`,
 however, is stored as a `SparseMatrixCSC`: soft-thresholding produces exact
 zeros, so only the surviving weights are kept (observed density is well
-below 100% and shrinks as λ_1 grows), and `score` returns a sparse matrix.
+below 100% and shrinks as λ_l1 grows), and `score` returns a sparse matrix.
 `recommend` picks the scoring path adaptively (sparse when the score matrix
 stays sparse, memory-bounded batched GEMM otherwise).
 
@@ -68,7 +68,7 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
-julia> model = ADMMSLIM(λ_1=0.05, λ_2=200.0, max_iter=5, verbose=false);
+julia> model = ADMMSLIM(λ_l1=0.05, λ_l2=200.0, max_iter=5, verbose=false);
 
 julia> fit!(model, X; rng=MersenneTwister(2));
 
@@ -79,11 +79,11 @@ julia> size(preds)
 ```
 """
 mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
-    const λ_1::T
-    const λ_2::T
+    const λ_l1::T
+    const λ_l2::T
     const ρ::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const nonneg::Bool
     const verbose::Bool
     const max_memory::Union{Nothing,Int}
@@ -92,23 +92,23 @@ mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
 end
 
 function ADMMSLIM(;
-    λ_1::Float64 = 0.01,
-    λ_2::Float64 = 100.0,
+    λ_l1::Float64 = 0.01,
+    λ_l2::Float64 = 100.0,
     ρ::Float64 = 1.0,
     max_iter::Int = 50,
-    convergence_tol::Float64 = 1e-4,
+    tol::Float64 = 1e-4,
     nonneg::Bool = true,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
     max_memory::Union{Nothing,Int} = nothing,
 )
-    λ_1 >= 0.0 || throw(ArgumentError("λ_1 must be non-negative, got $λ_1"))
-    λ_2 >= 0.0 || throw(ArgumentError("λ_2 must be non-negative, got $λ_2"))
+    λ_l1 >= 0.0 || throw(ArgumentError("λ_l1 must be non-negative, got $λ_l1"))
+    λ_l2 >= 0.0 || throw(ArgumentError("λ_l2 must be non-negative, got $λ_l2"))
     ρ > 0.0 || throw(ArgumentError("ρ must be positive, got $ρ"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
     T = dtype
-    ADMMSLIM{T}(T(λ_1), T(λ_2), T(ρ), max_iter, T(convergence_tol), nonneg, verbose,
+    ADMMSLIM{T}(T(λ_l1), T(λ_l2), T(ρ), max_iter, T(tol), nonneg, verbose,
                  max_memory, spzeros(T, 0, 0), false)
 end
 
@@ -130,8 +130,8 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
               callbacks::Vector{<:AbstractCallback}=AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    λ_1 = model.λ_1
-    λ_2 = model.λ_2
+    λ_l1 = model.λ_l1
+    λ_l2 = model.λ_l2
     ρ = model.ρ
     old_W = model.W
     old_is_fitted = model.is_fitted
@@ -149,12 +149,12 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     # Gram matrix: G = XᵀX
     G = Matrix{T}(X' * X)
 
-    # Pre-factor: (G + (λ_2 + ρ)I)⁻¹ via Cholesky
-    # The B-update solves: (G + (λ_2+ρ)I) B = G + ρ(Z - U)
+    # Pre-factor: (G + (λ_l2 + ρ)I)⁻¹ via Cholesky
+    # The B-update solves: (G + (λ_l2+ρ)I) B = G + ρ(Z - U)
     # Pre-factor the LHS
     lhs = copy(G)
     @inbounds for j in 1:n_items
-        lhs[j, j] += λ_2 + ρ
+        lhs[j, j] += λ_l2 + ρ
     end
     C = cholesky(Symmetric(lhs))
 
@@ -180,7 +180,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
 
         # ── Z-update: proximal operator (soft-threshold + optional non-neg) ──
         B_plus_U = B .+ U
-        threshold = λ_1 / ρ
+        threshold = λ_l1 / ρ
 
         if model.nonneg
             # Soft-threshold + clip to non-negative
@@ -225,7 +225,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
             @info "[ADMM-SLIM] iter=$iter  rel_resid=$(round(rel_resid; sigdigits=4))  nnz=$(nnz_iter)"
         end
 
-        if rel_resid < model.convergence_tol
+        if rel_resid < model.tol
             model.verbose && @info "[ADMM-SLIM] Converged at iteration $iter (rel_resid=$(round(rel_resid; sigdigits=4)))"
             break
         end

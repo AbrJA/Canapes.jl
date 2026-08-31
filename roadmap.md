@@ -159,7 +159,7 @@ these commits unless explicitly reviewed as part of the corresponding phase.
 
 18. Remove dead code and experimental artifacts — ✅ done
     - Unused files deleted (b0d33b7), legacy `validation/r_correctness.jl`
-      removed. Audit (2026-08-31): all 82 exports defined and referenced in
+      removed. Audit (2026-08-31): 82 exports defined and referenced in
       tests/docs (Aqua `test_undefined_exports`); all 122 internal helpers
       referenced; `dual_representation` and `link_function` confirmed in use;
       no stale docs/build artifacts tracked (`docs/build` and
@@ -220,6 +220,29 @@ All roadmap items are complete. Only the release process gates remain
   pre-sparse-W 0.133s/125MB (the densification costs the difference).
 
 ## Session log
+
+### 2026-08-31 — Public API naming pass (descriptive + short, no collisions)
+- **Fixed a real UX bug**: `Uniform`, `Binomial`, `Poisson` were exported and
+  collided with `Distributions.jl` (verified: `using Distributions, Gideon`
+  left them ambiguous). These six generic singletons are now **unexported**
+  (`Gideon.Binomial()` / `using Gideon: Binomial`); `Gaussian/Dynamic/Popular`
+  don't collide but were unexported for consistency of the sampling/family
+  surface. Defaults mean most users never type them.
+- **Reduced export surface 82 → 67**: unexported internal drivers and utils
+  (`run_callbacks*`, `init_factors`, `sigmoid`, `dual_representation`,
+  `sparse_row_norms`, `sparse_col_nnz`, `sparse_row_nnz`). Kept `to_csr` and
+  the callback authoring API (`AbstractCallback`, `CallbackInfo`, `on_*`).
+- **Shorter kwargs (fields renamed to match)**: `convergence_tol`→`tol`,
+  `learning_rate`→`lr` (and `_decay`/`_w`/`_v`→`lr_decay`/`lr_w`/`lr_v`),
+  `clip_gradient`→`grad_clip`, `dns_candidates`→`dynamic_candidates`,
+  `λ_1`/`λ_2`→`λ_l1`/`λ_l2` (consistent with `λ_w`/`λ_v`, disambiguates L1/L2).
+- **Solver suffix consistency**: `ConjugateGradient`→`CGSolver`,
+  `NonNegative`→`NonNegativeSolver` (all `*Solver`; `CholeskySolver` kept —
+  bare `Cholesky` would collide with `LinearAlgebra`).
+- Docs/README/validation: family examples qualified as `Gideon.Binomial()`;
+  test/validation entry points `using Gideon:` the unexported names they test.
+- Full suite green (17,456), doctests pass, `validation/run.jl --all` green,
+  docs build clean with `checkdocs=:exports`.
 
 ### 2026-08-31 — Determinism policy: `@simd` reductions instead of strict-order muladd
 - Rationale (measured): serial `muladd` dot kernels are ~8× slower than
@@ -306,7 +329,7 @@ All roadmap items are complete. Only the release process gates remain
   missing); R fixtures run via `uvr run` (fallback `Rscript`).
 - **GloVe ½-convention adopted** (`src/algorithms/glove.jl`): loss is now
   `½ Σ f(x)·diff²` and the gradient drops the factor of 2 — identical
-  accounting to rsparse/Stanford C, so `learning_rate` semantics and loss
+  accounting to rsparse/Stanford C, so `lr` semantics and loss
   curves are directly comparable. R-parity gate is now `cost ≤ R × 1.15` at
   60 epochs (observed ratio 0.55). The old 2.1×/2.5× gate was a bookkeeping
   artifact, not a quality gap.

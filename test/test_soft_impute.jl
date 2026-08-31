@@ -60,7 +60,7 @@ end
 @testset "Convergence tolerance" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 25, 0.3)
-    model = SoftImpute(rank=5, λ=0.1, max_iter=1000, convergence_tol=1e-6, verbose=false)
+    model = SoftImpute(rank=5, λ=0.1, max_iter=1000, tol=1e-6, verbose=false)
     fit!(model, X; rng=rng)
     @test all(isfinite, model.d)
 end

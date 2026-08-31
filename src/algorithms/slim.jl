@@ -6,7 +6,7 @@
 #   "SLIM: Sparse Linear Methods for Top-N Recommender Systems" (ICDM 2011)
 #
 # Learns a sparse item-item weight matrix W by solving, for each item j:
-#   min_wⱼ ½‖xⱼ - X·wⱼ‖² + λ_2/2‖wⱼ‖² + λ_1‖wⱼ‖₁
+#   min_wⱼ ½‖xⱼ - X·wⱼ‖² + λ_l2/2‖wⱼ‖² + λ_l1‖wⱼ‖₁
 #   subject to wⱼ ≥ 0, wⱼⱼ = 0
 #
 # This is coordinate descent on an elastic-net regression per item column.
@@ -23,25 +23,25 @@ and interpretable.
 
 # Constructor
 ```julia
-SLIM(; λ_1=0.01, λ_2=0.1, max_iter=50, convergence_tol=1e-4, verbose=true,
+SLIM(; λ_l1=0.01, λ_l2=0.1, max_iter=50, tol=1e-4, verbose=true,
         max_memory=nothing)
 ```
 
 # Fields
-- `λ_1::T` — L1 penalty (sparsity)
-- `λ_2::T` — L2 penalty (shrinkage)
+- `λ_l1::T` — L1 penalty (sparsity)
+- `λ_l2::T` — L2 penalty (shrinkage)
 - `max_iter::Int` — max coordinate descent iterations per item
-- `convergence_tol::T` — convergence threshold for coordinate descent
+- `tol::T` — convergence threshold for coordinate descent
 - `nonneg::Bool` — enforce non-negative weights (default: true)
 - `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
   (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
   `ArgumentError` before any large allocation
 """
 mutable struct SLIM{T<:AbstractFloat} <: AbstractItemSimilarity
-    const λ_1::T
-    const λ_2::T
+    const λ_l1::T
+    const λ_l2::T
     const max_iter::Int
-    const convergence_tol::T
+    const tol::T
     const nonneg::Bool
     const verbose::Bool
     const max_memory::Union{Nothing,Int}
@@ -50,21 +50,21 @@ mutable struct SLIM{T<:AbstractFloat} <: AbstractItemSimilarity
 end
 
 function SLIM(;
-    λ_1::Float64 = 0.01,
-    λ_2::Float64 = 0.1,
+    λ_l1::Float64 = 0.01,
+    λ_l2::Float64 = 0.1,
     max_iter::Int = 50,
-    convergence_tol::Float64 = 1e-4,
+    tol::Float64 = 1e-4,
     nonneg::Bool = true,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
     max_memory::Union{Nothing,Int} = nothing,
 )
-    λ_1 >= 0.0 || throw(ArgumentError("λ_1 must be non-negative, got $λ_1"))
-    λ_2 >= 0.0 || throw(ArgumentError("λ_2 must be non-negative, got $λ_2"))
+    λ_l1 >= 0.0 || throw(ArgumentError("λ_l1 must be non-negative, got $λ_l1"))
+    λ_l2 >= 0.0 || throw(ArgumentError("λ_l2 must be non-negative, got $λ_l2"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
     T = dtype
-    SLIM{T}(T(λ_1), T(λ_2), max_iter, T(convergence_tol), nonneg, verbose, max_memory,
+    SLIM{T}(T(λ_l1), T(λ_l2), max_iter, T(tol), nonneg, verbose, max_memory,
             spzeros(T, 0, 0), false)
 end
 
@@ -125,10 +125,10 @@ Fit one column of W using coordinate descent for elastic net.
 """
 function _slim_fit_column(G::Matrix{T}, diag_G::Vector{T},
                           j::Int, n_items::Int, model::SLIM{T}) where {T}
-    λ_1 = model.λ_1
-    λ_2 = model.λ_2
+    λ_l1 = model.λ_l1
+    λ_l2 = model.λ_l2
     max_iter = model.max_iter
-    tol = model.convergence_tol
+    tol = model.tol
     nonneg = model.nonneg
 
     # Target: Xᵀxⱼ = G[:, j]
@@ -150,12 +150,12 @@ function _slim_fit_column(G::Matrix{T}, diag_G::Vector{T},
             numerator = residual[i] + diag_G[i] * w[i]
 
             # Elastic net update with soft-thresholding
-            denom = diag_G[i] + λ_2
+            denom = diag_G[i] + λ_l2
 
             if nonneg
-                new_w = max(zero(T), (numerator - λ_1)) / denom
+                new_w = max(zero(T), (numerator - λ_l1)) / denom
             else
-                new_w = _soft_threshold(numerator, λ_1) / denom
+                new_w = _soft_threshold(numerator, λ_l1) / denom
             end
 
             # Update residual incrementally: Δw = new_w - w[i]

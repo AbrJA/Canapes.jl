@@ -164,7 +164,7 @@ function Gideon.fit_gpu!(model::Gideon.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     model.verbose && @info "[IALS-GPU] Training rank=$k, $(n_users) users × $(n_items) items"
 
     X_csr = Gideon.to_csr(X)
-    monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     # Pre-allocate per-thread buffers (avoids allocation inside @threads loop)
     nt = Threads.nthreads()
@@ -335,7 +335,7 @@ function Gideon.fit_gpu!(model::Gideon.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     # Build transpose for row access
     Xt = SparseMatrixCSC(X')
 
-    monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.convergence_tol), min_iter=2)
+    monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     # Pre-allocate per-thread buffers
     nt = Threads.nthreads()
@@ -389,7 +389,7 @@ function _gpu_wrmf_sweep!(
     λ = model.λ
     α = model.α
     is_implicit = model.feedback == Gideon.IMPLICIT
-    is_nnls = model.solver isa Gideon.NonNegative
+    is_nnls = model.solver isa Gideon.NonNegativeSolver
 
     # ── Compute YᵀY on GPU via cuBLAS syrk ──
     fixed_gpu = CuMatrix{T}(fixed)

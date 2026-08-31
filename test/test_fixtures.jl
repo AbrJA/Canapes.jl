@@ -13,7 +13,7 @@ using Test, SparseArrays, LinearAlgebra, Random
     X = sparse([1.0 2.0 3.0; 4.0 5.0 6.0])
 
     model = WMF(rank=2, λ=0.0, max_iter=100, solver=CholeskySolver(),
-                feedback=EXPLICIT, convergence_tol=-1.0, verbose=false)
+                feedback=EXPLICIT, tol=-1.0, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
 
     @test size(model.user_factors) == (2, 2)
@@ -31,7 +31,7 @@ end
 
 @testset "Fixture: test_cg_nan" begin
     X = sparse([0.0 1.0; 1.0 0.0])
-    model = WMF(rank=10, λ=0.01, max_iter=10, solver=ConjugateGradient(),
+    model = WMF(rank=10, λ=0.01, max_iter=10, solver=CGSolver(),
                 cg_steps=3, feedback=IMPLICIT, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     @test all(isfinite, model.user_factors)
@@ -39,7 +39,7 @@ end
 
     # Single-rating rows/columns must not poison the CG solve either.
     X2 = sparse([1.0 0 0 0 0; 0 1.0 0 0 0])
-    model2 = WMF(rank=3, λ=0.01, max_iter=5, solver=ConjugateGradient(),
+    model2 = WMF(rank=3, λ=0.01, max_iter=5, solver=CGSolver(),
                  cg_steps=3, feedback=IMPLICIT, verbose=false)
     fit!(model2, X2; rng=MersenneTwister(7))
     @test all(isfinite, model2.user_factors)
@@ -53,9 +53,9 @@ end
 
     for (name, factory) in [
         ("WMF", () -> WMF(rank=3, λ=0.0, max_iter=2, solver=CholeskySolver(), verbose=false)),
-        ("WMF-CG", () -> WMF(rank=3, λ=0.0, max_iter=2, solver=ConjugateGradient(), cg_steps=3, verbose=false)),
+        ("WMF-CG", () -> WMF(rank=3, λ=0.0, max_iter=2, solver=CGSolver(), cg_steps=3, verbose=false)),
         ("IALS", () -> IALS(rank=3, λ=0.0, max_iter=2, verbose=false)),
-        ("IALS-CG", () -> IALS(rank=3, λ=0.0, max_iter=2, solver=ConjugateGradient(), verbose=false)),
+        ("IALS-CG", () -> IALS(rank=3, λ=0.0, max_iter=2, solver=CGSolver(), verbose=false)),
         ("EALS", () -> EALS(rank=3, λ=0.0, max_iter=2, verbose=false)),
         ("LogisticMF", () -> LogisticMF(rank=3, λ=0.0, max_iter=2, n_negative=5, verbose=false)),
     ]
@@ -99,7 +99,7 @@ end
 
         # More iterations strictly lower the loss (calculate_loss semantics).
         early = WMF(rank=5, λ=0.1, α=1.0, max_iter=2, solver=CholeskySolver(),
-                    feedback=feedback, convergence_tol=-1.0, verbose=false)
+                    feedback=feedback, tol=-1.0, verbose=false)
         fit!(early, X; rng=MersenneTwister(1))
         @test manual_wmf_loss(model, X) < manual_wmf_loss(early, X)
     end
@@ -224,7 +224,7 @@ end
 @testset "Fixture: transform parity (fold-in)" begin
     X = sprand(MersenneTwister(41), 60, 40, 0.1)
     model = WMF(rank=4, λ=0.1, α=1.0, max_iter=150, solver=CholeskySolver(),
-                feedback=IMPLICIT, convergence_tol=-1.0, verbose=false)
+                feedback=IMPLICIT, tol=-1.0, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
 
     U_foldin = transform(model, X)

@@ -4,6 +4,7 @@ makedocs(
     modules  = [Gideon],
     sitename = "Gideon.jl",
     format   = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true"),
+    doctest  = true,
     checkdocs = :exports,
     pages    = [
         "Home"       => "index.md",

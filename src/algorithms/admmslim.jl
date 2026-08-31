@@ -64,11 +64,18 @@ coordinate descent is affordable.
 
 # Example
 ```julia
-using SparseArrays, Gideon
-X = sprand(1000, 500, 0.02)
-model = ADMMSLIM(λ_1=0.05, λ_2=200.0)
-fit!(model, X)
-preds = recommend(model, X; k=10)
+julia> using SparseArrays
+
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = ADMMSLIM(λ_1=0.05, λ_2=200.0, max_iter=5, verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> preds = recommend(model, X; k=10);
+
+julia> size(preds)
+(200, 10)
 ```
 """
 mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity

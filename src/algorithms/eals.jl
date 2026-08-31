@@ -54,12 +54,18 @@ EALS(; rank=64, λ=0.01, w0=1.0, max_iter=15, convergence_tol=0.005,
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(1000, 500, 0.02)
-model = EALS(rank=64, λ=0.01, w0=10.0, max_iter=20)
-fit!(model, X)
-preds = recommend(model, X; k=10)
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = EALS(rank=8, λ=0.01, w0=10.0, max_iter=2, verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> preds = recommend(model, X; k=10);
+
+julia> size(preds)
+(200, 10)
 ```
 """
 mutable struct EALS{T<:AbstractFloat} <: AbstractMatrixFactorization

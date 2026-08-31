@@ -47,12 +47,16 @@ SoftImpute(; rank=10, λ=0.0, max_iter=100, convergence_tol=1e-3,
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(1000, 500, 0.05)
-model = SoftImpute(rank=20, λ=1.0, max_iter=50)
-fit!(model, X)
-reconstruction = model.U * Diagonal(model.d) * model.V'
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = SoftImpute(rank=5, λ=1.0, max_iter=3, verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> size(model.U * Diagonal(model.d) * model.V')
+(200, 100)
 ```
 """
 mutable struct SoftImpute{T<:AbstractFloat} <: AbstractSoftALS{T}
@@ -109,12 +113,16 @@ Same as [`SoftImpute`](@ref).
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(1000, 500, 0.05)
-model = SoftSVD(rank=20, λ=1.0, max_iter=50)
-fit!(model, X)
-reconstruction = model.U * Diagonal(model.d) * model.V'
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = SoftSVD(rank=5, λ=1.0, max_iter=3, verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> size(model.U * Diagonal(model.d) * model.V')
+(200, 100)
 ```
 """
 mutable struct SoftSVD{T<:AbstractFloat} <: AbstractSoftALS{T}
@@ -161,11 +169,16 @@ Computes the top-`rank` singular triplets of a sparse matrix.
 
 # Example
 ```julia
-using SparseArrays, Gideon
-X = sprand(1000, 500, 0.05)
-model = PureSVD(rank=20)
-fit!(model, X)
-# model.U * Diagonal(model.d) * model.V' ≈ best rank-20 approximation
+julia> using SparseArrays
+
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = PureSVD(rank=5, verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> size(model.U * Diagonal(model.d) * model.V')
+(200, 100)
 ```
 """
 function PureSVD(; rank::Int=10, max_iter::Int=100, convergence_tol::Float64=1e-3,

@@ -32,6 +32,12 @@ Modules = [Gideon]
 Pages = ["serialization.jl"]
 ```
 
+## SoftImpute family
+
+```@docs
+AbstractSoftALS
+```
+
 ## Tables.jl Integration
 
 ```@autodocs

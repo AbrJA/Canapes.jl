@@ -69,6 +69,10 @@ using Pkg
     @testset "Properties" begin
         include("test_properties.jl")
     end
+    @testset "Docs examples" begin
+        include("validate_docs.jl")
+        @test !failed
+    end
     @testset "Tables" begin
         include("test_tables.jl")
     end

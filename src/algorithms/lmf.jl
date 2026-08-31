@@ -23,12 +23,18 @@ LogisticMF(; rank=10, λ=0.6, α=1.0, learning_rate=1.0, max_iter=30,
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(1000, 500, 0.01)
-model = LogisticMF(rank=32, max_iter=20, learning_rate=0.01)
-fit!(model, X)
-top_items = recommend(model, X; k=10)
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = LogisticMF(rank=8, max_iter=2, verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> top_items = recommend(model, X; k=10);
+
+julia> size(top_items)
+(200, 10)
 ```
 """
 mutable struct LogisticMF{T<:AbstractFloat} <: AbstractMatrixFactorization

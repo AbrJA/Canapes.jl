@@ -26,13 +26,18 @@ FM(; rank=4, learning_rate_w=0.2, learning_rate_v=learning_rate_w,
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(10000, 1000, 0.01)
-y = rand([0.0, 1.0], 10000)
-model = FM(rank=8, family=Binomial())
-fit!(model, X, y)
-preds = predict(model, X)
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> y = rand(MersenneTwister(3), [0.0, 1.0], 200);
+
+julia> model = FM(rank=4, family=Binomial(), max_iter=2, verbose=false);
+
+julia> fit!(model, X, y; rng=MersenneTwister(2));
+
+julia> size(predict(model, X))
+(200,)
 ```
 """
 mutable struct FM{T<:AbstractFloat} <: AbstractSparseRegression

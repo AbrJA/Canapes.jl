@@ -2,7 +2,7 @@
 # Run with: julia --project=test -t4 validate_docs.jl
 
 using Pkg
-Pkg.develop(path=".")
+Pkg.develop(path=joinpath(@__DIR__, ".."))
 using Gideon, SparseArrays, Random, LinearAlgebra, Test
 
 println("=" ^ 60)

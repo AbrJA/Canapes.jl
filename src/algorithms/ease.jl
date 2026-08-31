@@ -41,11 +41,18 @@ EASE(; λ=500.0, max_memory=nothing)
 
 # Example
 ```julia
-using SparseArrays, Gideon
-X = sprand(1000, 500, 0.02)  # users × items
-model = EASE(λ=200.0)
-fit!(model, X)
-preds = recommend(model, X; k=10)
+julia> using SparseArrays
+
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);  # users × items
+
+julia> model = EASE(λ=200.0, verbose=false);
+
+julia> fit!(model, X);
+
+julia> preds = recommend(model, X; k=10);
+
+julia> size(preds)
+(200, 10)
 ```
 """
 mutable struct EASE{T<:AbstractFloat} <: AbstractItemSimilarity

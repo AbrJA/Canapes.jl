@@ -17,9 +17,22 @@ Windows).
 
 # Example
 ```julia
-model = EASE(λ=100.0)
-fit!(model, X)
-save_model(model, "my_model.jls")
+julia> using SparseArrays
+
+julia> X = sprand(MersenneTwister(1), 50, 20, 0.1);
+
+julia> model = EASE(λ=100.0, verbose=false);
+
+julia> fit!(model, X);
+
+julia> path = tempname() * ".jls";
+
+julia> save_model(model, path);
+
+julia> size(load_model(path).B)
+(20, 20)
+
+julia> rm(path; force=true);
 ```
 """
 function save_model(model::AbstractSparseModel, path::String)
@@ -55,8 +68,24 @@ Deserialize a model from disk. Verifies the version header.
 
 # Example
 ```julia
-model = load_model("my_model.jls")
-predictions = predict(model, X; k=10)
+julia> using SparseArrays
+
+julia> X = sprand(MersenneTwister(1), 50, 20, 0.1);
+
+julia> model = EASE(λ=100.0, verbose=false);
+
+julia> fit!(model, X);
+
+julia> path = tempname() * ".jls";
+
+julia> save_model(model, path);
+
+julia> loaded = load_model(path);
+
+julia> size(recommend(loaded, X; k=3))
+(50, 3)
+
+julia> rm(path; force=true);
 ```
 """
 function load_model(path::String)

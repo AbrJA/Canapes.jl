@@ -27,14 +27,21 @@ FTRL(; learning_rate=0.1, learning_rate_decay=0.5, λ=0.0, l1_ratio=1.0,
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(10000, 1000, 0.01)
-y = rand([0.0, 1.0], 10000)
-model = FTRL(learning_rate=0.1, λ=0.01, l1_ratio=0.5, family=Binomial(), max_iter=5)
-fit!(model, X, y)
-predictions = predict(model, X)
-weights = coef(model)
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> y = rand(MersenneTwister(3), [0.0, 1.0], 200);
+
+julia> model = FTRL(learning_rate=0.1, λ=0.01, l1_ratio=0.5, family=Binomial(), max_iter=2, verbose=false);
+
+julia> fit!(model, X, y; rng=MersenneTwister(2));
+
+julia> size(predict(model, X))
+(200,)
+
+julia> length(coef(model))
+100
 ```
 """
 mutable struct FTRL{T<:AbstractFloat} <: AbstractSparseRegression

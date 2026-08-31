@@ -31,16 +31,23 @@ GloVe(; rank=50, x_max=100.0, learning_rate=0.05, α=0.75, λ=0.0,
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-# Co-occurrence matrix (must be square, positive values)
-cooccur = sprand(10000, 10000, 0.001)
-cooccur = cooccur + cooccur'
-nonzeros(cooccur) .= abs.(nonzeros(cooccur)) .+ 0.1
+julia> C = sprand(MersenneTwister(1), 60, 60, 0.2);  # co-occurrence matrix
 
-model = GloVe(rank=100, x_max=100.0, learning_rate=0.05, max_iter=25)
-fit!(model, cooccur)
-embeddings = embeddings(model)
+julia> C = C + C';
+
+julia> nonzeros(C) .= abs.(nonzeros(C)) .+ 0.1;  # positive, symmetric
+
+julia> model = GloVe(rank=8, max_iter=2, verbose=false);
+
+julia> fit!(model, C; rng=MersenneTwister(2));
+
+julia> size(recommend(model, C; k=5))
+(60, 5)
+
+julia> size(embeddings(model))
+(8, 60)
 ```
 """
 mutable struct GloVe{T<:AbstractFloat} <: AbstractMatrixFactorization

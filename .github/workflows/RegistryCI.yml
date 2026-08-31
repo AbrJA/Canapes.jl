@@ -1,0 +1,15 @@
+name: RegistryCI
+on:
+  pull_request:
+    branches: [main, master]
+jobs:
+  test:
+    name: Registry-readiness checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - name: Validate Project.toml against General-registry rules
+        run: julia --project=. validation/registry_check.jl

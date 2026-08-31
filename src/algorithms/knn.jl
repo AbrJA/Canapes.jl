@@ -35,11 +35,18 @@ ItemKNN(; k=20, similarity=:cosine, shrinkage=0.0, normalize=true)
 
 # Example
 ```julia
-using SparseArrays, Gideon
-X = sprand(1000, 500, 0.02)
-model = ItemKNN(k=50, similarity=:cosine)
-fit!(model, X)
-preds = recommend(model, X; k=10)
+julia> using SparseArrays
+
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = ItemKNN(k=10, similarity=:cosine, verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> preds = recommend(model, X; k=10);
+
+julia> size(preds)
+(200, 10)
 ```
 """
 mutable struct ItemKNN{T<:AbstractFloat} <: AbstractItemSimilarity

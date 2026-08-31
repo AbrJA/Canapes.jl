@@ -49,12 +49,18 @@ WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, convergence_tol=0.005,
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(1000, 500, 0.01)
-model = WMF(rank=64, λ=0.1, α=40.0, max_iter=15, solver=ConjugateGradient())
-fit!(model, X)
-recommendations = recommend(model, X; k=10)
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> model = WMF(rank=8, λ=0.1, α=40.0, max_iter=2, solver=ConjugateGradient(), verbose=false);
+
+julia> fit!(model, X; rng=MersenneTwister(2));
+
+julia> recommendations = recommend(model, X; k=10);
+
+julia> size(recommendations)
+(200, 10)
 ```
 """
 mutable struct WMF{T<:AbstractFloat} <: AbstractMatrixFactorization

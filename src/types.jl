@@ -203,6 +203,13 @@ Generate regression predictions from a fitted model. Returns `Vector{T}`.
 function predict end
 
 """
+    coef(model) -> Vector
+
+Return the fitted coefficient vector of a regression model (FTRL, FM).
+"""
+function coef end
+
+"""
     update!(model, X, y; kwargs...)
 
 Run a single epoch of online/incremental learning. For streaming models

@@ -60,13 +60,13 @@ function LogisticMF(;
     n_negative::Int = 30,
     tol::Float64 = -1.0,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     n_negative >= 1 || throw(ArgumentError("n_negative must be ≥ 1, got $n_negative"))
-    Td = dtype
+    Td = T
     LogisticMF{Td}(rank, Td(λ), Td(α), Td(lr), max_iter, n_negative, Td(tol),
             verbose, Matrix{Td}(undef,0,0), Matrix{Td}(undef,0,0), false)
 end

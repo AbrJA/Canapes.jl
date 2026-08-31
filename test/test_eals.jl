@@ -4,7 +4,7 @@
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 30, 0.1)
 
-    model = EALS(rank=8, λ=0.01, w0=1.0, max_iter=10, verbose=false)
+    model = EALS(rank=8, λ=0.01, unobserved_weight=1.0, max_iter=10, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
 
     @test model.is_fitted
@@ -18,7 +18,7 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 30, 0.1)
 
-    model = EALS(rank=8, λ=0.01, w0=1.0, max_iter=5, verbose=false)
+    model = EALS(rank=8, λ=0.01, unobserved_weight=1.0, max_iter=5, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
 
     preds = recommend(model, X; k=5)
@@ -35,11 +35,11 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 30, 0.1)
 
-    model = EALS(rank=4, λ=0.01, w0=1.0, max_iter=3, verbose=false)
+    model = EALS(rank=4, λ=0.01, unobserved_weight=1.0, max_iter=3, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
 
     # Incremental update
-    update!(model, X; n_iter=2)
+    update!(model, X; n_iters=2)
     @test model.is_fitted
     @test !any(isnan, model.user_factors)
 end
@@ -48,7 +48,7 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 30, 0.1)
 
-    model = EALS(rank=4, λ=0.01, w0=5.0, popularity_exponent=0.75, max_iter=3, verbose=false)
+    model = EALS(rank=4, λ=0.01, unobserved_weight=5.0, popularity_exponent=0.75, max_iter=3, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
 
     @test length(model.item_weights) == 30

@@ -8,7 +8,7 @@
     @test length(ap) == 1
     @test ap[1] ≈ 1.0
 
-    @test map_at_k(predictions, actual; k=4) ≈ 1.0
+    @test mean_ap_at_k(predictions, actual; k=4) ≈ 1.0
     @test ndcg_at_k(predictions, actual; k=4)[1] ≈ 1.0
     @test precision_at_k(predictions, actual; k=4)[1] ≈ 0.75
     @test recall_at_k(predictions, actual; k=4)[1] ≈ 1.0

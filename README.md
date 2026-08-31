@@ -66,10 +66,10 @@ fit!(model, X; rng=MersenneTwister(42))
 # 3. Top-k recommendations per user (k clamps to n_items)
 preds = recommend(model, X; k=10)   # 4×5 Matrix{Int} of item indices
 
-# 4. Evaluate against a held-out split (map_at_k is scalar; ndcg_at_k is per-user)
+# 4. Evaluate against a held-out split (mean_ap_at_k is scalar; ndcg_at_k is per-user)
 X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
 fit!(model, X_train; rng=MersenneTwister(42))
-println("MAP@10      = ", round(map_at_k(recommend(model, X_train; k=10), X_test), digits=4))
+println("MAP@10      = ", round(mean_ap_at_k(recommend(model, X_train; k=10), X_test), digits=4))
 println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10), X_test)), digits=4))
 ```
 
@@ -229,7 +229,7 @@ ndcg = ndcg_at_k(preds, actual; k=K)
 prec = precision_at_k(preds, actual; k=K)
 rec  = recall_at_k(preds, actual; k=K)
 
-println("MAP@$K     = ", round(map_at_k(preds, actual; k=K), digits=4))
+println("MAP@$K     = ", round(mean_ap_at_k(preds, actual; k=K), digits=4))
 println("Mean NDCG@$K = ", round(mean(ndcg), digits=4))
 ```
 
@@ -277,8 +277,8 @@ X = interactions_to_sparse(data)                     # defaults: user_col=:user,
 rows = [(user=1, item=3, value=1.0), (user=2, item=1, value=2.0)]
 X = interactions_to_sparse(rows)
 
-# Binary interactions (implicit 1.0) and custom dtype
-X = interactions_to_sparse(clicks; value_col=nothing, dtype=Float32)
+# Binary interactions (implicit 1.0) and custom T
+X = interactions_to_sparse(clicks; value_col=nothing, T=Float32)
 
 # Back to triplets
 triplets = sparse_to_interactions(X)                 # (user=…, item=…, value=…)

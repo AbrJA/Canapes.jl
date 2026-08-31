@@ -63,7 +63,7 @@ function random_holdout(X::SparseMatrixCSC{Tv,Ti};
 end
 
 """
-    crossval(model_fn, X; n_folds=5, k=10, metric=map_at_k, rng=default_rng())
+    cross_validate(model_fn, X; n_folds=5, k=10, metric=mean_ap_at_k, rng=default_rng())
 
 K-fold cross-validation for recommendation models.
 
@@ -72,23 +72,23 @@ K-fold cross-validation for recommendation models.
 - `X` — full interaction matrix (users × items)
 - `n_folds` — number of folds
 - `k` — cutoff for ranking metrics
-- `metric` — ranking metric function (e.g., `map_at_k`, `ndcg_at_k`)
+- `metric` — ranking metric function (e.g., `mean_ap_at_k`, `ndcg_at_k`)
 
 # Returns
 - `(mean_score, std_score, fold_scores)`
 
 # Example
 ```julia
-mean_map, std_map, scores = crossval(
+mean_map, std_map, scores = cross_validate(
     () -> WMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
-    X; n_folds=5, k=10, metric=map_at_k
+    X; n_folds=5, k=10, metric=mean_ap_at_k
 )
 ```
 """
-function crossval(model_fn, X::SparseMatrixCSC;
+function cross_validate(model_fn, X::SparseMatrixCSC;
                      n_folds::Int=5,
                      k::Int=10,
-                     metric=map_at_k,
+                     metric=mean_ap_at_k,
                      rng::AbstractRNG=Random.default_rng())
     n_folds >= 2 || throw(ArgumentError("n_folds must be ≥ 2, got $n_folds"))
 
@@ -112,7 +112,7 @@ function crossval(model_fn, X::SparseMatrixCSC;
 end
 
 """
-    grid_search(model_fn, X, param_grid; k=10, metric=map_at_k,
+    grid_search(model_fn, X, param_grid; k=10, metric=mean_ap_at_k,
                 test_fraction=0.2, rng=default_rng(), verbose=true)
 
 Grid search over hyperparameters with train/test split.
@@ -138,7 +138,7 @@ best, score, results = grid_search(
 function grid_search(model_fn, X::SparseMatrixCSC,
                      param_grid::Dict{Symbol,<:AbstractVector};
                      k::Int=10,
-                     metric=map_at_k,
+                     metric=mean_ap_at_k,
                      test_fraction::Float64=0.2,
                      rng::AbstractRNG=Random.default_rng(),
                      verbose::Bool=true)
@@ -180,7 +180,7 @@ end
 
 """
     random_search(model_fn, X, param_samplers; n_trials=20, k=10,
-                  metric=map_at_k, test_fraction=0.2, rng=default_rng(), verbose=true)
+                  metric=mean_ap_at_k, test_fraction=0.2, rng=default_rng(), verbose=true)
 
 Random search over hyperparameters.
 
@@ -204,7 +204,7 @@ function random_search(model_fn, X::SparseMatrixCSC,
                        param_samplers::Dict{Symbol,<:Function};
                        n_trials::Int=20,
                        k::Int=10,
-                       metric=map_at_k,
+                       metric=mean_ap_at_k,
                        test_fraction::Float64=0.2,
                        rng::AbstractRNG=Random.default_rng(),
                        verbose::Bool=true)

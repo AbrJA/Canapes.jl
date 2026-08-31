@@ -84,12 +84,11 @@ function GloVe(;
     tol::Float64 = -1.0,
     shuffle::Bool = false,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     x_max > 0.0 || throw(ArgumentError("x_max must be positive, got $x_max"))
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
-    T = dtype
     GloVe{T}(
         rank, T(x_max), T(lr), T(α), T(λ), max_iter, T(tol), shuffle, verbose,
         Matrix{T}(undef,0,0), Matrix{T}(undef,0,0),

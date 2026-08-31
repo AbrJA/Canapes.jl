@@ -88,7 +88,7 @@ import PrecompileTools: @setup_workload, @compile_workload
         # Metrics
         preds_small = Matrix{Int}(hcat([randperm(rng, n_items)[1:3] for _ in 1:n_users]...)')
         actual_small = sprand(rng, n_users, n_items, 0.2)
-        map_at_k(preds_small, actual_small; k=3)
+        mean_ap_at_k(preds_small, actual_small; k=3)
         ndcg_at_k(preds_small, actual_small; k=3)
         precision_at_k(preds_small, actual_small; k=3)
         recall_at_k(preds_small, actual_small; k=3)

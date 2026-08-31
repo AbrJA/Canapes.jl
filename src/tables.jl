@@ -4,7 +4,7 @@
 
 """
     interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value,
-                           n_users=nothing, n_items=nothing, dtype=Float64) -> SparseMatrixCSC
+                           n_users=nothing, n_items=nothing, T=Float64) -> SparseMatrixCSC
 
 Convert any Tables.jl-compatible source (DataFrames, CSV, Arrow, NamedTuples of
 vectors, vectors of named tuples, …) to a sparse user-item interaction matrix.
@@ -21,7 +21,7 @@ matching `sparse` semantics.
 - `value_col::Symbol` — name of the value/rating column (use `nothing` for implicit=1)
 - `n_users::Union{Nothing,Int}` — number of users (auto-detected if nothing)
 - `n_items::Union{Nothing,Int}` — number of items (auto-detected if nothing)
-- `dtype::Type{<:AbstractFloat}` — element type of the returned matrix
+- `T::Type{<:AbstractFloat}` — element type of the returned matrix
 
 # Example
 ```julia
@@ -41,7 +41,7 @@ function interactions_to_sparse(table;
                                 value_col::Union{Symbol,Nothing} = :value,
                                 n_users::Union{Nothing,Int} = nothing,
                                 n_items::Union{Nothing,Int} = nothing,
-                                dtype::Type{<:AbstractFloat} = Float64)
+                                T::Type{<:AbstractFloat} = Float64)
     Tables.istable(table) || throw(ArgumentError(
         "expected a Tables.jl-compatible table, got $(typeof(table))"))
 
@@ -61,11 +61,11 @@ function interactions_to_sparse(table;
     isempty(users) && throw(ArgumentError("interaction table is empty"))
 
     vals = if value_col === nothing
-        ones(dtype, length(users))
+        ones(T, length(users))
     else
         value_col in cols || throw(ArgumentError(
             "table has no column $value_col; available columns: $(collect(cols))"))
-        _as_values(Tables.getcolumn(ct, value_col), value_col, dtype)
+        _as_values(Tables.getcolumn(ct, value_col), value_col, T)
     end
 
     nu = something(n_users, maximum(users))
@@ -131,7 +131,7 @@ function _as_indices(col, name::Symbol)
     end
 end
 
-# Convert a value column to the requested float dtype.
+# Convert a value column to the requested float T.
 function _as_values(col, name::Symbol, ::Type{T}) where {T<:AbstractFloat}
     if eltype(col) <: AbstractFloat
         return T.(col)

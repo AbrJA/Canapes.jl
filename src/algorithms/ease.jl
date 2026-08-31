@@ -63,12 +63,11 @@ mutable struct EASE{T<:AbstractFloat} <: AbstractItemSimilarity
     is_fitted::Bool
 end
 
-function EASE(; λ::Float64=500.0, verbose::Bool=true, dtype::Type{<:AbstractFloat}=Float32,
+function EASE(; λ::Float64=500.0, verbose::Bool=true, T::Type{<:AbstractFloat}=Float32,
               max_memory::Union{Nothing,Int}=nothing)
     λ > 0.0 || throw(ArgumentError("λ must be positive, got $λ"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
-    T = dtype
     EASE{T}(T(λ), verbose, max_memory, Matrix{T}(undef, 0, 0), false)
 end
 

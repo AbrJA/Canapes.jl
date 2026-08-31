@@ -80,12 +80,11 @@ function BPR(;
     dynamic_candidates::Int = 5,
     tol::Float64 = -1.0,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     dynamic_candidates >= 1 || throw(ArgumentError("dynamic_candidates must be ≥ 1, got $dynamic_candidates"))
-    T = dtype
     BPR{T}(rank, T(λ_user), T(λ_pos), T(λ_neg), T(lr), max_iter, n_samples,
             negative_sampling, dynamic_candidates, T(tol), verbose,
             Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), T[], false)

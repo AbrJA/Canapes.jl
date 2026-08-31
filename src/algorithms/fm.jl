@@ -71,11 +71,10 @@ function FM(;
     max_iter::Int = 10,
     tol::Float64 = -1.0,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     family isa Union{Binomial, Gaussian} || throw(ArgumentError("FM supports Binomial() or Gaussian() families"))
-    T = dtype
     FM{T}(
         rank, T(lr_w), T(lr_v), T(λ_w), T(λ_v), family, intercept,
         max_iter, T(tol), verbose,

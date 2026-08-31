@@ -56,14 +56,13 @@ function SLIM(;
     tol::Float64 = 1e-4,
     nonneg::Bool = true,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
     max_memory::Union{Nothing,Int} = nothing,
 )
     λ_l1 >= 0.0 || throw(ArgumentError("λ_l1 must be non-negative, got $λ_l1"))
     λ_l2 >= 0.0 || throw(ArgumentError("λ_l2 must be non-negative, got $λ_l2"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
-    T = dtype
     SLIM{T}(T(λ_l1), T(λ_l2), max_iter, T(tol), nonneg, verbose, max_memory,
             spzeros(T, 0, 0), false)
 end

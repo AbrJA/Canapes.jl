@@ -90,14 +90,14 @@ export
 
     # Metrics
     ap_at_k,
-    map_at_k,
+    mean_ap_at_k,
     ndcg_at_k,
     precision_at_k,
     recall_at_k,
 
     # Cross-validation & search
     random_holdout,
-    crossval,
+    cross_validate,
     grid_search,
     random_search,
 

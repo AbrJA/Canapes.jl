@@ -183,27 +183,27 @@ end
     end
 end
 
-# ── Fixture: recommender_base — dtype preservation ──
+# ── Fixture: recommender_base — T preservation ──
 
-@testset "Fixture: dtype preservation" begin
+@testset "Fixture: T preservation" begin
     X = sprand(MersenneTwister(31), 40, 30, 0.1)
     specs = [
         ("WMF", () -> WMF(rank=4, max_iter=3, verbose=false),
-                () -> WMF(rank=4, max_iter=3, dtype=Float64, verbose=false)),
+                () -> WMF(rank=4, max_iter=3, T=Float64, verbose=false)),
         ("IALS", () -> IALS(rank=4, max_iter=3, verbose=false),
-                 () -> IALS(rank=4, max_iter=3, dtype=Float64, verbose=false)),
+                 () -> IALS(rank=4, max_iter=3, T=Float64, verbose=false)),
         ("EALS", () -> EALS(rank=4, max_iter=3, verbose=false),
-                 () -> EALS(rank=4, max_iter=3, dtype=Float64, verbose=false)),
+                 () -> EALS(rank=4, max_iter=3, T=Float64, verbose=false)),
         ("BPR", () -> BPR(rank=4, max_iter=3, verbose=false),
-                () -> BPR(rank=4, max_iter=3, dtype=Float64, verbose=false)),
+                () -> BPR(rank=4, max_iter=3, T=Float64, verbose=false)),
         ("LogisticMF", () -> LogisticMF(rank=4, max_iter=3, verbose=false),
-                       () -> LogisticMF(rank=4, max_iter=3, dtype=Float64, verbose=false)),
+                       () -> LogisticMF(rank=4, max_iter=3, T=Float64, verbose=false)),
         ("EASE", () -> EASE(λ=10.0, verbose=false),
-                 () -> EASE(λ=10.0, dtype=Float64, verbose=false)),
+                 () -> EASE(λ=10.0, T=Float64, verbose=false)),
         ("SLIM", () -> SLIM(max_iter=2, verbose=false),
-                 () -> SLIM(max_iter=2, dtype=Float64, verbose=false)),
+                 () -> SLIM(max_iter=2, T=Float64, verbose=false)),
         ("ItemKNN", () -> ItemKNN(k=5, verbose=false),
-                    () -> ItemKNN(k=5, dtype=Float64, verbose=false)),
+                    () -> ItemKNN(k=5, T=Float64, verbose=false)),
     ]
     for (name, f32, f64) in specs
         m32 = f32()

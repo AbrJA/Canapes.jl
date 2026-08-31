@@ -50,11 +50,11 @@ function ap_at_k(predictions::AbstractMatrix{<:Integer},
 end
 
 """
-    map_at_k(predictions, actual; k)
+    mean_ap_at_k(predictions, actual; k)
 
 Mean Average Precision @ K (macro-averaged over all users).
 """
-function map_at_k(predictions::AbstractMatrix{<:Integer},
+function mean_ap_at_k(predictions::AbstractMatrix{<:Integer},
                   actual::SparseMatrixCSC;
                   k::Int = size(predictions, 2))
     aps = ap_at_k(predictions, actual; k)

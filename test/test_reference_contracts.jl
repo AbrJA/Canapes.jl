@@ -75,7 +75,7 @@ end
     X[8, :] .= 0
     X[:, 10] .= 0
 
-    model = WMF(rank=3, max_iter=2, verbose=false, dtype=Float64)
+    model = WMF(rank=3, max_iter=2, verbose=false, T=Float64)
     fit!(model, X; rng=MersenneTwister(42))
     predictions = recommend(model, X; k=3)
 

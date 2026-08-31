@@ -221,6 +221,25 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — Naming consistency pass II (scalar/vector metrics, verb symmetry, ergonomics)
+- `map_at_k` → `mean_ap_at_k` — it was the ONLY metric returning a scalar
+  (verified: ap/ndcg/precision/recall are per-user vectors), invisible in the
+  name. `mean_*` now signals the macro-averaged scalar.
+- `crossval` → `cross_validate` — full-word symmetry with `grid_search` /
+  `random_search` (Julia style: no unnecessary abbreviations).
+- EALS `n_iter` → `n_iters` (update! runs exactly n passes; `max_iter` is
+  "at most") — disambiguates from `max_iter`; `n_iter` in `test_wrmf.jl` is a
+  local loop var and in `validation/fixtures_r.R` it is rsparse's API — both
+  deliberately untouched.
+- EALS `w0` → `unobserved_weight` — was cryptic and dual-meaning with FM's
+  `w0` (standard FM bias notation, which stays).
+- `dtype` → `T` — numpy-ism replaced with the Julia type-parameter
+  convention; uniform across all constructors and `interactions_to_sparse`.
+  Removed the now-redundant `T = dtype` local assignments. `dtype=` in
+  `validation/fixtures_py.py` is numpy's own keyword (untouched).
+- Full suite green (17,456), doctests pass, docs build clean,
+  `validation/run.jl --all` green.
+
 ### 2026-08-31 — Public API naming pass (descriptive + short, no collisions)
 - **Fixed a real UX bug**: `Uniform`, `Binomial`, `Poisson` were exported and
   collided with `Distributions.jl` (verified: `using Distributions, Gideon`

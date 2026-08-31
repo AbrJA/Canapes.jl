@@ -70,7 +70,7 @@ function FTRL(;
     grad_clip::Float64 = 1000.0,
     max_iter::Int = 1,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     0.0 <= dropout < 1.0 || throw(ArgumentError("dropout must be in [0, 1), got $dropout"))
     0.0 <= l1_ratio <= 1.0 || throw(ArgumentError("l1_ratio must be in [0, 1], got $l1_ratio"))
@@ -78,7 +78,6 @@ function FTRL(;
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     lr_decay > 0.0 || throw(ArgumentError("lr_decay must be positive, got $lr_decay"))
     grad_clip > 0.0 || throw(ArgumentError("grad_clip must be positive, got $grad_clip"))
-    T = dtype
     FTRL{T}(T(lr), T(lr_decay), T(λ), T(l1_ratio), T(dropout),
             family, T(grad_clip), max_iter, verbose,
             0, T[], T[], false)

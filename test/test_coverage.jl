@@ -232,19 +232,19 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 60, 40, 0.1)
 
-    @testset "cv with map_at_k" begin
-        mean_s, std_s, folds = crossval(
+    @testset "cv with mean_ap_at_k" begin
+        mean_s, std_s, folds = cross_validate(
             () -> EASE(λ=200.0, verbose=false),
-            X; n_folds=2, k=5, metric=map_at_k, rng=MersenneTwister(1)
+            X; n_folds=2, k=5, metric=mean_ap_at_k, rng=MersenneTwister(1)
         )
         @test length(folds) == 2
         @test all(0 .<= folds .<= 1)
     end
 
     @testset "cv with different model" begin
-        mean_s, std_s, folds = crossval(
+        mean_s, std_s, folds = cross_validate(
             () -> WMF(rank=4, max_iter=3, verbose=false),
-            X; n_folds=2, k=5, metric=map_at_k, rng=MersenneTwister(1)
+            X; n_folds=2, k=5, metric=mean_ap_at_k, rng=MersenneTwister(1)
         )
         @test length(folds) == 2
         @test mean_s >= 0.0

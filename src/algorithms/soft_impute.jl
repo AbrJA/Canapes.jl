@@ -81,11 +81,10 @@ function SoftImpute(;
     tol::Float64 = 1e-3,
     final_svd::Bool = true,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
-    T = dtype
     SoftImpute{T}(rank, T(λ), max_iter, T(tol), final_svd, verbose,
                   Matrix{T}(undef,0,0), T[], Matrix{T}(undef,0,0),
                   Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
@@ -147,11 +146,10 @@ function SoftSVD(;
     tol::Float64 = 1e-3,
     final_svd::Bool = true,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
-    T = dtype
     SoftSVD{T}(rank, T(λ), max_iter, T(tol), final_svd, verbose,
                Matrix{T}(undef,0,0), T[], Matrix{T}(undef,0,0),
                Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
@@ -182,9 +180,9 @@ julia> size(model.U * Diagonal(model.d) * model.V')
 ```
 """
 function PureSVD(; rank::Int=10, max_iter::Int=100, tol::Float64=1e-3,
-                  verbose::Bool=true, dtype::Type{<:AbstractFloat}=Float32)
+                  verbose::Bool=true, T::Type{<:AbstractFloat}=Float32)
     SoftSVD(rank=rank, λ=0.0, max_iter=max_iter, tol=tol,
-            final_svd=false, verbose=verbose, dtype=dtype)
+            final_svd=false, verbose=verbose, T=T)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

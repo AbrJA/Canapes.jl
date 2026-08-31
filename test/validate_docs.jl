@@ -35,7 +35,7 @@ println("\n[index.md] Quick Start")
     model = WMF(rank=10, λ=0.1, α=40.0, max_iter=15, verbose=false)
     fit!(model, X_train)
     recommendations = recommend(model, X_train; k=10)
-    map_score  = map_at_k(recommendations, X_test; k=10)
+    map_score  = mean_ap_at_k(recommendations, X_test; k=10)
     ndcg_score = ndcg_at_k(recommendations, X_test; k=10)
     scores = score(model, X_train)
     pair_scores = score(model, [1, 2, 3], [10, 20, 30])
@@ -46,11 +46,11 @@ end
 println("\n[index.md] Cross-Validation & Hyperparameter Search")
 # ──────────────────────────────────────────────────────────────
 
-@validate "crossval" begin
+@validate "cross_validate" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
-    mean_map, std_map, scores = crossval(
+    mean_map, std_map, scores = cross_validate(
         () -> WMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
-        X; n_folds=5, k=10, metric=map_at_k
+        X; n_folds=5, k=10, metric=mean_ap_at_k
     )
     @assert mean_map >= 0
 end
@@ -189,7 +189,7 @@ println("\n[algorithms.md] EALS")
 
 @validate "EALS" begin
     X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-    model = EALS(rank=64, λ=0.01, w0=10.0, max_iter=20, verbose=false)
+    model = EALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=20, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     preds = recommend(model, X; k=10)
     @assert size(preds) == (1000, 10)
@@ -197,10 +197,10 @@ end
 
 @validate "EALS - update!" begin
     X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-    model = EALS(rank=64, λ=0.01, w0=10.0, max_iter=5, verbose=false)
+    model = EALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=5, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     X_new = sprand(MersenneTwister(2), 1000, 500, 0.01)
-    update!(model, X_new; n_iter=3)
+    update!(model, X_new; n_iters=3)
 end
 
 # ──────────────────────────────────────────────────────────────
@@ -389,7 +389,7 @@ println("\n[metrics.md] Ranking Metrics")
 @validate "Metrics - basic" begin
     actual = sparse([1,1,1], [3,7,9], ones(3), 1, 10)
     predictions = [3 7 1 9]
-    m = map_at_k(predictions, actual; k=4)
+    m = mean_ap_at_k(predictions, actual; k=4)
     n = ndcg_at_k(predictions, actual; k=4)
     p = precision_at_k(predictions, actual; k=4)
     r = recall_at_k(predictions, actual; k=4)
@@ -403,7 +403,7 @@ end
     model = EASE(λ=500.0, verbose=false)
     fit!(model, X_train)
     preds = recommend(model, X_train; k=10)
-    m = map_at_k(preds, X_test; k=10)
+    m = mean_ap_at_k(preds, X_test; k=10)
     @assert m >= 0
 end
 

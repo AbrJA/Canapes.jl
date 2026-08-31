@@ -59,13 +59,13 @@ end
     @test all(nonzeros(X) .== 1.0)
 end
 
-@testset "dtype kwarg" begin
+@testset "T kwarg" begin
     table = (user=[1,2], item=[1,2], value=[1.0, 2.0])
     X32 = interactions_to_sparse(table; user_col=:user, item_col=:item,
-                                 value_col=:value, dtype=Float32)
+                                 value_col=:value, T=Float32)
     @test eltype(X32) == Float32
     X64 = interactions_to_sparse(table; user_col=:user, item_col=:item,
-                                 value_col=:value, dtype=Float64)
+                                 value_col=:value, T=Float64)
     @test eltype(X64) == Float64
     @test X32 ≈ X64
 end

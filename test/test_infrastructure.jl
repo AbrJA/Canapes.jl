@@ -213,13 +213,13 @@ end
         @test nnz(X_train) + nnz(X_test) == nnz(X)
     end
 
-    @testset "crossval" begin
+    @testset "cross_validate" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 30, 0.15)
 
-        mean_score, std_score, fold_scores = crossval(
+        mean_score, std_score, fold_scores = cross_validate(
             () -> EASE(λ=200.0, verbose=false),
-            X; n_folds=3, k=5, metric=map_at_k, rng=MersenneTwister(1)
+            X; n_folds=3, k=5, metric=mean_ap_at_k, rng=MersenneTwister(1)
         )
 
         @test length(fold_scores) == 3
@@ -260,12 +260,12 @@ end
     end
 
     @testset "vector metrics in search" begin
-        # Regression: ndcg_at_k returns per-user vectors; crossval, grid_search
+        # Regression: ndcg_at_k returns per-user vectors; cross_validate, grid_search
         # and random_search must reduce them to a scalar instead of failing.
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 30, 0.15)
 
-        mean_s, std_s, fold_scores = crossval(
+        mean_s, std_s, fold_scores = cross_validate(
             () -> EASE(λ=200.0, verbose=false),
             X; n_folds=3, k=5, metric=ndcg_at_k, rng=MersenneTwister(1)
         )

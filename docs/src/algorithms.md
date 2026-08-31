@@ -60,13 +60,13 @@ EALS
 ```julia
 using Gideon, SparseArrays, Random
 X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-model = EALS(rank=64, λ=0.01, w0=10.0, max_iter=20)
+model = EALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=20)
 fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 
 # Incremental update with new interactions
 X_new = sprand(MersenneTwister(2), 1000, 500, 0.01)
-update!(model, X_new; n_iter=3)
+update!(model, X_new; n_iters=3)
 ```
 
 ### BPR — Bayesian Personalized Ranking

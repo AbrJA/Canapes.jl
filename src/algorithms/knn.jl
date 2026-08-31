@@ -65,12 +65,11 @@ function ItemKNN(;
     shrinkage::Float64 = 0.0,
     normalize::Bool = true,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     k >= 1 || throw(ArgumentError("k must be ≥ 1, got $k"))
     similarity in (:cosine, :jaccard) || throw(ArgumentError("similarity must be :cosine or :jaccard, got :$similarity"))
     shrinkage >= 0.0 || throw(ArgumentError("shrinkage must be non-negative, got $shrinkage"))
-    T = dtype
     ItemKNN{T}(k, similarity, T(shrinkage), normalize, verbose,
                spzeros(T, 0, 0), false)
 end

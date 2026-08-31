@@ -75,14 +75,13 @@ function IALS(;
     solver::ALSSolver = CholeskySolver(),
     cg_steps::Int = 3,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     α >= 0.0 || throw(ArgumentError("α must be non-negative, got $α"))
     solver isa Union{CholeskySolver, CGSolver} || throw(ArgumentError("IALS supports only CholeskySolver() or CGSolver() solvers"))
     cg_steps >= 1 || throw(ArgumentError("cg_steps must be ≥ 1, got $cg_steps"))
-    T = dtype
     IALS{T}(rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, verbose,
             Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
 end

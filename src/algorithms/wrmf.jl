@@ -88,14 +88,13 @@ function WMF(;
     cg_steps::Int = 3,
     feedback::FeedbackType = IMPLICIT,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     α >= 0.0 || throw(ArgumentError("α must be non-negative, got $α"))
     max_iter >= 1 || throw(ArgumentError("max_iter must be ≥ 1, got $max_iter"))
     cg_steps >= 1 || throw(ArgumentError("cg_steps must be ≥ 1, got $cg_steps"))
-    T = dtype
     WMF{T}(
         rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, feedback, verbose,
         Matrix{T}(undef, 0, 0),

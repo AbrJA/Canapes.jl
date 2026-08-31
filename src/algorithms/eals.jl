@@ -38,14 +38,14 @@ O(d) per element instead of O(d³) per user.
 
 # Constructor
 ```julia
-EALS(; rank=64, λ=0.01, w0=1.0, max_iter=15, tol=0.005,
+EALS(; rank=64, λ=0.01, unobserved_weight=1.0, max_iter=15, tol=0.005,
        popularity_exponent=0.5, verbose=true)
 ```
 
 # Fields
 - `rank::Int` — embedding dimension
 - `λ::T` — L2 regularization strength
-- `w0::T` — overall weight for unobserved entries (scales popularity weights)
+- `unobserved_weight::T` — overall weight for unobserved entries (scales popularity weights)
 - `max_iter::Int` — maximum iterations
 - `tol::T` — relative loss change for early stopping (-1 disables)
 - `popularity_exponent::T` — exponent for popularity weighting (0.5 = sqrt)
@@ -58,7 +58,7 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
-julia> model = EALS(rank=8, λ=0.01, w0=10.0, max_iter=2, verbose=false);
+julia> model = EALS(rank=8, λ=0.01, unobserved_weight=10.0, max_iter=2, verbose=false);
 
 julia> fit!(model, X; rng=MersenneTwister(2));
 
@@ -71,7 +71,7 @@ julia> size(preds)
 mutable struct EALS{T<:AbstractFloat} <: AbstractMatrixFactorization
     const rank::Int
     const λ::T
-    const w0::T
+    const unobserved_weight::T
     const max_iter::Int
     const tol::T
     const popularity_exponent::T
@@ -87,19 +87,18 @@ end
 function EALS(;
     rank::Int = 64,
     λ::Float64 = 0.01,
-    w0::Float64 = 1.0,
+    unobserved_weight::Float64 = 1.0,
     max_iter::Int = 15,
     tol::Float64 = 0.005,
     popularity_exponent::Float64 = 0.5,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
-    w0 > 0.0 || throw(ArgumentError("w0 must be positive, got $w0"))
+    unobserved_weight > 0.0 || throw(ArgumentError("unobserved_weight must be positive, got $unobserved_weight"))
     popularity_exponent >= 0.0 || throw(ArgumentError("popularity_exponent must be non-negative, got $popularity_exponent"))
-    T = dtype
-    EALS{T}(rank, T(λ), T(w0), max_iter, T(tol), T(popularity_exponent), verbose,
+    EALS{T}(rank, T(λ), T(unobserved_weight), max_iter, T(tol), T(popularity_exponent), verbose,
             Matrix{T}(undef, 0, 0), Matrix{T}(undef, 0, 0), T[], false)
 end
 
@@ -148,9 +147,9 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
     V = model.item_factors
 
     # Compute item popularity weights with c0-mass normalization:
-    # c_i = w0 * freq_i^a / Σ_j freq_j^a
-    # This matches the EALS weighting scale where w0 controls total missing-data mass.
-    model.item_weights = _eals_item_weights(X, model.w0, model.popularity_exponent)
+    # c_i = unobserved_weight * freq_i^a / Σ_j freq_j^a
+    # This matches the EALS weighting scale where unobserved_weight controls total missing-data mass.
+    model.item_weights = _eals_item_weights(X, model.unobserved_weight, model.popularity_exponent)
     c_items = model.item_weights
 
     # Build CSR for row access
@@ -216,13 +215,13 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
 end
 
 """
-    update!(model::EALS, X; n_iter=1, rng) -> model
+    update!(model::EALS, X; n_iters=1, rng) -> model
 
 Incremental update: run additional iterations on new or updated data.
 Reuses existing factors as warm start.
 """
 function update!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
-                      n_iter::Int = 1,
+                      n_iters::Int = 1,
                       rng::AbstractRNG = Random.default_rng()) where {T,Tv,Ti}
     if !model.is_fitted
         return fit!(model, X; rng=rng)
@@ -247,14 +246,14 @@ function update!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
     V = model.item_factors
 
     # Recompute item weights with c0-mass normalization.
-    model.item_weights = _eals_item_weights(X, model.w0, model.popularity_exponent)
+    model.item_weights = _eals_item_weights(X, model.unobserved_weight, model.popularity_exponent)
     c_items = model.item_weights
 
     X_csr = to_csr(X)
     λ_val = model.λ::T
     pred_bufs = _thread_buffers(() -> Vector{T}(undef, 0), Threads.nthreads())
 
-    for _ in 1:n_iter
+    for _ in 1:n_iters
         SV = _eals_weighted_gramian(V, c_items, k, n_items)::Matrix{T}
         _eals_update_users!(U, V, X_csr, SV, c_items, λ_val, k, n_users, pred_bufs)
         SU = U * U'
@@ -263,7 +262,7 @@ function update!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
     model
 end
 
-function _eals_item_weights(X::SparseMatrixCSC{Tv,Ti}, w0::T, a::T) where {Tv,Ti,T<:AbstractFloat}
+function _eals_item_weights(X::SparseMatrixCSC{Tv,Ti}, unobserved_weight::T, a::T) where {Tv,Ti,T<:AbstractFloat}
     n_items = size(X, 2)
     freq = zeros(T, n_items)
     @inbounds for j in 1:n_items
@@ -274,11 +273,11 @@ function _eals_item_weights(X::SparseMatrixCSC{Tv,Ti}, w0::T, a::T) where {Tv,Ti
     mass = sum(pow_freq)
 
     if !(mass > eps(T))
-        return fill(w0 / max(one(T), T(n_items)), n_items)
+        return fill(unobserved_weight / max(one(T), T(n_items)), n_items)
     end
 
     # Keep a tiny positive floor for numerical robustness when an item has zero frequency.
-    return max.(w0 .* (pow_freq ./ mass), T(1e-12))
+    return max.(unobserved_weight .* (pow_freq ./ mass), T(1e-12))
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

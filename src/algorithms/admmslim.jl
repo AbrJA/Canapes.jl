@@ -99,7 +99,7 @@ function ADMMSLIM(;
     tol::Float64 = 1e-4,
     nonneg::Bool = true,
     verbose::Bool = true,
-    dtype::Type{<:AbstractFloat} = Float32,
+    T::Type{<:AbstractFloat} = Float32,
     max_memory::Union{Nothing,Int} = nothing,
 )
     λ_l1 >= 0.0 || throw(ArgumentError("λ_l1 must be non-negative, got $λ_l1"))
@@ -107,7 +107,6 @@ function ADMMSLIM(;
     ρ > 0.0 || throw(ArgumentError("ρ must be positive, got $ρ"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
-    T = dtype
     ADMMSLIM{T}(T(λ_l1), T(λ_l2), T(ρ), max_iter, T(tol), nonneg, verbose,
                  max_memory, spzeros(T, 0, 0), false)
 end

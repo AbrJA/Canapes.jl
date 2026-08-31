@@ -30,7 +30,7 @@ const SCORE_CASES = [
      min_overlap=_env_float("GIDEON_PY_IALS_MIN_OVERLAP", 0.15),
      max_ndcg=_env_float("GIDEON_PY_IALS_MAX_NDCG_DELTA", 0.06),
      max_recall=_env_float("GIDEON_PY_IALS_MAX_RECALL_DELTA", 0.06)),
-    (name="EALS", model=() -> EALS(rank=16, λ=0.01, w0=10.0, max_iter=20, verbose=false),
+    (name="EALS", model=() -> EALS(rank=16, λ=0.01, unobserved_weight=10.0, max_iter=20, verbose=false),
      scores_path="py_eals_scores.csv", required=true, metrics_path="py_eals_metrics.json",
      min_cor=_env_float("GIDEON_PY_EALS_MIN_COR", 0.15),
      min_overlap=_env_float("GIDEON_PY_EALS_MIN_OVERLAP", 0.10),

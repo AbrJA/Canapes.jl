@@ -50,7 +50,7 @@ fit!(model, X_train)
 recommendations = recommend(model, X_train; k=10)
 
 # Evaluate
-map_score  = map_at_k(recommendations, X_test; k=10)
+map_score  = mean_ap_at_k(recommendations, X_test; k=10)
 ndcg_score = ndcg_at_k(recommendations, X_test; k=10)
 println("MAP@10: $(round(map_score, digits=4))")
 println("NDCG@10: $(round(ndcg_score, digits=4))")
@@ -108,9 +108,9 @@ using Gideon, SparseArrays, Random
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 
 # 5-fold cross-validation
-mean_map, std_map, scores = crossval(
+mean_map, std_map, scores = cross_validate(
     () -> WMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
-    X; n_folds=5, k=10, metric=map_at_k
+    X; n_folds=5, k=10, metric=mean_ap_at_k
 )
 
 # Grid search

@@ -178,14 +178,14 @@ using Gideon
 
 # From a NamedTuple of vectors (column table)
 data = (user=[1, 1, 2, 2, 3], item=[1, 3, 2, 4, 1], value=[1.0, 1.0, 1.0, 1.0, 1.0])
-X = interactions_to_sparse(data; user_col=:user, item_col=:item, value_col=:value)
+X = triplets_to_sparse(data; user_col=:user, item_col=:item, value_col=:value)
 
 # Binary interactions (no value column)
 clicks = (user_id=[1, 1, 2, 3], item_id=[10, 20, 10, 30])
-X = interactions_to_sparse(clicks; user_col=:user_id, item_col=:item_id, value_col=nothing)
+X = triplets_to_sparse(clicks; user_col=:user_id, item_col=:item_id, value_col=nothing)
 
 # Convert back to triplets
-triplets = sparse_to_interactions(X)
+triplets = sparse_to_triplets(X)
 ```
 
 ## Serialization

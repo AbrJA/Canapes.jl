@@ -17,7 +17,7 @@ end
 @testset "Non-negativity constraint" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 15, 0.2)
-    model = SLIM(λ_l1=0.01, λ_l2=0.1, nonneg=true, max_iter=30, verbose=false)
+    model = SLIM(λ_l1=0.01, λ_l2=0.1, nonnegative=true, max_iter=30, verbose=false)
     fit!(model, X)
     # All weights should be non-negative
     @test all(nonzeros(model.W) .>= 0.0)

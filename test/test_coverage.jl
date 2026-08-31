@@ -9,47 +9,47 @@
 @testset "Tables edge cases" begin
     @testset "Empty table throws error" begin
         table = (user=Int[], item=Int[], value=Float64[])
-        @test_throws ArgumentError interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
+        @test_throws ArgumentError triplets_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
     end
 
     @testset "Out-of-bounds indices with explicit dims" begin
         table = (user=[1, 5], item=[1, 2], value=[1.0, 1.0])
-        @test_throws ArgumentError interactions_to_sparse(
+        @test_throws ArgumentError triplets_to_sparse(
             table; user_col=:user, item_col=:item, value_col=:value, n_users=3, n_items=2
         )
     end
 
     @testset "Duplicate entries are summed" begin
         table = (user=[1, 1, 1], item=[2, 2, 2], value=[1.0, 2.0, 3.0])
-        X = interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
+        X = triplets_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
         @test X[1, 2] == 6.0  # sparse() sums duplicates
     end
 
     @testset "Single interaction" begin
         table = (user=[1], item=[1], value=[5.0])
-        X = interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
+        X = triplets_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
         @test size(X) == (1, 1)
         @test X[1, 1] == 5.0
     end
 
     @testset "Large indices with explicit dims" begin
         table = (user=[100], item=[500], value=[1.0])
-        X = interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value,
+        X = triplets_to_sparse(table; user_col=:user, item_col=:item, value_col=:value,
                                    n_users=1000, n_items=2000)
         @test size(X) == (1000, 2000)
         @test nnz(X) == 1
     end
 
-    @testset "sparse_to_interactions preserves all entries" begin
+    @testset "sparse_to_triplets preserves all entries" begin
         X = sparse([1, 2, 3, 3], [4, 5, 1, 2], [0.5, 1.5, 2.5, 3.5], 3, 5)
-        triplets = sparse_to_interactions(X)
+        triplets = sparse_to_triplets(X)
         @test length(triplets.user) == 4
         @test sort(triplets.value) == [0.5, 1.5, 2.5, 3.5]
     end
 
     @testset "Row iteration with missing value_col=nothing" begin
         rows = [(user=1, item=2), (user=2, item=3), (user=3, item=1)]
-        X = interactions_to_sparse(rows; user_col=:user, item_col=:item, value_col=nothing)
+        X = triplets_to_sparse(rows; user_col=:user, item_col=:item, value_col=nothing)
         @test all(nonzeros(X) .== 1.0)
         @test nnz(X) == 3
     end

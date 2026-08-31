@@ -57,7 +57,7 @@ using Gideon, DataFrames, SparseArrays, Random, Statistics
 
 # 1. Interactions as a table (any Tables.jl source: DataFrames, CSV, Arrow, …)
 df = DataFrame(user=[1,1,2,3,3,4], item=[2,5,3,1,4,2], rating=[1.0,1.0,1.0,1.0,1.0,1.0])
-X = interactions_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating)   # 4×5
+X = triplets_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating)   # 4×5
 
 # 2. Train (seen items are masked at recommend time)
 model = WMF(rank=8, λ=0.1, α=40.0, max_iter=15, verbose=false)
@@ -262,7 +262,7 @@ best, score, _ = random_search(
 
 ## Tables.jl Integration
 
-Feed `interactions_to_sparse` any Tables.jl-compatible source — DataFrames, CSV, Arrow,
+Feed `triplets_to_sparse` any Tables.jl-compatible source — DataFrames, CSV, Arrow,
 NamedTuples, vectors of named tuples — and get a `SparseMatrixCSC` back. Repeated
 `(user, item)` pairs are accumulated by summing their values.
 
@@ -271,17 +271,17 @@ using Gideon
 
 # Column table (NamedTuple of vectors, DataFrame, CSV.File, …)
 data = (user=[1,1,2,3,3], item=[2,5,3,1,4], value=[1.0,2.0,1.0,3.0,1.0])
-X = interactions_to_sparse(data)                     # defaults: user_col=:user, …
+X = triplets_to_sparse(data)                     # defaults: user_col=:user, …
 
 # Row table (Vector of NamedTuples, Tables.rowtable, …)
 rows = [(user=1, item=3, value=1.0), (user=2, item=1, value=2.0)]
-X = interactions_to_sparse(rows)
+X = triplets_to_sparse(rows)
 
 # Binary interactions (implicit 1.0) and custom T
-X = interactions_to_sparse(clicks; value_col=nothing, T=Float32)
+X = triplets_to_sparse(clicks; value_col=nothing, T=Float32)
 
 # Back to triplets
-triplets = sparse_to_interactions(X)                 # (user=…, item=…, value=…)
+triplets = sparse_to_triplets(X)                 # (user=…, item=…, value=…)
 ```
 
 ---

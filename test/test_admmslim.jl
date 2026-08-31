@@ -20,7 +20,7 @@ end
 @testset "Non-negativity constraint" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 15, 0.2)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, nonneg=true, max_iter=30, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, nonnegative=true, max_iter=30, verbose=false)
     fit!(model, X)
     # All weights should be non-negative
     @test all(model.W .>= -1e-10)
@@ -125,8 +125,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 10, 0.25)
 
-    m_slim = SLIM(λ_l1=0.05, λ_l2=1.0, max_iter=200, nonneg=true, verbose=false)
-    m_admm = ADMMSLIM(λ_l1=0.05, λ_l2=1.0, ρ=1.0, max_iter=200, nonneg=true, verbose=false)
+    m_slim = SLIM(λ_l1=0.05, λ_l2=1.0, max_iter=200, nonnegative=true, verbose=false)
+    m_admm = ADMMSLIM(λ_l1=0.05, λ_l2=1.0, ρ=1.0, max_iter=200, nonnegative=true, verbose=false)
     fit!(m_slim, X)
     fit!(m_admm, X)
 

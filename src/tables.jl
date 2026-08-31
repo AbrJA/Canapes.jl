@@ -3,7 +3,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value,
+    triplets_to_sparse(table; user_col=:user, item_col=:item, value_col=:value,
                            n_users=nothing, n_items=nothing, T=Float64) -> SparseMatrixCSC
 
 Convert any Tables.jl-compatible source (DataFrames, CSV, Arrow, NamedTuples of
@@ -29,13 +29,13 @@ julia> using Tables
 
 julia> df = (user=[1,1,2,3,3,3], item=[2,5,3,1,2,4], rating=[1.0,1.0,1.0,1.0,1.0,1.0]);
 
-julia> X = interactions_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating);
+julia> X = triplets_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating);
 
 julia> size(X)
 (3, 5)
 ```
 """
-function interactions_to_sparse(table;
+function triplets_to_sparse(table;
                                 user_col::Symbol = :user,
                                 item_col::Symbol = :item,
                                 value_col::Union{Symbol,Nothing} = :value,
@@ -81,7 +81,7 @@ function interactions_to_sparse(table;
 end
 
 """
-    sparse_to_interactions(X::SparseMatrixCSC) -> NamedTuple
+    sparse_to_triplets(X::SparseMatrixCSC) -> NamedTuple
 
 Convert a sparse matrix back to (user, item, value) triplet vectors.
 Returns a NamedTuple with fields `:user`, `:item`, `:value`.
@@ -92,13 +92,13 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 10, 5, 0.3);
 
-julia> triplets = sparse_to_interactions(X);
+julia> triplets = sparse_to_triplets(X);
 
 julia> length(triplets.user) == nnz(X)
 true
 ```
 """
-function sparse_to_interactions(X::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
+function sparse_to_triplets(X::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
     users = Int[]
     items = Int[]
     vals = Tv[]

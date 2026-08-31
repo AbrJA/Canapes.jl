@@ -32,7 +32,7 @@ SLIM(; λ_l1=0.01, λ_l2=0.1, max_iter=50, tol=1e-4, verbose=true,
 - `λ_l2::T` — L2 penalty (shrinkage)
 - `max_iter::Int` — max coordinate descent iterations per item
 - `tol::T` — convergence threshold for coordinate descent
-- `nonneg::Bool` — enforce non-negative weights (default: true)
+- `nonnegative::Bool` — enforce non-negative weights (default: true)
 - `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
   (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
   `ArgumentError` before any large allocation
@@ -42,7 +42,7 @@ mutable struct SLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const λ_l2::T
     const max_iter::Int
     const tol::T
-    const nonneg::Bool
+    const nonnegative::Bool
     const verbose::Bool
     const max_memory::Union{Nothing,Int}
     W::SparseMatrixCSC{T,Int}
@@ -54,7 +54,7 @@ function SLIM(;
     λ_l2::Float64 = 0.1,
     max_iter::Int = 50,
     tol::Float64 = 1e-4,
-    nonneg::Bool = true,
+    nonnegative::Bool = true,
     verbose::Bool = true,
     T::Type{<:AbstractFloat} = Float32,
     max_memory::Union{Nothing,Int} = nothing,
@@ -63,7 +63,7 @@ function SLIM(;
     λ_l2 >= 0.0 || throw(ArgumentError("λ_l2 must be non-negative, got $λ_l2"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
-    SLIM{T}(T(λ_l1), T(λ_l2), max_iter, T(tol), nonneg, verbose, max_memory,
+    SLIM{T}(T(λ_l1), T(λ_l2), max_iter, T(tol), nonnegative, verbose, max_memory,
             spzeros(T, 0, 0), false)
 end
 
@@ -128,7 +128,7 @@ function _slim_fit_column(G::Matrix{T}, diag_G::Vector{T},
     λ_l2 = model.λ_l2
     max_iter = model.max_iter
     tol = model.tol
-    nonneg = model.nonneg
+    nonnegative = model.nonnegative
 
     # Target: Xᵀxⱼ = G[:, j]
     w = zeros(T, n_items)
@@ -151,7 +151,7 @@ function _slim_fit_column(G::Matrix{T}, diag_G::Vector{T},
             # Elastic net update with soft-thresholding
             denom = diag_G[i] + λ_l2
 
-            if nonneg
+            if nonnegative
                 new_w = max(zero(T), (numerator - λ_l1)) / denom
             else
                 new_w = _soft_threshold(numerator, λ_l1) / denom

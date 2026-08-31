@@ -32,7 +32,7 @@ as coordinate-descent SLIM but in 10-100× less time.
 # Constructor
 ```julia
 ADMMSLIM(; λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, tol=1e-4,
-            nonneg=true, verbose=true, max_memory=nothing)
+            nonnegative=true, verbose=true, max_memory=nothing)
 ```
 
 # Fields
@@ -41,7 +41,7 @@ ADMMSLIM(; λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, tol=1e-4,
 - `ρ::T` — ADMM penalty parameter (controls convergence speed)
 - `max_iter::Int` — max ADMM iterations
 - `tol::T` — relative primal residual tolerance
-- `nonneg::Bool` — enforce non-negative weights
+- `nonnegative::Bool` — enforce non-negative weights
 - `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
   (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
   `ArgumentError` before any large allocation
@@ -84,7 +84,7 @@ mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const ρ::T
     const max_iter::Int
     const tol::T
-    const nonneg::Bool
+    const nonnegative::Bool
     const verbose::Bool
     const max_memory::Union{Nothing,Int}
     W::SparseMatrixCSC{T,Int}
@@ -97,7 +97,7 @@ function ADMMSLIM(;
     ρ::Float64 = 1.0,
     max_iter::Int = 50,
     tol::Float64 = 1e-4,
-    nonneg::Bool = true,
+    nonnegative::Bool = true,
     verbose::Bool = true,
     T::Type{<:AbstractFloat} = Float32,
     max_memory::Union{Nothing,Int} = nothing,
@@ -107,7 +107,7 @@ function ADMMSLIM(;
     ρ > 0.0 || throw(ArgumentError("ρ must be positive, got $ρ"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
-    ADMMSLIM{T}(T(λ_l1), T(λ_l2), T(ρ), max_iter, T(tol), nonneg, verbose,
+    ADMMSLIM{T}(T(λ_l1), T(λ_l2), T(ρ), max_iter, T(tol), nonnegative, verbose,
                  max_memory, spzeros(T, 0, 0), false)
 end
 
@@ -181,7 +181,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
         B_plus_U = B .+ U
         threshold = λ_l1 / ρ
 
-        if model.nonneg
+        if model.nonnegative
             # Soft-threshold + clip to non-negative
             @inbounds @simd for idx in eachindex(Z)
                 z = B_plus_U[idx] - threshold

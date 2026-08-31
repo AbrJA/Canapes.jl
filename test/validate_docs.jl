@@ -97,28 +97,28 @@ println("\n[index.md] Tables.jl Integration")
 
 @validate "Tables - NamedTuple" begin
     data = (user=[1, 1, 2, 2, 3], item=[1, 3, 2, 4, 1], value=[1.0, 1.0, 1.0, 1.0, 1.0])
-    X = interactions_to_sparse(data; user_col=:user, item_col=:item, value_col=:value)
+    X = triplets_to_sparse(data; user_col=:user, item_col=:item, value_col=:value)
     @assert size(X) == (3, 4)
 end
 
 @validate "Tables - binary" begin
     clicks = (user_id=[1, 1, 2, 3], item_id=[10, 20, 10, 30])
-    X = interactions_to_sparse(clicks; user_col=:user_id, item_col=:item_id, value_col=nothing)
+    X = triplets_to_sparse(clicks; user_col=:user_id, item_col=:item_id, value_col=nothing)
     @assert nnz(X) == 4
 end
 
 @validate "Tables - DataFrame" begin
     import DataFrames
     df = DataFrames.DataFrame(user=[1, 1, 2], item=[1, 2, 3], value=[1.0, 1.0, 1.0])
-    X = interactions_to_sparse(df; user_col=:user, item_col=:item, value_col=:value)
+    X = triplets_to_sparse(df; user_col=:user, item_col=:item, value_col=:value)
     @assert size(X) == (2, 3)
     @assert nnz(X) == 3
 end
 
 @validate "Tables - roundtrip" begin
     data = (user=[1, 1, 2, 2, 3], item=[1, 3, 2, 4, 1], value=[1.0, 1.0, 1.0, 1.0, 1.0])
-    X = interactions_to_sparse(data; user_col=:user, item_col=:item, value_col=:value)
-    triplets = sparse_to_interactions(X)
+    X = triplets_to_sparse(data; user_col=:user, item_col=:item, value_col=:value)
+    triplets = sparse_to_triplets(X)
     @assert length(triplets.user) == 5
 end
 
@@ -286,7 +286,7 @@ println("\n[algorithms.md] SLIM")
 
 @validate "SLIM" begin
     X = sprand(MersenneTwister(1), 500, 100, 0.05)
-    model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonneg=true, verbose=false)
+    model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonnegative=true, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=10)
     scores = score(model, X)
@@ -299,7 +299,7 @@ println("\n[algorithms.md] ADMMSLIM")
 
 @validate "ADMMSLIM" begin
     X = sprand(MersenneTwister(1), 500, 100, 0.05)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonneg=true, verbose=false)
+    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonnegative=true, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=10)
     @assert size(preds) == (500, 10)

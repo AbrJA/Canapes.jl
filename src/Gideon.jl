@@ -120,8 +120,8 @@ export
     to_csr,
 
     # Tables.jl integration
-    interactions_to_sparse,
-    sparse_to_interactions
+    triplets_to_sparse,
+    sparse_to_triplets
 
 # ── GPU stubs (implemented by ext/GideonCUDAExt.jl when CUDA is loaded) ──
 function fit_gpu! end

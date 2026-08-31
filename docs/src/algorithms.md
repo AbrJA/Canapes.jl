@@ -187,7 +187,7 @@ using Gideon, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
 # λ_l1 controls L1 sparsity, λ_l2 controls L2 shrinkage
-model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonneg=true)
+model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonnegative=true)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 scores = score(model, X)  # sparse SparseMatrixCSC
@@ -209,7 +209,7 @@ X = sprand(MersenneTwister(1), 500, 100, 0.05)
 # ρ controls ADMM convergence speed
 # Training memory is O(n_items²) (dense joint solve); prefer SLIM for very
 # large item counts. The fitted W is stored sparse: score returns SparseMatrixCSC.
-model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonneg=true)
+model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonnegative=true)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 ```

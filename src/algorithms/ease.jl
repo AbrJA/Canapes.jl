@@ -29,11 +29,14 @@ standard benchmarks.
 
 # Constructor
 ```julia
-EASE(; λ=500.0)
+EASE(; λ=500.0, max_memory=nothing)
 ```
 
 # Fields
 - `λ::T` — L2 regularization (higher = more smoothing, typical range: 100-1000)
+- `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
+  (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
+  `ArgumentError` before any large allocation
 - `B::Matrix{T}` — item-item weight matrix (n_items × n_items) after fitting
 
 # Example
@@ -48,14 +51,18 @@ preds = recommend(model, X; k=10)
 mutable struct EASE{T<:AbstractFloat} <: AbstractItemSimilarity
     const λ::T
     const verbose::Bool
+    const max_memory::Union{Nothing,Int}
     B::Matrix{T}
     is_fitted::Bool
 end
 
-function EASE(; λ::Float64=500.0, verbose::Bool=true, dtype::Type{<:AbstractFloat}=Float32)
+function EASE(; λ::Float64=500.0, verbose::Bool=true, dtype::Type{<:AbstractFloat}=Float32,
+              max_memory::Union{Nothing,Int}=nothing)
     λ > 0.0 || throw(ArgumentError("λ must be positive, got $λ"))
+    max_memory === nothing || max_memory > 0 ||
+        throw(ArgumentError("max_memory must be positive, got $max_memory"))
     T = dtype
-    EASE{T}(T(λ), verbose, Matrix{T}(undef, 0, 0), false)
+    EASE{T}(T(λ), verbose, max_memory, Matrix{T}(undef, 0, 0), false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -78,6 +85,9 @@ function fit!(model::EASE{T}, X::SparseMatrixCSC{Tv,Ti};
     try
     n_users, n_items = size(X)
     _require_nonempty_dimensions(X, "EASE")
+
+    # Peak fit memory: G, Cholesky factor, P, B — four dense n_items² matrices
+    _require_fit_memory(_fit_memory_estimate(n_items, 4, T), model.max_memory, "EASE")
 
     model.verbose && @info "[EASE] Computing Gram matrix ($(n_items) items)..."
 

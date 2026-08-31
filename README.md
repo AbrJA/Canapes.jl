@@ -399,6 +399,7 @@ best_params, best_score, _ = random_search(
 | Memory-bounded batched GEMM top-k scoring | EASE |
 | Unified top-k paths (`_predict_sparse_score_topk`, `_predict_batched_gemm_topk`) | EASE, SLIM, ItemKNN, ADMMSLIM |
 | Sparse fitted weights (`SparseMatrixCSC`, soft-thresholded exact zeros) | SLIM, ADMMSLIM |
+| Fit-time peak-memory estimate + `max_memory` guard before allocating | EASE, SLIM, ADMMSLIM |
 | `@inbounds @simd` vectorized element-wise / gradient loops | WMF, LogisticMF, GloVe, BPR, EALS |
 | CSR dual storage for O(nnz_u) per-user row access | All algorithms, metrics |
 | `Threads.@threads` outer loops with shared chunked-buffer helpers | WMF, IALS, EALS, BPR, GloVe |

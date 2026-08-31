@@ -23,7 +23,8 @@ and interpretable.
 
 # Constructor
 ```julia
-SLIM(; λ_1=0.01, λ_2=0.1, max_iter=50, convergence_tol=1e-4, verbose=true)
+SLIM(; λ_1=0.01, λ_2=0.1, max_iter=50, convergence_tol=1e-4, verbose=true,
+        max_memory=nothing)
 ```
 
 # Fields
@@ -32,6 +33,9 @@ SLIM(; λ_1=0.01, λ_2=0.1, max_iter=50, convergence_tol=1e-4, verbose=true)
 - `max_iter::Int` — max coordinate descent iterations per item
 - `convergence_tol::T` — convergence threshold for coordinate descent
 - `nonneg::Bool` — enforce non-negative weights (default: true)
+- `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
+  (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
+  `ArgumentError` before any large allocation
 """
 mutable struct SLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const λ_1::T
@@ -40,6 +44,7 @@ mutable struct SLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const convergence_tol::T
     const nonneg::Bool
     const verbose::Bool
+    const max_memory::Union{Nothing,Int}
     W::SparseMatrixCSC{T,Int}
     is_fitted::Bool
 end
@@ -52,11 +57,14 @@ function SLIM(;
     nonneg::Bool = true,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
+    max_memory::Union{Nothing,Int} = nothing,
 )
     λ_1 >= 0.0 || throw(ArgumentError("λ_1 must be non-negative, got $λ_1"))
     λ_2 >= 0.0 || throw(ArgumentError("λ_2 must be non-negative, got $λ_2"))
+    max_memory === nothing || max_memory > 0 ||
+        throw(ArgumentError("max_memory must be positive, got $max_memory"))
     T = dtype
-    SLIM{T}(T(λ_1), T(λ_2), max_iter, T(convergence_tol), nonneg, verbose,
+    SLIM{T}(T(λ_1), T(λ_2), max_iter, T(convergence_tol), nonneg, verbose, max_memory,
             spzeros(T, 0, 0), false)
 end
 
@@ -78,6 +86,10 @@ function fit!(model::SLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     try
     n_users, n_items = size(X)
     _require_nonempty_dimensions(X, "SLIM")
+
+    # Peak fit memory: G plus the assembled W — at most two dense n_items²
+    # equivalents (W is stored sparse, so this is an upper bound).
+    _require_fit_memory(_fit_memory_estimate(n_items, 2, T), model.max_memory, "SLIM")
 
     # Precompute XᵀX (Gram matrix) and column norms
     G = Matrix{T}(X' * X)   # n_items × n_items

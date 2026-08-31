@@ -60,6 +60,9 @@ using Pkg
     @testset "Infrastructure" begin
         include("test_infrastructure.jl")
     end
+    @testset "Memory limits" begin
+        include("test_memory_limits.jl")
+    end
     @testset "Tables" begin
         include("test_tables.jl")
     end

@@ -413,6 +413,39 @@ end
     nothing
 end
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Fit-time memory estimation
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    _fit_memory_estimate(n_items::Int, n_dense_matrices::Int, ::Type{T}) -> Int
+
+Rough peak-memory estimate (bytes) for training an item-item model that keeps
+`n_dense_matrices` dense n_items × n_items matrices of element type `T` in
+memory. Sparse intermediates (e.g. the XᵀX product) are bounded by n_items² as
+well, so the estimate captures the dominant allocations.
+"""
+@inline _fit_memory_estimate(n_items::Int, n_dense_matrices::Int, ::Type{T}) where {T} =
+    n_items * n_items * n_dense_matrices * sizeof(T)
+
+"""
+    _require_fit_memory(estimate::Int, limit::Union{Nothing,Int}, name::AbstractString)
+
+Throw `ArgumentError` when the estimated fit-time peak memory `estimate`
+(bytes) exceeds the configured `limit` (bytes). A `nothing` limit allows any
+size. Called before the first large allocation so a fit that cannot fit in
+memory fails early instead of exhausting the system.
+"""
+function _require_fit_memory(estimate::Int, limit::Union{Nothing,Int}, name::AbstractString)
+    if limit !== nothing && estimate > limit
+        throw(ArgumentError(
+            "$name fit is estimated to need ≈$(round(estimate / 2^20; digits=1)) MiB of peak " *
+            "memory ($estimate bytes), exceeding max_memory=$limit bytes. " *
+            "Raise max_memory or fit on fewer items."))
+    end
+    nothing
+end
+
 function recommend(model::AbstractMatrixFactorization, X::SparseMatrixCSC; k::Int=10)
     _require_fitted(model.is_fitted)
     _validate_recommend_input(X, size(model.item_factors, 2), k)

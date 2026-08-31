@@ -32,7 +32,7 @@ as coordinate-descent SLIM but in 10-100× less time.
 # Constructor
 ```julia
 ADMMSLIM(; λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=50, convergence_tol=1e-4,
-            nonneg=true, verbose=true)
+            nonneg=true, verbose=true, max_memory=nothing)
 ```
 
 # Fields
@@ -42,6 +42,9 @@ ADMMSLIM(; λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=50, convergence_tol=1e-4,
 - `max_iter::Int` — max ADMM iterations
 - `convergence_tol::T` — relative primal residual tolerance
 - `nonneg::Bool` — enforce non-negative weights
+- `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
+  (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
+  `ArgumentError` before any large allocation
 - `W::SparseMatrixCSC{T,Int}` — item-item weight matrix (n_items × n_items) after fitting
 
 # Memory model
@@ -76,6 +79,7 @@ mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const convergence_tol::T
     const nonneg::Bool
     const verbose::Bool
+    const max_memory::Union{Nothing,Int}
     W::SparseMatrixCSC{T,Int}
     is_fitted::Bool
 end
@@ -89,13 +93,16 @@ function ADMMSLIM(;
     nonneg::Bool = true,
     verbose::Bool = true,
     dtype::Type{<:AbstractFloat} = Float32,
+    max_memory::Union{Nothing,Int} = nothing,
 )
     λ_1 >= 0.0 || throw(ArgumentError("λ_1 must be non-negative, got $λ_1"))
     λ_2 >= 0.0 || throw(ArgumentError("λ_2 must be non-negative, got $λ_2"))
     ρ > 0.0 || throw(ArgumentError("ρ must be positive, got $ρ"))
+    max_memory === nothing || max_memory > 0 ||
+        throw(ArgumentError("max_memory must be positive, got $max_memory"))
     T = dtype
     ADMMSLIM{T}(T(λ_1), T(λ_2), T(ρ), max_iter, T(convergence_tol), nonneg, verbose,
-                 spzeros(T, 0, 0), false)
+                 max_memory, spzeros(T, 0, 0), false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -124,6 +131,10 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     model.is_fitted = false
     try
     _require_nonempty_dimensions(X, "ADMMSLIM")
+
+    # Peak fit memory: G, lhs, Cholesky factor, B, Z, U — six dense n_items²
+    # matrices (the fitted W is built afterwards as sparse).
+    _require_fit_memory(_fit_memory_estimate(n_items, 6, T), model.max_memory, "ADMMSLIM")
 
     model.verbose && @info "[ADMM-SLIM] Computing Gram matrix ($n_items × $n_items)..."
 

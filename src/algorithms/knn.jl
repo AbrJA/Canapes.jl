@@ -87,6 +87,7 @@ function fit!(model::ItemKNN{T}, X::SparseMatrixCSC{Tv,Ti};
     run_callbacks_train_begin(callbacks, model)
     try
     _require_nonempty_dimensions(X, "ItemKNN")
+    _require_finite_input(X, "ItemKNN")
     kn = min(model.k, n_items - 1)
 
     model.verbose && @info "[ItemKNN] Computing $(model.similarity) similarity for $n_items items (k=$kn)..."

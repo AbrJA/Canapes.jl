@@ -124,6 +124,7 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     run_callbacks_train_begin(callbacks, model)
     try
     n_users, n_items = size(X)
+    _require_finite_input(X, "WMF")
     k = model.rank
 
     # Initialise factor matrices

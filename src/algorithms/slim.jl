@@ -86,6 +86,7 @@ function fit!(model::SLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     try
     n_users, n_items = size(X)
     _require_nonempty_dimensions(X, "SLIM")
+    _require_finite_input(X, "SLIM")
 
     # Peak fit memory: G plus the assembled W — at most two dense n_items²
     # equivalents (W is stored sparse, so this is an upper bound).

@@ -80,6 +80,7 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     (n_users > 0 && n_items > 0) || throw(ArgumentError(
         "LogisticMF requires positive user and item dimensions, got $(size(X))"))
     nnz(X) > 0 || throw(ArgumentError("LogisticMF requires at least one observed interaction"))
+    _require_finite_input(X, "LogisticMF")
     k = model.rank
     old_user_factors = model.user_factors
     old_item_factors = model.item_factors

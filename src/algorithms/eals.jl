@@ -116,6 +116,7 @@ function fit!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
                callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
     _require_nonempty_dimensions(X, "EALS")
+    _require_finite_input(X, "EALS")
     old_user_factors = model.user_factors
     old_item_factors = model.item_factors
     old_item_weights = model.item_weights
@@ -220,6 +221,7 @@ function update!(model::EALS{T}, X::SparseMatrixCSC{Tv,Ti};
     if !model.is_fitted
         return fit!(model, X; rng=rng)
     end
+    _require_finite_input(X, "EALS")
     n_users, n_items = size(X)
     k = model.rank
 

@@ -124,6 +124,7 @@ function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
     size(X, 1) == size(X, 2) || throw(ArgumentError("GloVe requires a square co-occurrence matrix, got $(size(X, 1))×$(size(X, 2))"))
     n > 0 || throw(ArgumentError("GloVe requires a non-empty co-occurrence matrix"))
     nnz(X) > 0 || throw(ArgumentError("GloVe requires at least one co-occurrence"))
+    _require_finite_input(X, "GloVe")
     all(x -> x > 0, nonzeros(X)) || throw(ArgumentError("All co-occurrence values must be positive"))
 
     k = model.rank

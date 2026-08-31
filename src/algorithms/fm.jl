@@ -95,6 +95,8 @@ function update!(model::FM{T}, X::SparseMatrixCSC{Tv,Ti},
     iter_start = time_ns()
     n_samples, n_features = size(X)
     n_samples == length(y) || throw(DimensionMismatch("X rows ($n_samples) ≠ length(y) ($(length(y)))"))
+    _require_finite_input(X, "FM")
+    _require_finite_vector(y, "FM")
 
     if !model.is_initialized
         model.n_features = n_features

@@ -63,6 +63,9 @@ using Pkg
     @testset "Memory limits" begin
         include("test_memory_limits.jl")
     end
+    @testset "Finite input" begin
+        include("test_finite_input.jl")
+    end
     @testset "Tables" begin
         include("test_tables.jl")
     end

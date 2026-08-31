@@ -115,6 +115,7 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
+    _require_finite_input(X, "BPR")
     k = model.rank
     old_user_factors = model.user_factors
     old_item_factors = model.item_factors

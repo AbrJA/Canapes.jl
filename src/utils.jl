@@ -408,6 +408,18 @@ end
     nothing
 end
 
+@inline function _require_finite_input(X::SparseMatrixCSC, name::AbstractString)
+    all(isfinite, nonzeros(X)) || throw(ArgumentError(
+        "$name input contains NaN or Inf values; all values must be finite"))
+    nothing
+end
+
+@inline function _require_finite_vector(y::AbstractVector{<:Real}, name::AbstractString)
+    all(isfinite, y) || throw(ArgumentError(
+        "$name target values contain NaN or Inf; all values must be finite"))
+    nothing
+end
+
 @inline function _require_fitted(fitted::Bool)
     fitted || throw(ArgumentError("model is not fitted; call fit! first"))
     nothing

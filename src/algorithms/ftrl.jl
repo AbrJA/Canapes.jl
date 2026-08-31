@@ -93,7 +93,8 @@ function update!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVector;
     iter_start = time_ns()
     n_samples, n_features = size(X)
     n_samples == length(y) || throw(DimensionMismatch("X rows ($n_samples) ≠ length(y) ($(length(y)))"))
-    !any(isnan, nonzeros(X)) || throw(ArgumentError("NaN values in input matrix"))
+    _require_finite_input(X, "FTRL")
+    _require_finite_vector(y, "FTRL")
 
     if !model.is_initialized
         model.n_features = n_features

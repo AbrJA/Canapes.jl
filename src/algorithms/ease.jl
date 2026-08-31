@@ -85,6 +85,7 @@ function fit!(model::EASE{T}, X::SparseMatrixCSC{Tv,Ti};
     try
     n_users, n_items = size(X)
     _require_nonempty_dimensions(X, "EASE")
+    _require_finite_input(X, "EASE")
 
     # Peak fit memory: G, Cholesky factor, P, B — four dense n_items² matrices
     _require_fit_memory(_fit_memory_estimate(n_items, 4, T), model.max_memory, "EASE")

@@ -131,6 +131,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     model.is_fitted = false
     try
     _require_nonempty_dimensions(X, "ADMMSLIM")
+    _require_finite_input(X, "ADMMSLIM")
 
     # Peak fit memory: G, lhs, Cholesky factor, B, Z, U — six dense n_items²
     # matrices (the fitted W is built afterwards as sparse).

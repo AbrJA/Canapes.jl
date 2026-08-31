@@ -101,7 +101,7 @@ function crossval(model_fn, X::SparseMatrixCSC;
         model = model_fn()
         fit!(model, X_train; rng=rng)
         preds = recommend(model, X_train; k=k)
-        metric_val = metric(preds, X_test; k=k)
+        metric_val = _scalarize_metric(metric(preds, X_test; k=k))
         push!(fold_scores, metric_val)
     end
 
@@ -160,7 +160,7 @@ function grid_search(model_fn, X::SparseMatrixCSC,
         try
             fit!(model, X_train; rng=rng)
             preds = recommend(model, X_train; k=k)
-            metric_val = metric(preds, X_test; k=k)
+            metric_val = _scalarize_metric(metric(preds, X_test; k=k))
             push!(results, (params=params, score=metric_val))
 
             if metric_val > best_score
@@ -224,7 +224,7 @@ function random_search(model_fn, X::SparseMatrixCSC,
         try
             fit!(model, X_train; rng=rng)
             preds = recommend(model, X_train; k=k)
-            metric_val = metric(preds, X_test; k=k)
+            metric_val = _scalarize_metric(metric(preds, X_test; k=k))
             push!(results, (params=params, score=metric_val))
 
             if metric_val > best_score
@@ -241,3 +241,8 @@ function random_search(model_fn, X::SparseMatrixCSC,
 
     (best_params, best_score, results)
 end
+
+# Metrics that return per-user vectors (e.g. ndcg_at_k) are reduced to their
+# mean so cross-validation and search report a single scalar per trial.
+@inline _scalarize_metric(x::Real) = x
+@inline _scalarize_metric(v::AbstractVector{<:Real}) = isempty(v) ? NaN : sum(v) / length(v)

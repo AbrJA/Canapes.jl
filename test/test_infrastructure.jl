@@ -258,4 +258,37 @@ end
         @test length(results) == 3
         @test best_score >= 0.0
     end
+
+    @testset "vector metrics in search" begin
+        # Regression: ndcg_at_k returns per-user vectors; crossval, grid_search
+        # and random_search must reduce them to a scalar instead of failing.
+        rng = MersenneTwister(42)
+        X = sprand(rng, 50, 30, 0.15)
+
+        mean_s, std_s, fold_scores = crossval(
+            () -> EASE(λ=200.0, verbose=false),
+            X; n_folds=3, k=5, metric=ndcg_at_k, rng=MersenneTwister(1)
+        )
+        @test all(isfinite, fold_scores)
+        @test mean_s ≈ sum(fold_scores) / 3
+
+        best_params, best_score, results = grid_search(
+            p -> EASE(λ=p.λ, verbose=false),
+            X,
+            Dict(:λ => [100.0, 500.0]);
+            k=5, test_fraction=0.3, verbose=false, rng=MersenneTwister(1),
+            metric=ndcg_at_k
+        )
+        @test all(r -> isfinite(r.score), results)
+        @test best_score == maximum(r.score for r in results)
+
+        best_params, best_score, results = random_search(
+            p -> EASE(λ=p.λ, verbose=false),
+            X,
+            Dict(:λ => r -> 10.0^(rand(r) * 3));
+            n_trials=3, k=5, test_fraction=0.3, verbose=false, rng=MersenneTwister(1),
+            metric=ndcg_at_k
+        )
+        @test all(r -> isfinite(r.score), results)
+    end
 end

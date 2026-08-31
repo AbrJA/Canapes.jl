@@ -13,26 +13,68 @@
 
 ---
 
-Gideon.jl is a high-performance Julia toolkit for sparse statistical learning, large-scale matrix factorization, and recommender systems. It provides a unified, extensible API for training, evaluation, and model selection across recommendation and sparse regression workflows, with production-oriented implementations optimized through multithreading, SIMD vectorization, optional GPU acceleration, and rigorous reference-based validation.
+Gideon.jl is a production-oriented Julia toolkit for sparse statistical learning and
+recommender systems: matrix factorization, item-item models, low-rank completion, and
+sparse regression — all on `SparseMatrixCSC` with a single unified API.
 
-## Features
+It is built for the constraints of real recommendation pipelines: **deterministic**
+training that reproduces across builds and platforms, **memory-bounded** scoring paths
+that never materialize a full dense score matrix, **optional GPU** acceleration, and
+numerical correctness **validated against R (rsparse) and Python (implicit, sklearn,
+scipy)** references.
 
-- **Unified API** — `fit!` / `recommend` / `score` / `transform` for recommenders; `fit!` / `predict` for regression models.
-- **Production-grade performance** — zero-allocation inner loops, `muladd`-based deterministic kernels, batched BLAS gram assembly, per-thread pre-allocated buffers.
-- **Deterministic training** — `muladd` reductions (strict scalar order) make fits reproducible across builds and platforms; GloVe is bit-identical across thread counts.
-- **GPU acceleration** — optional CUDA.jl extension for EASE, IALS, WMF (via package extensions).
-- **R-validated correctness** — the full test suite includes a Tier-2 fixture layer that compares numerically against pre-computed R / rsparse outputs.
-- **Sparse-native** — all algorithms operate directly on `SparseMatrixCSC`; no dense conversion needed.
-- **Precompilation** — `PrecompileTools.jl` workloads reduce time-to-first-execution.
-- **Tables.jl integration** — accept interaction data as `(user, item, value)` triplets from any Tables.jl-compatible source.
-- **Cross-validation & search** — built-in temporal split, k-fold CV, grid search, and random search with warm-starting.
-- **Callback system** — extensible training hooks for early stopping, checkpointing, learning rate scheduling, and custom logging.
-- **Similarity queries** — `similar_items` / `similar_users` for nearest-neighbor exploration via cosine similarity.
-- **Benchmark harness** — a tracked `benchmark/run.jl` harness measures `fit!` / `recommend` time and allocations at three fixed scales across commits.
+## Highlights
+
+| | |
+|---|---|
+| **One API for everything** | `fit!` / `recommend` / `score` / `predict` / `transform` across 15 algorithms |
+| **Deterministic by design** | `muladd` reductions in strict scalar order — same results across builds, platforms, and thread counts (GloVe is bit-identical; BPR is the documented Hogwild exception) |
+| **Reference-validated** | weights, predictions, and losses compared numerically against R and Python reference implementations |
+| **Sparse-native, memory-safe** | no dense conversions, batched top-k scoring, fit-time `max_memory` guards, sparse fitted weights |
+| **Concurrency-safe** | transactional `fit!`, read-only `recommend`/`score`, safe nesting |
+| **GPU when you want it** | optional CUDA.jl extension for EASE, IALS, WMF and scoring |
+| **Tables.jl native** | feed it DataFrames, CSV, Arrow — `(user, item, value)` triplets in, sparse matrix out |
+| **Benchmarked** | a tracked harness measures `fit!`/`recommend` time and allocations at fixed scales across commits |
+
+## Installation
+
+```julia
+using Pkg
+Pkg.add(url="https://github.com/AbrJA/Gideon.jl")
+```
+
+Requires Julia ≥ 1.10. Full API reference lives in [`docs/src/`](docs/src) (build with `julia --project=docs docs/make.jl`).
 
 ---
 
-## Algorithms
+## Quick Start
+
+End-to-end in one flow: tabular interactions → sparse matrix → train → recommend → evaluate.
+
+```julia
+using Gideon, DataFrames, SparseArrays, Random, Statistics
+
+# 1. Interactions as a table (any Tables.jl source: DataFrames, CSV, Arrow, …)
+df = DataFrame(user=[1,1,2,3,3,4], item=[2,5,3,1,4,2], rating=[1.0,1.0,1.0,1.0,1.0,1.0])
+X = interactions_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating)   # 4×5
+
+# 2. Train (seen items are masked at recommend time)
+model = WMF(rank=8, λ=0.1, α=40.0, max_iter=15, verbose=false)
+fit!(model, X; rng=MersenneTwister(42))
+
+# 3. Top-k recommendations per user (k clamps to n_items)
+preds = recommend(model, X; k=10)   # 4×5 Matrix{Int} of item indices
+
+# 4. Evaluate against a held-out split (map_at_k is scalar; ndcg_at_k is per-user)
+X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
+fit!(model, X_train; rng=MersenneTwister(42))
+println("MAP@10      = ", round(map_at_k(recommend(model, X_train; k=10), X_test), digits=4))
+println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10), X_test)), digits=4))
+```
+
+---
+
+## Model Catalog
 
 | Model | Type | Reference |
 |-------|------|-----------|
@@ -42,194 +84,146 @@ Gideon.jl is a high-performance Julia toolkit for sparse statistical learning, l
 | `BPR` | Bayesian Personalized Ranking (pairwise SGD) | Rendle et al. (2009) |
 | `LogisticMF` | Logistic Matrix Factorization | Johnson (2014) |
 | `GloVe` | Co-occurrence embedding (Hogwild AdaGrad) | Pennington, Socher & Manning (2014) |
-| `EASE` | Embarrassingly Shallow Autoencoders | Steck (2019) |
+| `EASE` | Embarrassingly Shallow Autoencoders (closed form) | Steck (2019) |
 | `SLIM` | Sparse Linear Methods (elastic net) | Ning & Karypis (2011) |
-| `ADMMSLIM` | ADMM-based SLIM (joint solve, 10–100× faster; dense O(n²) training, sparse fitted `W`) | Steck et al. (2020) |
+| `ADMMSLIM` | ADMM-based SLIM (joint solve, 10–100× faster) | Steck et al. (2020) |
 | `ItemKNN` | Item-based K-Nearest Neighbors (cosine / Jaccard) | Deshpande & Karypis (2004) |
 | `FTRL` | Follow The Regularized Leader (online GLM) | McMahan et al. (2013) |
-| `FM` | 2nd-order FM (AdaGrad SGD) | Rendle (2010) |
+| `FM` | 2nd-order Factorization Machines (AdaGrad SGD) | Rendle (2010) |
 | `SoftImpute` | Low-rank matrix completion (with imputation) | Hastie et al. (2014) |
 | `SoftSVD` | Low-rank SVD (power-iteration style) | Hastie et al. (2014) |
 | `PureSVD` | Truncated SVD (SoftSVD with λ = 0) | Cremonesi et al. (2010) |
 
----
+**Choosing a model** — the short version:
 
-## Installation
-
-```julia
-using Pkg
-Pkg.add(url="https://github.com/AbrJA/Gideon.jl")
-```
-
-Requires Julia ≥ 1.10.
+- **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS` (best accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise ranking, Hogwild), `LogisticMF` (probabilistic, well-calibrated scores).
+- **Item-item similarity**: `EASE` (state of the art, O(n_items²) memory), `SLIM` (sparse + interpretable), `ADMMSLIM` (same solution as SLIM, 10–100× faster, dense training), `ItemKNN` (lightweight baseline).
+- **Embeddings / related items**: `GloVe` on co-occurrences.
+- **Explicit ratings or completion**: `SoftImpute` / `SoftSVD` / `PureSVD`, or `WMF` with `feedback=EXPLICIT`.
+- **Sparse regression / CTR**: `FTRL` (online, elastic-net, streaming) and `FM` (second-order feature interactions).
 
 ---
 
-## Quick Start
+## Examples by Family
 
-### WMF — Implicit Collaborative Filtering
+### Collaborative filtering — WMF
 
 ```julia
 using Gideon, SparseArrays, Random
 
-# Build a user–item interaction matrix (n_users × n_items)
-rng = MersenneTwister(42)
-X = sprand(rng, 1000, 500, 0.02)   # 1 K users, 500 items, 2% density
+X = sprand(MersenneTwister(42), 1000, 500, 0.02)   # 1 K users, 500 items, 2% density
 
-# Train with Conjugate-Gradient ALS (default, fastest at scale)
+# CG-ALS (default, fastest at scale); Cholesky for max stability; NonNegative for NNLS
 model = WMF(rank=20, λ=0.1, α=1.0, max_iter=15)
-fit!(model, X; rng)
+fit!(model, X; rng=MersenneTwister(1))
 
-# User and item embeddings: rank × n matrix
-size(model.user_factors)   # (20, 1000)
-size(model.item_factors)   # (20, 500)
+size(model.user_factors)   # (20, 1000)  — rank × n_users
+size(model.item_factors)   # (20, 500)   — rank × n_items
 
-# Embed new users from their interaction history
-X_new = sprand(rng, 50, 500, 0.03)
-U_new = transform(model, X_new)    # (20, 50)
+# Fold-in new users from their interaction history
+U_new = transform(model, sprand(MersenneTwister(7), 50, 500, 0.03))   # (20, 50)
 ```
 
-Switch to Cholesky for maximum numerical stability, or NNLS for non-negative factors:
-
-```julia
-model_chol = WMF(rank=20, λ=0.1, solver=CholeskySolver())
-model_nnls = WMF(rank=20, λ=0.1, solver=NonNegative())
-```
-
----
-
-### GloVe — Co-occurrence Embeddings
+### Item-item models — EASE, SLIM, ADMMSLIM, ItemKNN
 
 ```julia
 using Gideon, SparseArrays, Random
 
-# Co-occurrence matrix must be square and positive (e.g. from a tokenizer)
-C = sprand(MersenneTwister(1), 5000, 5000, 0.005)
-C = C + C'   # symmetrize
+X = sprand(MersenneTwister(42), 1000, 500, 0.02)
+
+# EASE: closed-form, strongest accuracy on implicit benchmarks
+ease = EASE(λ=200.0, verbose=false)
+fit!(ease, X)
+
+# SLIM: sparse, interpretable weights; ADMMSLIM: same solution, 10-100x faster
+slim    = SLIM(λ_1=0.01, λ_2=0.1, max_iter=50, verbose=false)
+admm    = ADMMSLIM(λ_1=0.01, λ_2=100.0, max_iter=50, verbose=false)
+fit!(slim, X);  fit!(admm, X)
+nnz(admm.W)                      # fitted weights are stored sparse
+score(admm, X)                   # SparseMatrixCSC, not a dense matrix
+
+# ItemKNN: fast baseline via cosine / Jaccard neighbors
+knn = ItemKNN(k=50, similarity=:cosine, verbose=false)
+fit!(knn, X)
+```
+
+### Co-occurrence embeddings — GloVe
+
+```julia
+using Gideon, SparseArrays, Random
+
+C = sprand(MersenneTwister(1), 5000, 5000, 0.005)   # square, positive co-occurrences
+C = C + C'
 
 glove = GloVe(rank=100, learning_rate=0.05, x_max=100.0, max_iter=20)
 fit!(glove, C; rng=MersenneTwister(2))
 
-# Final embeddings: average main + context vectors (standard GloVe convention)
-E = embeddings(glove)   # 100 × 5000
+E = embeddings(glove)             # 100 × 5000 — main + context average (standard convention)
 ```
 
----
-
-### Logistic Matrix Factorization (LogisticMF)
+### Logistic Matrix Factorization
 
 ```julia
 using Gideon, SparseArrays, Random
 
 X = sprand(MersenneTwister(3), 800, 300, 0.03)
-
 lmf = LogisticMF(rank=15, α=1.0, λ=0.1, learning_rate=0.01, max_iter=20, n_negative=5)
 fit!(lmf, X; rng=MersenneTwister(3))
-
-size(lmf.user_factors)   # (15, 800)
-size(lmf.item_factors)   # (15, 300)
 ```
 
----
-
-### FTRL — Online Logistic Regression
-
-FTRL supports Elastic-Net regularization and streaming/online updates via `update!`.
+### Sparse regression — FTRL & FM
 
 ```julia
 using Gideon, SparseArrays, Random
 
+# FTRL: online logistic regression, elastic-net, streaming updates
 rng = MersenneTwister(7)
-n, p = 10_000, 50_000
-X_train = sprand(rng, n, p, 0.001)
-y_train = rand(rng, Bool, n) .|> Float64
+X_train = sprand(rng, 10_000, 50_000, 0.001)
+y_train = rand(rng, Bool, 10_000) .|> Float64
 
-model = FTRL(
-    learning_rate       = 0.1,
-    learning_rate_decay = 0.5,
-    λ                   = 1e-4,
-    l1_ratio            = 0.9,   # mostly L1 (Lasso-like)
-)
+ftrl = FTRL(learning_rate=0.1, learning_rate_decay=0.5, λ=1e-4, l1_ratio=0.9)
+update!(ftrl, X_train, y_train; rng)          # one pass; call again for more epochs
+ŷ = predict(ftrl, X_train)                    # probabilities ∈ (0, 1)
 
-# Single pass — call multiple times for multiple epochs
-update!(model, X_train, y_train; rng)
-
-# Predict probabilities
-ŷ = predict(model, X_train)   # Vector{Float64} ∈ (0, 1)
-
-# Online update with a new mini-batch
-X_new = sprand(rng, 200, p, 0.001)
-y_new = rand(rng, Bool, 200) .|> Float64
-update!(model, X_new, y_new; rng)
+# FM: second-order feature interactions
+fm = FM(rank=8, learning_rate_w=0.1, learning_rate_v=0.05,
+        λ_w=1e-5, λ_v=1e-5, family=Binomial())
+fit!(fm, X_train, y_train; rng=MersenneTwister(9))
 ```
 
----
-
-### FM — Factorization Machines
-
-```julia
-using Gideon, SparseArrays, Random
-
-rng = MersenneTwister(9)
-X = sprand(rng, 5_000, 1_000, 0.01)
-y = rand(rng, Bool, 5_000) .|> Float64
-
-fm = FM(
-    rank           = 8,
-    learning_rate_w = 0.1,
-    learning_rate_v = 0.05,
-    λ_w            = 1e-5,
-    λ_v            = 1e-5,
-    family         = BINOMIAL,
-)
-
-update!(fm, X, y; rng)
-ŷ = predict(fm, X)
-```
-
----
-
-### SoftImpute / SoftSVD — Low-rank Matrix Completion
+### Matrix completion — SoftImpute / SoftSVD / PureSVD
 
 ```julia
 using Gideon, SparseArrays, LinearAlgebra, Random
 
-rng = MersenneTwister(11)
-X_observed = sprand(rng, 200, 150, 0.3)   # only ~30% of entries observed
+X_observed = sprand(MersenneTwister(11), 200, 150, 0.3)   # 30% observed entries
 
-# Complete the matrix up to rank 10, nuclear-norm penalty λ=0.5
 model = SoftImpute(rank=10, λ=0.5, max_iter=100)
-fit!(model, X_observed; rng=rng)
+fit!(model, X_observed; rng=MersenneTwister(11))
 
-# Low-rank approximation: model.U * Diagonal(model.d) * model.V'
-recon = model.U * Diagonal(model.d) * model.V'
-size(recon)   # (200, 150)
+recon = model.U * Diagonal(model.d) * model.V'            # rank-10 completion
+size(recon)                                               # (200, 150)
 
-# SoftSVD: power-iteration style (no imputation correction, faster per iteration)
-model_svd = SoftSVD(rank=5, max_iter=50)
-fit!(model_svd, X_observed; rng=rng)
+svd_model = SoftSVD(rank=5, max_iter=50)                  # no imputation correction
+fit!(svd_model, X_observed; rng=MersenneTwister(11))
 ```
 
 ---
 
-### Ranking Metrics
+## Evaluation — Ranking Metrics
 
-All metric functions accept a predictions matrix of shape `(n_users, K)` (item indices,
-1-based) and a sparse relevance matrix.
+Metrics take a `(n_users, K)` matrix of predicted item indices and a sparse relevance
+matrix; per-user results come back as vectors, batch variants as scalars.
 
 ```julia
-using Gideon, SparseArrays, Random
+using Gideon, SparseArrays, Random, Statistics
 
 rng = MersenneTwister(13)
 n_users, n_items, K = 500, 2000, 20
+actual = sprand(rng, n_users, n_items, 0.02)                          # ground truth
+preds  = hcat([randperm(rng, n_items)[1:K] for _ in 1:n_users]...)'
 
-# Ground-truth relevance (non-zero = relevant)
-actual = sprand(rng, n_users, n_items, 0.02)
-
-# Simulated top-K predictions (replace with your model's output)
-preds = hcat([randperm(rng, n_items)[1:K] for _ in 1:n_users]...)'
-
-ap   = ap_at_k(preds, actual; k=K)          # Vector{Float64}, length n_users
+ap   = ap_at_k(preds, actual; k=K)
 ndcg = ndcg_at_k(preds, actual; k=K)
 prec = precision_at_k(preds, actual; k=K)
 rec  = recall_at_k(preds, actual; k=K)
@@ -238,152 +232,114 @@ println("MAP@$K     = ", round(map_at_k(preds, actual; k=K), digits=4))
 println("Mean NDCG@$K = ", round(mean(ndcg), digits=4))
 ```
 
----
-
-## Architecture
-
-```
-Gideon.jl
-├── src/
-│   ├── Gideon.jl          # Module entry, exports
-│   ├── types.jl           # Abstract hierarchy, ALSSolver / FeedbackType enums
-│   ├── utils.jl           # init_factors, sigmoid, _inplace_shuffle!, …
-│   ├── sparse_utils.jl    # to_csr, dual_representation, row/col nnz
-│   ├── callbacks.jl       # EarlyStopping, Checkpoint, LRScheduler, custom hooks
-│   ├── crossval.jl        # random_holdout, crossval, grid_search, random_search
-│   ├── serialization.jl   # save_model / load_model (versioned binary format)
-│   ├── tables.jl          # interactions_to_sparse / sparse_to_interactions
-│   ├── progress.jl        # ConvergenceMonitor, logging utilities
-│   ├── precompile.jl      # PrecompileTools workloads for TTFX
-│   ├── algorithms/
-│   │   ├── wrmf.jl        # Implicit/Explicit ALS (Cholesky · CG · NNLS)
-│   │   ├── ials.jl        # IALS with Gramian caching
-│   │   ├── eals.jl        # Element-wise ALS (popularity-weighted)
-│   │   ├── bpr.jl         # Bayesian Personalized Ranking (pairwise SGD)
-│   │   ├── lmf.jl         # Logistic MF with negative sampling
-│   │   ├── glove.jl       # GloVe Hogwild AdaGrad (deterministic)
-│   │   ├── ease.jl        # EASE (closed-form autoencoder)
-│   │   ├── slim.jl        # SLIM (elastic-net item-item)
-│   │   ├── admmslim.jl    # ADMMSLIM (joint ADMM solve, 10–100× faster)
-│   │   ├── knn.jl         # ItemKNN (cosine / Jaccard neighbors)
-│   │   ├── ftrl.jl        # Follow The Regularized Leader (online)
-│   │   ├── fm.jl          # Factorization Machines
-│   │   └── soft_impute.jl # SoftImpute / SoftSVD / PureSVD
-│   └── metrics/
-│       └── ranking.jl     # AP@K, MAP@K, NDCG@K, Precision@K, Recall@K
-├── ext/
-│   └── GideonCUDAExt.jl   # GPU acceleration (EASE, IALS, WMF, predict)
-├── benchmark/
-│   ├── run.jl             # Tracked performance harness (3 fixed scales)
-│   ├── compare.jl         # Diff results across git SHAs
-│   └── logs/              # JSONL benchmark records
-└── test/
-    ├── runtests.jl
-    ├── test_fixtures.jl        # R / rsparse numerical fixture comparisons
-    ├── test_reference_contracts.jl  # implicit-style recommender contracts
-    └── validate_docs.jl        # Runs every docs code example
-```
-
-### Type Hierarchy
-
-```julia
-AbstractSparseModel
-├── AbstractRecommender
-│   ├── AbstractMatrixFactorization
-│   │   ├── AbstractSoftALS           →  SoftImpute, SoftSVD, PureSVD
-│   │   └── (others)                  →  WMF, IALS, EALS, LogisticMF, BPR, GloVe
-│   └── AbstractItemSimilarity        →  EASE, SLIM, ADMMSLIM, ItemKNN
-└── AbstractSparseRegression      →  FTRL, FM
-```
-
-Recommender models implement a shared interface via default methods on
-`AbstractMatrixFactorization` — no boilerplate per model:
-
-| Function | Description |
-|----------|-------------|
-| `fit!(model, X)` | Train in-place on sparse matrix `X` |
-| `update!(model, X, y)` | Online/incremental update (FTRL, FM, EALS) |
-| `recommend(model, X; k)` | Return top-k item indices per user (seen items masked) |
-| `score(model, X)` | Return full user×item score matrix |
-| `score(model, users, items)` | Return scores for specific (user, item) pairs |
-| `transform(model, X)` | Return latent embeddings for new users |
-| `similar_items(model, id; k)` | Find k nearest items by cosine similarity |
-| `similar_users(model, id; k)` | Find k nearest users by cosine similarity |
-| `coef(model)` | Return learned weight vector (FTRL) |
-
-Regression models (FTRL, FM) use `predict(model, X)` instead of `recommend`/`score`.
-
----
-
-## GPU Acceleration
-
-With [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) installed, Gideon loads a package extension providing:
-
-```julia
-using Gideon, CUDA
-
-# GPU-accelerated EASE (fully on GPU)
-fit_gpu!(model::EASE, X)
-
-# GPU-accelerated IALS/WMF (Gramian on GPU, solve on CPU)
-fit_gpu!(model::IALS, X)
-fit_gpu!(model::WMF, X)
-
-# Score computation on GPU for any matrix factorization model
-score_gpu(model, X)
-recommend_gpu(model, X; k=10)
-```
-
----
-
-## Tables.jl Integration
-
-Accept interaction data from any Tables.jl-compatible source (DataFrames, CSV rows, etc.):
-
-```julia
-using Gideon
-
-# From a NamedTuple of vectors (column table)
-data = (user=[1,1,2,3,3], item=[2,5,3,1,4], value=[1.0,2.0,1.0,3.0,1.0])
-X = interactions_to_sparse(data)
-
-# From a Vector of NamedTuples (row table)
-rows = [(user=1, item=3, value=1.0), (user=2, item=1, value=2.0)]
-X = interactions_to_sparse(rows)
-
-# Convert back to triplets
-triplets = sparse_to_interactions(X)
-```
-
----
-
-## Cross-Validation & Hyperparameter Search
+### Cross-validation & hyperparameter search
 
 ```julia
 using Gideon, SparseArrays
 
 X = sprand(1000, 500, 0.02)
 
-# Temporal train/test split
-X_train, X_test = random_holdout(X; test_fraction=0.2)
+X_train, X_test = random_holdout(X; test_fraction=0.2)                 # temporal split
 
-# Grid search over hyperparameters
-best_params, best_score, results = grid_search(
+best, score, results = grid_search(
     p -> WMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
     X,
     Dict(:rank => [16, 32, 64], :λ => [0.01, 0.1, 1.0]);
-    k=10, metric=ndcg_at_k
+    k=10, metric=ndcg_at_k,
 )
 
-# Random search with budget
-best_params, best_score, _ = random_search(
+best, score, _ = random_search(
     p -> WMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
     X,
     Dict(:rank => rng -> rand(rng, [16, 32, 64, 128]),
-         :λ   => rng -> 10.0^(rand(rng)*3 - 2));
-    n_trials=20, k=10, metric=ndcg_at_k
+         :λ    => rng -> 10.0^(rand(rng) * 3 - 2));
+    n_trials=20, k=10, metric=ndcg_at_k,
 )
 ```
+
+---
+
+## Tables.jl Integration
+
+Feed `interactions_to_sparse` any Tables.jl-compatible source — DataFrames, CSV, Arrow,
+NamedTuples, vectors of named tuples — and get a `SparseMatrixCSC` back. Repeated
+`(user, item)` pairs are accumulated by summing their values.
+
+```julia
+using Gideon
+
+# Column table (NamedTuple of vectors, DataFrame, CSV.File, …)
+data = (user=[1,1,2,3,3], item=[2,5,3,1,4], value=[1.0,2.0,1.0,3.0,1.0])
+X = interactions_to_sparse(data)                     # defaults: user_col=:user, …
+
+# Row table (Vector of NamedTuples, Tables.rowtable, …)
+rows = [(user=1, item=3, value=1.0), (user=2, item=1, value=2.0)]
+X = interactions_to_sparse(rows)
+
+# Binary interactions (implicit 1.0) and custom dtype
+X = interactions_to_sparse(clicks; value_col=nothing, dtype=Float32)
+
+# Back to triplets
+triplets = sparse_to_interactions(X)                 # (user=…, item=…, value=…)
+```
+
+---
+
+## Persistence
+
+Models are saved atomically (temp file + rename, so a crash never leaves a partial file)
+with a versioned header:
+
+```julia
+using Gideon, SparseArrays
+
+model = EASE(λ=100.0, verbose=false)
+fit!(model, sprand(MersenneTwister(1), 200, 100, 0.05))
+
+save_model(model, "model.jls")
+loaded = load_model("model.jls")
+recommend(loaded, sprand(MersenneTwister(2), 10, 100, 0.1); k=5)
+```
+
+---
+
+## GPU Acceleration
+
+With [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) installed, a package extension
+provides GPU-accelerated training and scoring — no code changes, just load CUDA:
+
+```julia
+using Gideon, CUDA
+
+fit_gpu!(model::EASE, X)        # fully on GPU
+fit_gpu!(model::IALS, X)        # Gramian on GPU, solve on CPU
+fit_gpu!(model::WMF, X)
+score_gpu(model, X)
+recommend_gpu(model, X; k=10)
+```
+
+---
+
+## Shared API
+
+Recommender models implement a shared interface via defaults on the abstract types —
+no per-model boilerplate:
+
+| Function | Description |
+|----------|-------------|
+| `fit!(model, X)` | Train in-place on a sparse matrix (transactional: previous state intact on failure) |
+| `update!(model, X, y)` | Online / incremental update (FTRL, FM, EALS) |
+| `recommend(model, X; k)` | Top-k item indices per user, seen items masked — never builds the full score matrix |
+| `score(model, X)` | Full user × item score matrix |
+| `score(model, users, items)` | Scores for specific (user, item) pairs |
+| `transform(model, X)` | Latent embeddings for new users (fold-in) |
+| `similar_items(model, id; k)` / `similar_users(model, id; k)` | Cosine nearest neighbors |
+| `coef(model)` | Learned weight vector (FTRL, FM) |
+| `predict(model, X)` | Regression predictions (FTRL, FM) |
+
+**Concurrency guarantees:** separate models train in parallel safely; reads on a fitted
+model are thread-safe; concurrent `fit!` on the *same* instance is unsupported; training
+is deterministic for a given seed (BPR excepted — Hogwild by design).
 
 ---
 
@@ -394,16 +350,16 @@ best_params, best_score, _ = random_search(
 | Pre-allocated per-thread Gram / RHS / Cholesky buffers, hoisted to fit level | WMF, IALS, EALS ALS sweeps |
 | Batched BLAS gram assembly (incremental rank-1 + `BLAS.syrk!`) | WMF-Cholesky |
 | `BLAS.syr!` rank-1 Gram accumulation | WMF Cholesky solver |
-| Fast-path manual SIMD dot (`@inbounds @simd`) for sparse users with < 32 nnz | WMF CG `_implicit_matvec!` |
+| Fast-path manual SIMD dot for sparse users with < 32 nnz | WMF CG `_implicit_matvec!` |
 | `muladd` reductions (strict scalar order) — deterministic, no `@fastmath` | All training loops |
 | Memory-bounded batched GEMM top-k scoring | EASE |
 | Unified top-k paths (`_predict_sparse_score_topk`, `_predict_batched_gemm_topk`) | EASE, SLIM, ItemKNN, ADMMSLIM |
 | Sparse fitted weights (`SparseMatrixCSC`, soft-thresholded exact zeros) | SLIM, ADMMSLIM |
 | Fit-time peak-memory estimate + `max_memory` guard before allocating | EASE, SLIM, ADMMSLIM |
+| Adaptive scoring path (sparse vs batched GEMM by expected fill of `X·W`) | ADMMSLIM |
 | `@inbounds @simd` vectorized element-wise / gradient loops | WMF, LogisticMF, GloVe, BPR, EALS |
 | CSR dual storage for O(nnz_u) per-user row access | All algorithms, metrics |
 | `Threads.@threads` outer loops with shared chunked-buffer helpers | WMF, IALS, EALS, BPR, GloVe |
-| Element-wise coordinate descent O(d) per update | EALS |
 | Gramian caching (avoids per-user recomputation) | IALS, EALS |
 | Deterministic 3-phase reordered epoch (gradient → main → context) | GloVe |
 | Zero-allocation Fisher-Yates shuffle | GloVe epoch shuffling |
@@ -413,24 +369,42 @@ best_params, best_score, _ = random_search(
 
 ---
 
-## Concurrency
+## Correctness & Reference Validation
 
-- **Separate models, in parallel** — fitting independent models concurrently
-  (e.g. inside a `Threads.@threads` loop) is supported. Training uses dynamic
-  `Threads.@threads` loops that are safe to nest.
-- **Reads on a fitted model** — `recommend` / `score` on a fitted model are
-  read-only and safe to call concurrently from multiple threads.
-- **Mutating one model** — calling `fit!` on the same model instance from
-  multiple threads at once is **unsupported** unless you synchronize access
-  externally.
-- **Transactional `fit!`** — training writes to local buffers and publishes
-  model state only on success. A failed `fit!` or `fit!` refit leaves the
-  previous fitted state intact.
-- **Reproducibility** — fits are deterministic for a given `rng` seed. Training
-  kernels use `muladd` reductions (strict scalar order), so results match across
-  builds and platforms; `GloVe` is additionally bit-identical across thread
-  counts. `BPR` is the exception: its Hogwild! lock-free SGD is intentionally
-  racy, so results may differ across thread counts.
+Numerical correctness is validated against independent reference implementations, not
+just unit tests:
+
+- **R (rsparse)** — parity on WMF, FTRL, GloVe (½-loss convention), SoftImpute/SVD, ranking
+  metrics, and FM (correlation ≥ 0.95, gated with margin because rsparse's init uses
+  `std::random_device`).
+- **Python (implicit, sklearn, scipy)** — parity on ALS, BPR, IALS, EALS, LMF, EASE, SLIM,
+  PureSVD, ItemKNN, and ADMMSLIM.
+- One command runs both suites (R via the project-managed `uvr` environment, Python via a
+  venv):
+
+```bash
+julia --project=. validation/run.jl --all
+PYTHON=.venv/bin/python julia --project=. validation/run.jl --all   # venv python
+```
+
+The test suite itself includes 451 pure-Julia fixtures ported from `implicit`, 227
+reference-style contract tests, and 15k randomized property tests.
+
+---
+
+## Benchmarking
+
+A tracked performance harness measures `fit!` / `recommend` time and allocations at
+three fixed scales (hundreds / thousands / millions of interactions) with
+deterministic seeds:
+
+```bash
+julia --project=. --threads=8 benchmark/run.jl          # appends JSONL records
+julia --project=. benchmark/compare.jl --strict         # diff runs across git SHAs
+```
+
+Records (git SHA, environment, config, metrics) accumulate in
+`benchmark/logs/results.jsonl`.
 
 ---
 
@@ -440,37 +414,15 @@ best_params, best_score, _ = random_search(
 julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'
 ```
 
-The suite runs **1802 tests** covering:
+The suite runs **17,450 tests** in ~3 minutes, covering:
 
-- Unit correctness (dimensions, NaN / Inf guards, convergence monotonicity)
-- R / rsparse numerical fixture comparisons (weights, predictions, loss values)
-- Implicit-style recommender contracts and deterministic-fidelity fixtures
+- Unit correctness for all 15 algorithms (dimensions, NaN/Inf guards, convergence)
+- Pure-Julia fixtures ported from `implicit` + reference-style recommender contracts
+- 15k randomized property tests (dims, densities, duplicates, value extremes)
 - Static analysis via [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) and [JET.jl](https://github.com/aviatesk/JET.jl)
-- All algorithms: WMF, IALS, EALS, BPR, LogisticMF, GloVe, EASE, SLIM, ADMMSLIM, ItemKNN, FTRL, FM, SoftImpute, SoftSVD, PureSVD
-- Infrastructure: serialization, cross-validation, callbacks, Tables.jl integration, concurrency guarantees
-- GPU stubs (full GPU tests when CUDA available)
-
-Documentation examples are validated separately:
-
-```bash
-julia --project=test -t8 test/validate_docs.jl
-```
-
-## Benchmarking
-
-A tracked performance harness measures `fit!` / `recommend` time and allocations
-at three fixed scales (hundreds / thousands / millions of interactions) with
-deterministic seeds:
-
-```bash
-julia --project=. --threads=8 benchmark/run.jl
-
-# Compare runs across git SHAs
-julia --project=. benchmark/compare.jl --strict
-```
-
-Results are appended as JSONL records to `benchmark/logs/results.jsonl`
-(git SHA, environment, config, and metrics).
+- Infrastructure: atomic persistence, cross-validation, callbacks, Tables.jl, concurrency
+- Executable doctests for every docstring example + all `docs/src` examples
+- GPU tests when CUDA is available
 
 ---
 
@@ -481,6 +433,7 @@ Results are appended as JSONL records to `benchmark/logs/results.jsonl`
 | `SparseArrays` (stdlib) | Core sparse matrix type |
 | `LinearAlgebra` (stdlib) | BLAS / LAPACK, SVD, Cholesky |
 | `SparseMatricesCSR.jl` | CSR representation for row-oriented access |
+| `Tables.jl` | Interaction tables (DataFrames, CSV, Arrow, …) |
 | `PrecompileTools.jl` | Precompilation workloads for faster TTFX |
 
 ### Optional (Extensions)
@@ -488,6 +441,18 @@ Results are appended as JSONL records to `benchmark/logs/results.jsonl`
 | Package | Role |
 |---------|------|
 | `CUDA.jl` | GPU acceleration via package extension |
+
+---
+
+## Contributing
+
+- **Issues and PRs** are welcome. Before opening a PR, run the full suite
+  (`--threads=8`) — parallelism is exercised — plus `git diff --check`.
+- **Performance changes** must be validated with `benchmark/run.jl` and, where relevant,
+  `validation/run.jl` for numerical parity.
+- Keep training kernels deterministic: `muladd` reductions, no `@fastmath`, no
+  `@simd` on reductions.
+- See [AGENTS.md](AGENTS.md) for the threading/determinism conventions and known pitfalls.
 
 ---
 

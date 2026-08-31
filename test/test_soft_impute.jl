@@ -74,3 +74,13 @@ end
     fit!(m_high, X; rng=rng)
     @test sum(m_high.d) <= sum(m_low.d)
 end
+
+@testset "verbose logging with Float32 losses" begin
+    # Regression: log_iteration required Float64 while Float32 models pass
+    # Float32 losses — verbose fits of a Float32 model must not throw.
+    rng = MersenneTwister(42)
+    X = sprand(rng, 30, 25, 0.2)
+    m = SoftImpute(rank=4, λ=0.1, max_iter=3, verbose=true)
+    fit!(m, X; rng=rng)
+    @test m.is_fitted
+end

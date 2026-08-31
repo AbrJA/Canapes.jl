@@ -48,7 +48,8 @@ end
 
 Format elapsed time as a human-friendly string.
 """
-function elapsed_str(seconds::Float64)
+function elapsed_str(seconds::Real)
+    seconds = Float64(seconds)
     if seconds < 60.0
         @sprintf("%.2fs", seconds)
     elseif seconds < 3600.0
@@ -64,7 +65,7 @@ end
 Emit a structured @info log for a training iteration.
 """
 function log_iteration(name::String, iter::Int, max_iter::Int,
-                       loss::Float64, iter_seconds::Float64, total_seconds::Float64;
+                       loss::Real, iter_seconds::Real, total_seconds::Real;
                        extra::String="")
     pct = round(100.0 * iter / max_iter, digits=1)
     msg = @sprintf("[%s] iter %d/%d (%.1f%%) | loss=%.6f | iter=%s | total=%s",

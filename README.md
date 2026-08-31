@@ -98,6 +98,7 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 **Choosing a model** — the short version:
 
 - **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS` (best accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise ranking, Hogwild), `LogisticMF` (probabilistic, well-calibrated scores).
+  Note: in the literature "iALS" usually means Hu et al. (2008) — this package's `WMF`. The `IALS` type here is the improved ALS of Rendle et al. (2021, "IALS++").
 - **Item-item similarity**: `EASE` (state of the art, O(n_items²) memory), `SLIM` (sparse + interpretable), `ADMMSLIM` (same solution as SLIM, 10–100× faster, dense training), `ItemKNN` (lightweight baseline).
 - **Embeddings / related items**: `GloVe` on co-occurrences.
 - **Explicit ratings or completion**: `SoftImpute` / `SoftSVD` / `PureSVD`, or `WMF` with `feedback=Explicit`.
@@ -105,7 +106,7 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 
 ---
 
-## Examples by Family
+## Examples by Model
 
 ### Collaborative filtering — WMF
 
@@ -192,6 +193,10 @@ fm = FM(rank=8, lr_w=0.1, lr_v=0.05,
 fit!(fm, X_train, y_train; rng=MersenneTwister(9))
 ```
 
+The GLM loss families are `Gideon.Binomial()` (logistic), `Gideon.Gaussian()`
+(squared error) and `Gideon.Poisson()` (counts) — unexported, so they are
+qualified, or brought in with `using Gideon: Binomial`.
+
 ### Matrix completion — SoftImpute / SoftSVD / PureSVD
 
 ```julia
@@ -214,7 +219,8 @@ fit!(svd_model, X_observed; rng=MersenneTwister(11))
 ## Evaluation — Ranking Metrics
 
 Metrics take a `(n_users, K)` matrix of predicted item indices and a sparse relevance
-matrix; per-user results come back as vectors, batch variants as scalars.
+matrix: `ap_at_k`, `ndcg_at_k`, `precision_at_k` and `recall_at_k` return a per-user
+vector, while `mean_ap_at_k` returns the macro-averaged scalar.
 
 ```julia
 using Gideon, SparseArrays, Random, Statistics
@@ -240,7 +246,7 @@ using Gideon, SparseArrays
 
 X = sprand(1000, 500, 0.02)
 
-X_train, X_test = random_holdout(X; test_fraction=0.2)                 # temporal split
+X_train, X_test = random_holdout(X; test_fraction=0.2)                 # random per-user holdout (no timestamps)
 
 best, score, results = grid_search(
     p -> WMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
@@ -277,7 +283,7 @@ X = triplets_to_sparse(data)                     # defaults: user_col=:user, …
 rows = [(user=1, item=3, value=1.0), (user=2, item=1, value=2.0)]
 X = triplets_to_sparse(rows)
 
-# Binary interactions (implicit 1.0) and custom T
+# Binary interactions (implicit 1.0) and custom element type
 X = triplets_to_sparse(clicks; value_col=nothing, T=Float32)
 
 # Back to triplets
@@ -453,6 +459,10 @@ The suite runs **17,450 tests** in ~3 minutes, covering:
   `validation/run.jl` for numerical parity.
 - Keep training kernels SIMD-vectorized but `@fastmath`-free (NaN/Inf-correct),
   with reductions reproducible per environment.
+- Keep the public API naming consistent: full words over abbreviations,
+  `*_at_k` for metrics, `mean_*` for scalar aggregates, CamelCase singletons
+  (the family/sampling types are unexported — qualify them), `max_iter`/`tol`/
+  `lr`/`λ`/`rank`/`T` as the shared hyperparameter vocabulary.
 - See [AGENTS.md](AGENTS.md) for the threading/determinism conventions and known pitfalls.
 
 ---

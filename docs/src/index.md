@@ -25,7 +25,7 @@ A high-performance Julia package for sparse matrix factorization, collaborative 
 
 ### Infrastructure
 - **Ranking Metrics** — MAP@k, NDCG@k, Precision@k, Recall@k
-- **Cross-validation** — temporal split, k-fold, grid search, random search
+- **Cross-validation** — random holdout, k-fold, grid search, random search
 - **Callbacks** — early stopping, loss history, checkpointing, learning rate schedules
 - **GPU acceleration** — CUDA.jl extension for EASE, IALS, WMF
 - **Tables.jl integration** — accept interaction data as (user, item, value) triplets

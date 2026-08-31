@@ -207,6 +207,8 @@ X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
 # Same objective as SLIM but 10-100× faster via ADMM
 # ρ controls ADMM convergence speed
+# Training memory is O(n_items²) (dense joint solve); prefer SLIM for very
+# large item counts. The fitted W is stored sparse: score returns SparseMatrixCSC.
 model = ADMMSLIM(λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=50, nonneg=true)
 fit!(model, X)
 preds = recommend(model, X; k=10)

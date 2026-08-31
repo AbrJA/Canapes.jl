@@ -44,7 +44,7 @@ Gideon.jl is a high-performance Julia toolkit for sparse statistical learning, l
 | `GloVe` | Co-occurrence embedding (Hogwild AdaGrad) | Pennington, Socher & Manning (2014) |
 | `EASE` | Embarrassingly Shallow Autoencoders | Steck (2019) |
 | `SLIM` | Sparse Linear Methods (elastic net) | Ning & Karypis (2011) |
-| `ADMMSLIM` | ADMM-based SLIM (joint solve, 10–100× faster) | Steck et al. (2020) |
+| `ADMMSLIM` | ADMM-based SLIM (joint solve, 10–100× faster; dense O(n²) training, sparse fitted `W`) | Steck et al. (2020) |
 | `ItemKNN` | Item-based K-Nearest Neighbors (cosine / Jaccard) | Deshpande & Karypis (2004) |
 | `FTRL` | Follow The Regularized Leader (online GLM) | McMahan et al. (2013) |
 | `FM` | 2nd-order FM (AdaGrad SGD) | Rendle (2010) |
@@ -396,8 +396,9 @@ best_params, best_score, _ = random_search(
 | `BLAS.syr!` rank-1 Gram accumulation | WMF Cholesky solver |
 | Fast-path manual SIMD dot (`@inbounds @simd`) for sparse users with < 32 nnz | WMF CG `_implicit_matvec!` |
 | `muladd` reductions (strict scalar order) — deterministic, no `@fastmath` | All training loops |
-| Memory-bounded batched GEMM top-k scoring | EASE, ADMMSLIM |
-| Unified top-k paths (`_predict_sparse_score_topk`, `_predict_batched_gemm_topk`) | EASE, ADMMSLIM, SLIM, ItemKNN |
+| Memory-bounded batched GEMM top-k scoring | EASE |
+| Unified top-k paths (`_predict_sparse_score_topk`, `_predict_batched_gemm_topk`) | EASE, SLIM, ItemKNN, ADMMSLIM |
+| Sparse fitted weights (`SparseMatrixCSC`, soft-thresholded exact zeros) | SLIM, ADMMSLIM |
 | `@inbounds @simd` vectorized element-wise / gradient loops | WMF, LogisticMF, GloVe, BPR, EALS |
 | CSR dual storage for O(nnz_u) per-user row access | All algorithms, metrics |
 | `Threads.@threads` outer loops with shared chunked-buffer helpers | WMF, IALS, EALS, BPR, GloVe |

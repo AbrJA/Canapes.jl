@@ -241,6 +241,32 @@ function _predict_pairwise_scores(user_factors::Matrix{T}, item_factors::Matrix{
 end
 
 """
+    _use_sparse_score_path(W, X) -> Bool
+
+Choose between the sparse-score and the dense batched-GEMM top-k paths for
+item-similarity models whose fitted weights `W` are stored sparse (ADMMSLIM).
+Both paths compute the same scores up to floating-point accumulation order;
+the choice minimizes work.
+
+The dense GEMM path wins whenever the score matrix `S = X * W` is expected to
+be dense, which happens even for moderately sparse `W` when users interact
+with many items. Estimate the per-entry fill probability of `S` as
+`P = 1 - (1 - d_W)^k`, where `d_W` is the weight density and `k` the mean
+items per user, and prefer sparse scoring only when `S` is expected to stay
+sparse (`P ≤ 0.1`).
+"""
+function _use_sparse_score_path(W::SparseMatrixCSC, X::SparseMatrixCSC)
+    n_items = size(W, 1)
+    n_users = size(X, 1)
+    (n_items == 0 || n_users == 0) && return true
+    d_w = nnz(W) / (n_items * n_items)
+    k = nnz(X) / n_users
+    # S[u, j] ≠ 0 iff some item i observed by u has W[i, j] ≠ 0
+    p = 1 - (1 - d_w)^k
+    p <= 0.1
+end
+
+"""
     _predict_sparse_score_topk(S, X, k) -> Matrix{Int}
 
 Shared top-k recommendation for sparse-score item-similarity models

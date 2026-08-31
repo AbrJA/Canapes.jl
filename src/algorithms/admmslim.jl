@@ -42,7 +42,22 @@ ADMMSLIM(; λ_1=0.01, λ_2=100.0, ρ=1.0, max_iter=50, convergence_tol=1e-4,
 - `max_iter::Int` — max ADMM iterations
 - `convergence_tol::T` — relative primal residual tolerance
 - `nonneg::Bool` — enforce non-negative weights
-- `W::Matrix{T}` — item-item weight matrix (n_items × n_items) after fitting
+- `W::SparseMatrixCSC{T,Int}` — item-item weight matrix (n_items × n_items) after fitting
+
+# Memory model
+Training is necessarily **dense**: the joint ADMM solve keeps the full
+item-item Gram matrix and ADMM variables in memory, so fitting uses
+O(n_items²) memory (≈5 dense n_items² matrices in `T`). The fitted `W`,
+however, is stored as a `SparseMatrixCSC`: soft-thresholding produces exact
+zeros, so only the surviving weights are kept (observed density is well
+below 100% and shrinks as λ_1 grows), and `score` returns a sparse matrix.
+`recommend` picks the scoring path adaptively (sparse when the score matrix
+stays sparse, memory-bounded batched GEMM otherwise).
+
+Prefer SLIM when `n_items` is large enough that an O(n_items²) dense solve
+is prohibitive (SLIM fits per-item in O(n_items) memory per column), or
+when the training set is small enough that SLIM's slower per-item
+coordinate descent is affordable.
 
 # Example
 ```julia
@@ -61,7 +76,7 @@ mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const convergence_tol::T
     const nonneg::Bool
     const verbose::Bool
-    W::Matrix{T}
+    W::SparseMatrixCSC{T,Int}
     is_fitted::Bool
 end
 
@@ -80,7 +95,7 @@ function ADMMSLIM(;
     ρ > 0.0 || throw(ArgumentError("ρ must be positive, got $ρ"))
     T = dtype
     ADMMSLIM{T}(T(λ_1), T(λ_2), T(ρ), max_iter, T(convergence_tol), nonneg, verbose,
-                 Matrix{T}(undef, 0, 0), false)
+                 spzeros(T, 0, 0), false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -126,10 +141,13 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.verbose && @info "[ADMM-SLIM] Running ADMM ($n_items items, max_iter=$(model.max_iter))..."
 
-    # Initialize ADMM variables
-    B = zeros(T, n_items, n_items)
-    Z = zeros(T, n_items, n_items)
-    U = zeros(T, n_items, n_items)  # scaled dual variable
+    # Initialize ADMM variables. Use `fill` (not `zeros`): JET's abstract
+    # interpretation of `zeros(T, n, n)` under the free typevar T widens the
+    # slot to a union with `Array{Float64,3}`, which then trips the `sparse`
+    # conversion below. `fill` infers cleanly and is semantically identical.
+    B = fill(zero(T), n_items, n_items)
+    Z = fill(zero(T), n_items, n_items)
+    U = fill(zero(T), n_items, n_items)  # scaled dual variable
 
     for iter in 1:model.max_iter
         # ── B-update: B = (G + (λ₂+ρ)I)⁻¹ (G + ρ(Z - U)) ──
@@ -194,10 +212,10 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
         end
     end
 
-    model.W = Z  # use the sparse (thresholded) variable as final weights
+    model.W = dropzeros!(sparse(Z))
     model.is_fitted = true
 
-    nnz_w = count(!iszero, model.W)
+    nnz_w = nnz(model.W)
     density = nnz_w / (n_items * n_items) * 100
     model.verbose && @info "[ADMM-SLIM] Done. W: $(n_items)×$(n_items), nnz=$(nnz_w) ($(round(density; digits=3))%)"
     model
@@ -216,19 +234,30 @@ end
     recommend(model::ADMMSLIM, X; k=10) -> Matrix{Int}
 
 Return top-k item indices per user. Scores = X * W, excluding seen items.
+
+The scoring path is chosen adaptively: when `W` is sparse enough that the
+score matrix `X * W` stays sparse, a sparse path is used (shared with
+SLIM/ItemKNN); otherwise the densified `W` is scored through the
+memory-bounded batched GEMM path. Both produce the same scores up to
+floating-point accumulation order.
 """
 function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
-    # Batched GEMM via the shared memory-bounded path (see _predict_batched_gemm_topk)
-    _predict_batched_gemm_topk(X, model.W, k)
+    if _use_sparse_score_path(model.W, X)
+        _predict_sparse_score_topk(X * model.W, X, k)
+    else
+        _predict_batched_gemm_topk(X, Matrix(model.W), k)
+    end
 end
 
 """
-    score(model::ADMMSLIM, X) -> Matrix{T}
+    score(model::ADMMSLIM, X) -> SparseMatrixCSC
 
-Return the full score matrix S = X * W (dense, n_users × n_items).
+Return sparse score matrix S = X * W.
 """
 function score(model::ADMMSLIM{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
-    Matrix{T}(X * model.W)
+    size(X, 2) == size(model.W, 1) || throw(DimensionMismatch(
+        "X has $(size(X, 2)) items but the fitted model has $(size(model.W, 1))"))
+    X * model.W
 end

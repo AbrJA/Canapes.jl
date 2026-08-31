@@ -14,7 +14,7 @@ Pages = [
 ## Namespaced singletons
 
 ```@docs
-LossFamilies
+Links
 Sampling
 ```
 

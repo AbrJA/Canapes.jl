@@ -14,13 +14,13 @@
 
 Second-order Factorization Machine trained via SGD with AdaGrad.
 
-Supports both classification (`LossFamilies.Binomial()`) and regression (`LossFamilies.Gaussian()`) via
+Supports both classification (`Links.Binomial()`) and regression (`Links.Gaussian()`) via
 the `family` parameter. Uses per-coordinate adaptive learning rates (AdaGrad).
 
 # Constructor
 ```julia
 FM(; rank=4, lr_w=0.2, lr_v=lr_w,
-                       λ_w=0.0, λ_v=0.0, family=LossFamilies.Binomial(), intercept=true,
+                       λ_w=0.0, λ_v=0.0, family=Links.Binomial(), intercept=true,
                        max_iter=10, tol=-1.0, verbose=true)
 ```
 
@@ -66,7 +66,7 @@ function FM(;
     lr_v::Float64 = lr_w,
     λ_w::Float64 = 0.0,
     λ_v::Float64 = 0.0,
-    family::LossFamily = LossFamilies.Binomial(),
+    family::LossFamily = Links.Binomial(),
     intercept::Bool = true,
     max_iter::Int = 10,
     tol::Float64 = -1.0,
@@ -74,7 +74,7 @@ function FM(;
     T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
-    family isa Union{LossFamilies.Binomial, LossFamilies.Gaussian} || throw(ArgumentError("FM supports LossFamilies.Binomial() or LossFamilies.Gaussian() families"))
+    family isa Union{Links.Binomial, Links.Gaussian} || throw(ArgumentError("FM supports Links.Binomial() or Links.Gaussian() families"))
     FM{T}(
         rank, T(lr_w), T(lr_v), T(λ_w), T(λ_v), family, intercept,
         max_iter, T(tol), verbose,
@@ -152,10 +152,10 @@ function update!(model::FM{T}, X::SparseMatrixCSC{Tv,Ti},
         pred += interaction / 2
 
         # ---- Compute gradient multiplier ----
-        if model.family isa LossFamilies.Binomial
+        if model.family isa Links.Binomial
             y_s = T(y[s]) > zero(T) ? one(T) : -one(T)
             grad_mult = -y_s * sigmoid(-y_s * pred) * weights[s]
-        else  # LossFamilies.Gaussian
+        else  # Gaussian family
             grad_mult = (pred - T(y[s])) * weights[s]
         end
 
@@ -214,7 +214,7 @@ function fit!(model::FM{T}, X::SparseMatrixCSC, y::AbstractVector;
         # Compute training loss for convergence check
         if model.tol > zero(T) || !isempty(callbacks)
             preds = predict(model, X)
-            loss = if model.family isa LossFamilies.Binomial
+            loss = if model.family isa Links.Binomial
                 -sum(y .* log.(preds .+ T(1e-10)) .+ (one(T) .- y) .* log.(one(T) .- preds .+ T(1e-10))) / length(y)
             else
                 sum((preds .- y).^2) / length(y)
@@ -250,8 +250,8 @@ end
     predict(model::FM, X) -> Vector
 
 Generate predictions. Output depends on family:
-- `LossFamilies.Binomial()` → probabilities in [0,1]
-- `LossFamilies.Gaussian()` → real-valued predictions
+- `Links.Binomial()` → probabilities in [0,1]
+- `Links.Gaussian()` → real-valued predictions
 """
 function predict(model::FM{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_initialized)
@@ -288,7 +288,7 @@ function predict(model::FM{T}, X::SparseMatrixCSC) where {T}
         end
         pred += interaction / 2
 
-        if model.family isa LossFamilies.Binomial
+        if model.family isa Links.Binomial
             preds[s] = sigmoid(pred)
         else
             preds[s] = pred

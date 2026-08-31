@@ -53,7 +53,7 @@ export
     AbstractSoftALS,
     ALSSolver, CholeskySolver, CGSolver, NonNegativeSolver,
     FeedbackType, Implicit, Explicit,
-    LossFamily, LossFamilies,
+    LossFamily, Links,
     NegativeSampling, Sampling,
 
     # Models

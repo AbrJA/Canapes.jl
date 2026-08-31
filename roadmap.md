@@ -221,6 +221,18 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — Submodule abstract naming refined
+`LossFamilies` → `Links` and `Sampling.NegativeSampling` → `Sampling.Strategy`,
+making the two singleton groups follow one naming scheme: plural-noun
+submodule + bare abstract inside (`Links.Family`, `Sampling.Strategy`) +
+context-qualified root alias (`LossFamily`, `NegativeSampling`) for signature
+readability. `Links` matches the existing `link_function` vocabulary and is
+5 vs 12 chars; `Strategy` removes the "Sampling…NegativeSampling" redundancy
+and sits at the right semantic level. Concrete singletons unchanged
+(`Links.Binomial()`, `Sampling.Uniform()`). Also fixed two prose/error-message
+corruptions from the earlier automated rename.
+Suite green (17,456), doctests + docs clean, validation green.
+
 ### 2026-08-31 — Namespaced singleton submodules (LossFamilies, Sampling)
 Adopted the submodule pattern for the collision-prone singletons:
 - `module LossFamilies` (Family abstract + Binomial/Gaussian/Poisson) and

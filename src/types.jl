@@ -90,47 +90,48 @@ Enum for feedback type: `Implicit` or `Explicit`.
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# LossFamilies — GLM link functions
-# Submodule: `LossFamilies.<TAB>` lists exactly the three families, keeps the
-# root namespace free of generic names that collide with Distributions.jl.
+# Links — GLM link functions
+# Submodule: `Links.<TAB>` lists exactly the link families, keeps the root
+# namespace free of generic names that collide with Distributions.jl.
 # `LossFamily` below is a root alias for the abstract type.
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    LossFamilies
+    Links
 
-GLM loss families (link functions) for the regression models
-(`LossFamilies.Binomial`, `LossFamilies.Gaussian`, `LossFamilies.Poisson`).
-Used as `family=LossFamilies.Binomial()` in the FTRL/FM constructors.
+GLM link functions for the regression models (`Links.Binomial`,
+`Links.Gaussian`, `Links.Poisson`). Used as
+`family=Links.Binomial()` in the FTRL/FM constructors; see also the
+`LossFamily` root alias for the abstract type.
 """
-module LossFamilies
+module Links
 
     """
-        LossFamilies.Family
+        Links.Family
 
     Abstract type for GLM family (link function). Concrete subtypes:
-    - `LossFamilies.Binomial` — logistic (sigmoid) link
-    - `LossFamilies.Gaussian` — identity link
-    - `LossFamilies.Poisson` — exponential link
+    - `Links.Binomial` — logistic (sigmoid) link
+    - `Links.Gaussian` — identity link
+    - `Links.Poisson` — exponential link
     """
     abstract type Family end
 
     """
-        LossFamilies.Binomial
+        Links.Binomial
 
     Logistic link function: sigmoid(x). For binary classification.
     """
     struct Binomial <: Family end
 
     """
-        LossFamilies.Gaussian
+        Links.Gaussian
 
     Identity link function: x. For regression.
     """
     struct Gaussian <: Family end
 
     """
-        LossFamilies.Poisson
+        Links.Poisson
 
     Exponential link function: exp(x). For count data.
     """
@@ -138,7 +139,7 @@ module LossFamilies
 
 end
 
-const LossFamily = LossFamilies.Family
+const LossFamily = Links.Family
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sampling — negative sampling strategies (for BPR)
@@ -156,39 +157,39 @@ Negative sampling strategies for BPR (`Sampling.Uniform`,
 module Sampling
 
     """
-        Sampling.NegativeSampling
+        Sampling.Strategy
 
     Abstract type for negative sampling strategies. Concrete subtypes:
     - `Sampling.Uniform` — uniform random sampling
     - `Sampling.Popular` — popularity-biased sampling (proportional to √frequency)
     - `Sampling.Dynamic` — Dynamic Negative Sampling (hardest negatives)
     """
-    abstract type NegativeSampling end
+    abstract type Strategy end
 
     """
         Sampling.Uniform
 
     Uniform random negative sampling. Simple and fast.
     """
-    struct Uniform <: NegativeSampling end
+    struct Uniform <: Strategy end
 
     """
         Sampling.Popular
 
     Popularity-biased negative sampling. Samples proportional to √(item frequency).
     """
-    struct Popular <: NegativeSampling end
+    struct Popular <: Strategy end
 
     """
         Sampling.Dynamic
 
     Dynamic Negative Sampling (DNS). Selects the hardest negative from a candidate pool.
     """
-    struct Dynamic <: NegativeSampling end
+    struct Dynamic <: Strategy end
 
 end
 
-const NegativeSampling = Sampling.NegativeSampling
+const NegativeSampling = Sampling.Strategy
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Generic API — every model must implement these

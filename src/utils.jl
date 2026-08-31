@@ -53,13 +53,13 @@ Safe reciprocal that avoids division by zero.
     link_function(family::LossFamily, x)
 
 Apply the GLM link function for the given family:
-- `LossFamilies.Binomial()` → sigmoid(x)
-- `LossFamilies.Gaussian()` → x (identity)
-- `LossFamilies.Poisson()` → exp(x)
+- `Links.Binomial()` → sigmoid(x)
+- `Links.Gaussian()` → x (identity)
+- `Links.Poisson()` → exp(x)
 """
-@inline link_function(::LossFamilies.Binomial, x::T) where {T<:AbstractFloat} = sigmoid(x)
-@inline link_function(::LossFamilies.Gaussian, x::T) where {T<:AbstractFloat} = x
-@inline link_function(::LossFamilies.Poisson, x::T) where {T<:AbstractFloat} = exp(x)
+@inline link_function(::Links.Binomial, x::T) where {T<:AbstractFloat} = sigmoid(x)
+@inline link_function(::Links.Gaussian, x::T) where {T<:AbstractFloat} = x
+@inline link_function(::Links.Poisson, x::T) where {T<:AbstractFloat} = exp(x)
 
 """
     _inplace_shuffle!(v, rng) -> v

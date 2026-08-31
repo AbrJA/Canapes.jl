@@ -15,14 +15,14 @@
 Follow The Regularized Leader proximal SGD for generalized linear models on sparse data.
 
 Supports three families:
-- `LossFamilies.Binomial()` — logistic regression (predictions in [0,1])
-- `LossFamilies.Gaussian()` — linear regression (identity link)
-- `LossFamilies.Poisson()`  — LossFamilies.Poisson regression (log link, predictions > 0)
+- `Links.Binomial()` — logistic regression (predictions in [0,1])
+- `Links.Gaussian()` — linear regression (identity link)
+- `Links.Poisson()`  — Poisson regression (log link, predictions > 0)
 
 # Constructor
 ```julia
 FTRL(; lr=0.1, lr_decay=0.5, λ=0.0, l1_ratio=1.0,
-       dropout=0.0, family=LossFamilies.Binomial(), grad_clip=1000.0, verbose=true)
+       dropout=0.0, family=Links.Binomial(), grad_clip=1000.0, verbose=true)
 ```
 
 # Example
@@ -66,7 +66,7 @@ function FTRL(;
     λ::Float64 = 0.0,
     l1_ratio::Float64 = 1.0,
     dropout::Float64 = 0.0,
-    family::LossFamily = LossFamilies.Binomial(),
+    family::LossFamily = Links.Binomial(),
     grad_clip::Float64 = 1000.0,
     max_iter::Int = 1,
     verbose::Bool = true,
@@ -201,7 +201,7 @@ end
 function _ftrl_training_loss(model::FTRL{T}, X::SparseMatrixCSC,
                              y::AbstractVector) where {T}
     preds = predict(model, X)
-    if model.family isa LossFamilies.Binomial
+    if model.family isa Links.Binomial
         -sum(y .* log.(preds .+ T(1e-10)) .+
              (one(T) .- y) .* log.(one(T) .- preds .+ T(1e-10))) / length(y)
     else
@@ -217,9 +217,9 @@ end
     predict(model::FTRL, X) -> Vector
 
 Generate predictions using the fitted model. Output depends on family:
-- `LossFamilies.Binomial()` → probabilities in [0,1]
-- `LossFamilies.Gaussian()` → real-valued predictions
-- `LossFamilies.Poisson()`  → positive count predictions
+- `Links.Binomial()` → probabilities in [0,1]
+- `Links.Gaussian()` → real-valued predictions
+- `Links.Poisson()`  → positive count predictions
 """
 function predict(model::FTRL{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_initialized)

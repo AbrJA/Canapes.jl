@@ -189,15 +189,15 @@ update!(ftrl, X_train, y_train; rng)          # one pass; call again for more ep
 
 # FM: second-order feature interactions
 fm = FM(rank=8, lr_w=0.1, lr_v=0.05,
-        λ_w=1e-5, λ_v=1e-5, family=LossFamilies.Binomial())
+        λ_w=1e-5, λ_v=1e-5, family=Links.Binomial())
 fit!(fm, X_train, y_train; rng=MersenneTwister(9))
 ```
 
-The GLM loss families live in the `LossFamilies` submodule:
-`LossFamilies.Binomial()` (logistic), `LossFamilies.Gaussian()` (squared
-error) and `LossFamilies.Poisson()` (counts) — `LossFamilies.<TAB>` lists
+The GLM loss families live in the `Links` submodule:
+`Links.Binomial()` (logistic), `Links.Gaussian()` (squared
+error) and `Links.Poisson()` (counts) — `Links.<TAB>` lists
 exactly these three. Bring them in bare with
-`using Gideon.LossFamilies: Binomial`.
+`using Gideon.Links: Binomial`.
 
 ### Matrix completion — SoftImpute / SoftSVD / PureSVD
 

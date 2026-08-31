@@ -1,7 +1,7 @@
 using Test
 using Gideon
 # Names that are internal (not exported) but exercised directly by the tests.
-using Gideon.LossFamilies: Binomial, Gaussian, Poisson
+using Gideon.Links: Binomial, Gaussian, Poisson
 using Gideon.Sampling: Popular, Dynamic
 using Gideon: init_factors, sigmoid,
               dual_representation, sparse_row_norms, sparse_col_nnz, sparse_row_nnz, run_callbacks

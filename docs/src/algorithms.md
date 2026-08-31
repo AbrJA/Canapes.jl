@@ -252,7 +252,7 @@ using Gideon, SparseArrays, Random
 # Binary classification
 X = sprand(MersenneTwister(1), 1000, 50, 0.1)
 y = rand(MersenneTwister(2), [0.0, 1.0], 1000)
-model = FTRL(lr=0.1, λ=0.01, family=LossFamilies.Binomial())
+model = FTRL(lr=0.1, λ=0.01, family=Links.Binomial())
 fit!(model, X, y)
 p = predict(model, X)  # probabilities in [0, 1]
 
@@ -260,10 +260,10 @@ p = predict(model, X)  # probabilities in [0, 1]
 update!(model, X, y)
 
 # Gaussian regression
-model_reg = FTRL(lr=0.1, family=LossFamilies.Gaussian())
+model_reg = FTRL(lr=0.1, family=Links.Gaussian())
 
 # Poisson regression (count data)
-model_pois = FTRL(lr=0.1, family=LossFamilies.Poisson())
+model_pois = FTRL(lr=0.1, family=Links.Poisson())
 
 # Access coefficients
 w = coef(model)
@@ -283,13 +283,13 @@ using Gideon, SparseArrays, Random
 # XOR problem with second-order interactions
 X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
 y = [0.0, 1.0, 1.0, 0.0]
-model = FM(rank=4, family=LossFamilies.Binomial(), max_iter=100, lr_w=0.2)
+model = FM(rank=4, family=Links.Binomial(), max_iter=100, lr_w=0.2)
 fit!(model, X, y; rng=MersenneTwister(42))
 predict(model, X)
 
 # Gaussian regression with feature interactions
 X_reg = sprand(MersenneTwister(1), 500, 20, 0.3)
 y_reg = randn(MersenneTwister(2), 500)
-model_reg = FM(rank=8, family=LossFamilies.Gaussian(), max_iter=50)
+model_reg = FM(rank=8, family=Links.Gaussian(), max_iter=50)
 fit!(model_reg, X_reg, y_reg; rng=MersenneTwister(42))
 ```

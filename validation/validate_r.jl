@@ -4,7 +4,7 @@
 # (or directly: julia --project=. validation/validate_r.jl)
 
 using Gideon, SparseArrays, LinearAlgebra, Random
-using Gideon.LossFamilies: Binomial, Gaussian   # family singletons
+using Gideon.Links: Binomial, Gaussian   # family singletons
 using Test
 include(joinpath(@__DIR__, "common.jl"))
 

@@ -9,7 +9,7 @@
 @testset "Tables edge cases" begin
     @testset "Empty table throws error" begin
         table = (user=Int[], item=Int[], value=Float64[])
-        @test_throws ErrorException interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
+        @test_throws ArgumentError interactions_to_sparse(table; user_col=:user, item_col=:item, value_col=:value)
     end
 
     @testset "Out-of-bounds indices with explicit dims" begin
@@ -209,7 +209,7 @@ end
         model = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         X_new = sprand(MersenneTwister(7), 5, 60, 0.1)
-        U_new = transform(model, X_new)
+        U_new = Gideon.transform(model, X_new)
         @test size(U_new) == (8, 5)
         @test all(isfinite, U_new)
     end
@@ -218,7 +218,7 @@ end
         model = WMF(rank=8, max_iter=5, solver=ConjugateGradient(), verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         X_new = sprand(MersenneTwister(7), 3, 60, 0.1)
-        U_new = transform(model, X_new)
+        U_new = Gideon.transform(model, X_new)
         @test size(U_new) == (8, 3)
         @test all(isfinite, U_new)
     end

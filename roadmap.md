@@ -221,6 +221,25 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — Tables.jl hard dependency (follow-up review)
+- `interactions_to_sparse` failed on `DataFrame` ("AbstractDataFrame is not
+  iterable") and overclaimed "Tables.jl-compatible": only NamedTuple column
+  tables and duck-typed row objects worked. Rewritten on the real Tables.jl
+  interface (`Tables.columns`/`Tables.getcolumn`/`Tables.columnnames`) with
+  Tables as a hard dependency (pure-Julia, ~300 KB) — an extension would
+  have hidden core API behind a weakdep. Now works with DataFrames, CSV,
+  Arrow, tuplerows, etc.
+- Also: `dtype` kwarg for the value column; duplicate (user, item) pairs
+  documented as summing (sparse semantics); clean `ArgumentError`s for
+  empty tables, missing columns, non-integer IDs, and non-table input
+  (was `ErrorException`/`InexactError`/`MethodError`); column-length
+  mismatch → `DimensionMismatch`; range checks without temporaries.
+- Tests: 38 in `test/test_tables.jl` (incl. DataFrame, dtype, duplicates,
+  error paths, rowtable round-trip); DataFrames added to the test env with
+  `import` (not `using`) to avoid the `transform` export clash; the
+  validate_docs gate gained a DataFrame example; both docstrings became
+  executable doctests.
+
 ### 2026-08-31 — All remaining roadmap items completed
 - **Item 10 (atomic persistence)**: `save_model` writes to a temp file and
   renames into place; directory targets rejected; temp cleanup on failure.

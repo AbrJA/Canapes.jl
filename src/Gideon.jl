@@ -6,6 +6,7 @@ using SparseMatricesCSR
 using Random
 using Printf
 using Serialization
+using Tables
 using PrecompileTools
 
 # ── Core types & API ──

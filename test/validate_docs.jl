@@ -106,6 +106,14 @@ end
     @assert nnz(X) == 4
 end
 
+@validate "Tables - DataFrame" begin
+    import DataFrames
+    df = DataFrames.DataFrame(user=[1, 1, 2], item=[1, 2, 3], value=[1.0, 1.0, 1.0])
+    X = interactions_to_sparse(df; user_col=:user, item_col=:item, value_col=:value)
+    @assert size(X) == (2, 3)
+    @assert nnz(X) == 3
+end
+
 @validate "Tables - roundtrip" begin
     data = (user=[1, 1, 2, 2, 3], item=[1, 3, 2, 4, 1], value=[1.0, 1.0, 1.0, 1.0, 1.0])
     X = interactions_to_sparse(data; user_col=:user, item_col=:item, value_col=:value)

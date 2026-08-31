@@ -154,6 +154,47 @@ end
     end
 end
 
+@testset "Atomic save" begin
+    rng = MersenneTwister(7)
+    X = sprand(rng, 30, 20, 0.1)
+    model = EASE(λ=100.0, verbose=false)
+    fit!(model, X)
+
+    dir = mktempdir()
+    try
+        # Nested (non-existent) directories are created; no temp litter.
+        target = joinpath(dir, "nested", "model.jls")
+        save_model(model, target)
+        @test isfile(target)
+        @test readdir(joinpath(dir, "nested")) == ["model.jls"]
+        @test load_model(target).B ≈ model.B
+
+        # Overwriting an existing file replaces it atomically: last write wins,
+        # and no temp files are left behind.
+        model2 = EASE(λ=500.0, verbose=false)
+        fit!(model2, X)
+        save_model(model2, target)
+        @test readdir(joinpath(dir, "nested")) == ["model.jls"]
+        @test load_model(target).λ ≈ 500.0
+
+        # A directory target is rejected before any write; nothing is created.
+        dir_target = joinpath(dir, "dir_target")
+        mkpath(dir_target)
+        @test_throws ArgumentError save_model(model, dir_target)
+        @test isempty(readdir(dir_target))
+
+        # A failed write cleans up its temp file.
+        mktempdir() do empty_dir
+            cd(empty_dir) do
+                @test_throws Exception save_model(model, "")
+            end
+            @test isempty(readdir(empty_dir))
+        end
+    finally
+        rm(dir; recursive=true, force=true)
+    end
+end
+
 @testset "Cross-validation" begin
     @testset "random_holdout" begin
         rng = MersenneTwister(42)

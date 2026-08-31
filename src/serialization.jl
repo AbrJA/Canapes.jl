@@ -10,6 +10,11 @@ const GIDEON_SERIALIZATION_VERSION = 2
 Serialize a Gideon model to disk using Julia's native serialization.
 Includes a version header and type information for forward-compatibility checking.
 
+The model is first written to a temporary file in the target directory and then
+atomically renamed into place, so a crash or failed write never leaves a
+partially-written model at `path` (atomic on POSIX; replace semantics on
+Windows).
+
 # Example
 ```julia
 model = EASE(λ=100.0)
@@ -18,13 +23,23 @@ save_model(model, "my_model.jls")
 ```
 """
 function save_model(model::AbstractSparseModel, path::String)
+    isdir(path) && throw(ArgumentError("save path is a directory: $path"))
     dir = dirname(path)
     !isempty(dir) && mkpath(dir)
-    open(path, "w") do io
+    # Same directory as the target: the rename is atomic on the filesystem.
+    tmp_path, io = mktemp(isempty(dir) ? "." : dir)
+    try
         # Version header (v2 includes package version)
         write(io, "GIDEON_v$(GIDEON_SERIALIZATION_VERSION)\n")
         serialize(io, string(typeof(model)))
         serialize(io, model)
+        flush(io)
+        close(io)
+        mv(tmp_path, path; force=true)
+    catch
+        close(io)
+        rm(tmp_path; force=true)
+        rethrow()
     end
     nothing
 end

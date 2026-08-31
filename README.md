@@ -97,7 +97,7 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 
 **Choosing a model** — the short version:
 
-- **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS` (best accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise ranking, Hogwild), `LogisticMF` (probabilistic, well-calibrated scores).
+- **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS` (best accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise ranking, Hogwild; negative sampling via `Sampling.Uniform()` / `Sampling.Popular()` / `Sampling.Dynamic()`), `LogisticMF` (probabilistic, well-calibrated scores).
   Note: in the literature "iALS" usually means Hu et al. (2008) — this package's `WMF`. The `IALS` type here is the improved ALS of Rendle et al. (2021, "IALS++").
 - **Item-item similarity**: `EASE` (state of the art, O(n_items²) memory), `SLIM` (sparse + interpretable), `ADMMSLIM` (same solution as SLIM, 10–100× faster, dense training), `ItemKNN` (lightweight baseline).
 - **Embeddings / related items**: `GloVe` on co-occurrences.
@@ -346,6 +346,12 @@ no per-model boilerplate:
 | `coef(model)` | Learned weight vector (FTRL, FM) |
 | `predict(model, X)` | Regression predictions (FTRL, FM) |
 
+**Namespaced singletons:** the small generic-value types live in exported
+submodules so the root namespace stays about verbs, models and metrics —
+`Links.<TAB>` lists exactly the GLM link families and `Sampling.<TAB>` the
+negative-sampling strategies; their abstract types remain reachable as
+`LossFamily` and `NegativeSampling` in signatures.
+
 **Concurrency guarantees:** separate models train in parallel safely; reads on a fitted
 model are thread-safe; concurrent `fit!` on the *same* instance is unsupported; training
 is reproducible for a given seed and environment (BPR excepted — Hogwild by design).
@@ -463,8 +469,9 @@ The suite runs **17,450 tests** in ~3 minutes, covering:
   with reductions reproducible per environment.
 - Keep the public API naming consistent: full words over abbreviations,
   `*_at_k` for metrics, `mean_*` for scalar aggregates, CamelCase singletons
-  (the family/sampling types are unexported — qualify them), `max_iter`/`tol`/
-  `lr`/`λ`/`rank`/`T` as the shared hyperparameter vocabulary.
+  grouped in exported submodules (`Links`, `Sampling`) with their abstracts
+  aliased at the root, and `max_iter`/`tol`/`lr`/`λ`/`rank`/`T` as the shared
+  hyperparameter vocabulary.
 - See [AGENTS.md](AGENTS.md) for the threading/determinism conventions and known pitfalls.
 
 ---

@@ -58,7 +58,7 @@ const _PROPERTY_MODELS = [
     (name="ADMMSLIM",    model=() -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false), square=false),
     (name="ItemKNN",     model=() -> ItemKNN(k=3, verbose=false), square=false),
     (name="SoftImpute",  model=() -> SoftImpute(rank=3, max_iter=2, verbose=false), square=false),
-    (name="GloVe",       model=() -> GloVe(rank=3, max_iter=2, verbose=false), square=true),
+    (name="GloVe",       model=() -> GloVe(rank=3, max_iter=2, verbose=false), square=true, hogwild=true),
 ]
 
 @testset "Randomized round-trip properties" begin
@@ -105,8 +105,8 @@ const _PROPERTY_MODELS = [
                     @test all(isfinite, Matrix(S))
 
                     # Deterministic re-fit reproduces recommendations
-                    # (BPR is Hogwild by design and is excluded)
-                    if name != "BPR"
+                    # (BPR and GloVe are Hogwild by design and are excluded)
+                    if !(name in ("BPR", "GloVe"))
                         m2 = spec.model()
                         fit!(m2, Xm; rng=MersenneTwister(seed))
                         @test recommend(m2, Xm; k=k) == preds

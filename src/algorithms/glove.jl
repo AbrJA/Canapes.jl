@@ -26,7 +26,7 @@ the log-count matrix with a weighting function that caps frequent pairs.
 # Constructor
 ```julia
 GloVe(; rank=50, x_max=100.0, lr=0.05, α=0.75, λ=0.0,
-        max_iter=25, tol=-1.0, shuffle=false, verbose=true)
+        max_iter=25, tol=-1.0, verbose=true)
 ```
 
 # Example
@@ -58,7 +58,6 @@ mutable struct GloVe{T<:AbstractFloat} <: AbstractMatrixFactorization
     const λ::T
     const max_iter::Int
     const tol::T
-    const shuffle::Bool
     const verbose::Bool
     # Embeddings (rank × n)
     W_main::Matrix{T}
@@ -82,7 +81,6 @@ function GloVe(;
     λ::Float64 = 0.0,
     max_iter::Int = 25,
     tol::Float64 = -1.0,
-    shuffle::Bool = false,
     verbose::Bool = true,
     T::Type{<:AbstractFloat} = Float32,
 )
@@ -90,7 +88,7 @@ function GloVe(;
     x_max > 0.0 || throw(ArgumentError("x_max must be positive, got $x_max"))
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     GloVe{T}(
-        rank, T(x_max), T(lr), T(α), T(λ), max_iter, T(tol), shuffle, verbose,
+        rank, T(x_max), T(lr), T(α), T(λ), max_iter, T(tol), verbose,
         Matrix{T}(undef,0,0), Matrix{T}(undef,0,0),
         T[], T[],
         Matrix{T}(undef,0,0), Matrix{T}(undef,0,0),
@@ -108,20 +106,13 @@ end
 
 Fit GloVe on a square co-occurrence matrix `X` (all values must be positive).
 
-Parallelism uses a deterministic reordered scheme with word ownership
-(no Hogwild-style races):
-
-1. *Gradient pass* — all co-occurrences are scored against the epoch-start
-   embeddings (read-only), storing each pair's gradient.
-2. *Main-vector pass* — each thread updates only the main vectors/AdaGrad
-   state of its owned word block.
-3. *Context-vector pass* — each thread updates only the context vectors of its
-   owned word block.
-
-Each pass is embarrassingly parallel over words, so the learned embeddings are
-bit-identical regardless of the number of threads. The loss curve is the
-epoch-start objective, which stays monotone-decreasing in practice and matches
-a single-threaded run exactly.
+Parallelism uses a lock-free single-pass SGD scheme (Hogwild, like BPR):
+each thread owns a block of words, and every co-occurrence updates the main
+and context vectors of both words immediately. Context-vector writes race
+across threads, so results are not bit-identical across thread counts or
+runs (they are empirically stable, but this is not guaranteed). For a
+bit-reproducible run, train with a single thread (`julia --threads=1`) and
+a fixed `rng`. The reported loss is the ½-convention objective.
 """
 function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
@@ -151,20 +142,11 @@ function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
     nnz_count = nnz(X)
     X_csr = to_csr(X)
 
-    # Per-pair buffers indexed by CSR position: stored gradient and cost term.
-    grad_buf = Vector{T}(undef, nnz_count)
-    cost_buf = Vector{T}(undef, nnz_count)
-    # CSC (context-major) position → CSR (main-major) position mapping.
-    perm = _glove_csc_to_csr_pos(X_csr, X)
-    # Optional within-word pair permutation (seeded, deterministic).
-    shuffle_perm = model.shuffle ? _glove_within_word_perm(X_csr, rng) : nothing
-
     monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     for iter in 1:model.max_iter
         iter_start = time_ns()
-        epoch_cost = _glove_epoch!(model, X_csr, X, grad_buf, cost_buf, perm,
-                                   shuffle_perm)
+        epoch_cost = _glove_epoch!(model, X_csr)
 
         if isnan(epoch_cost)
             error("GloVe: cost became NaN — try a smaller lr")
@@ -198,31 +180,23 @@ function fit!(model::GloVe{T}, X::SparseMatrixCSC{Tv,Ti};
 end
 
 """
-    _glove_epoch!(model, X_csr, X, grad_buf, cost_buf, perm, shuffle_perm; nt) -> cost
+    _glove_epoch!(model, X_csr; nt) -> cost
 
-Run one deterministic reordered GloVe epoch:
-
-- Phase 1 (gradient): score every co-occurrence against the epoch-start state,
-  storing per-pair gradient in `grad_buf` and the cost term in `cost_buf`.
-- Phase 2 (main): per-word AdaGrad updates of `W_main`/`b_main` by word owner.
-- Phase 3 (context): per-word AdaGrad updates of `W_ctx`/`b_ctx` by word owner.
-
-The result is bit-identical for any `nt` because each phase is embarrassingly
-parallel over words and phases read only state they do not write.
+Run one lock-free single-pass GloVe epoch: every co-occurrence is visited
+once, in word-block chunks, and immediately updates the main vectors of its
+word (owned by the chunk) and the context vectors of its context word
+(raced across chunks). AdaGrad accumulators are updated in line. Returns the
+total ½-convention cost of the epoch.
 """
 function _glove_epoch!(model::GloVe{T},
-                       X_csr::SparseMatricesCSR.SparseMatrixCSR,
-                       X::SparseMatrixCSC,
-                       grad_buf::Vector{T}, cost_buf::Vector{T},
-                       perm::Vector{Int32},
-                       shuffle_perm::Union{Nothing,Vector{Int32}};
+                       X_csr::SparseMatricesCSR.SparseMatrixCSR;
                        nt::Int = Threads.nthreads()) where {T}
     k  = model.rank
     lr = model.lr
     x_max = model.x_max
     α  = model.α
     λ  = model.λ
-    n  = size(X, 1)
+    n  = length(X_csr.rowptr) - 1
 
     W  = model.W_main
     Wc = model.W_ctx
@@ -233,8 +207,10 @@ function _glove_epoch!(model::GloVe{T},
     gb  = model.grad_b_main
     gbc = model.grad_b_ctx
 
-    # ── Phase 1: gradient pass (epoch-start state, read-only) ──
+    costs = Vector{T}(undef, nt)
+
     Threads.@threads for chunk in 1:nt
+        local_cost = zero(T)
         for i in _thread_chunk_bounds(chunk, n, nt)
             @inbounds for p in nzrange(X_csr, i)
                 j = Int(X_csr.colval[p])
@@ -245,21 +221,10 @@ function _glove_epoch!(model::GloVe{T},
                     diff += W[f, i] * Wc[f, j]
                 end
                 # ½-convention loss; gradient = weight·diff (no factor of 2).
-                cost_buf[p] = T(0.5) * weight * diff^2
-                grad_buf[p] = weight * diff
-            end
-        end
-    end
-    cost = sum(cost_buf)
+                g = weight * diff
+                local_cost += T(0.5) * weight * diff * diff
 
-    # ── Phase 2: main-vector AdaGrad updates (word ownership) ──
-    Threads.@threads for chunk in 1:nt
-        for i in _thread_chunk_bounds(chunk, n, nt)
-            positions = shuffle_perm === nothing ? nzrange(X_csr, i) :
-                @view(shuffle_perm[X_csr.rowptr[i]:X_csr.rowptr[i+1]-1])
-            @inbounds for p in positions
-                j = Int(X_csr.colval[p])
-                g = grad_buf[p]
+                # Main-vector update (word i owned by this chunk)
                 @simd for f in 1:k
                     g_main = g * Wc[f, j] + λ * W[f, i]
                     gW[f, i] += g_main * g_main
@@ -267,17 +232,8 @@ function _glove_epoch!(model::GloVe{T},
                 end
                 gb[i] += g * g
                 b[i]  -= lr * g / (sqrt(gb[i]) + T(1e-8))
-            end
-        end
-    end
 
-    # ── Phase 3: context-vector AdaGrad updates (word ownership) ──
-    rv = rowvals(X)
-    Threads.@threads for chunk in 1:nt
-        for j in _thread_chunk_bounds(chunk, n, nt)
-            @inbounds for q in nzrange(X, j)
-                i = Int(rv[q])
-                g = grad_buf[perm[q]]
+                # Context-vector update (word j may be owned elsewhere — raced)
                 @simd for f in 1:k
                     g_ctx = g * W[f, i] + λ * Wc[f, j]
                     gWc[f, j] += g_ctx * g_ctx
@@ -287,67 +243,10 @@ function _glove_epoch!(model::GloVe{T},
                 bc[j]  -= lr * g / (sqrt(gbc[j]) + T(1e-8))
             end
         end
+        costs[chunk] = local_cost
     end
 
-    cost
-end
-
-"""
-    _glove_csc_to_csr_pos(X_csr, X) -> Vector{Int32}
-
-For each CSC position `q` (context-major), return the CSR position of the same
-co-occurrence `(i, j)`. Used to look up per-pair gradients in the context pass.
-"""
-function _glove_csc_to_csr_pos(X_csr::SparseMatricesCSR.SparseMatrixCSR,
-                               X::SparseMatrixCSC)
-    n = size(X, 2)
-    perm = Vector{Int32}(undef, nnz(X))
-    rv = rowvals(X)
-    @inbounds for j in 1:n
-        for q in nzrange(X, j)
-            i = Int(rv[q])
-            rng_i = nzrange(X_csr, i)
-            lo, hi = first(rng_i), last(rng_i)
-            found = false
-            while lo <= hi
-                mid = (lo + hi) >>> 1
-                cv = X_csr.colval[mid]
-                if cv < j
-                    lo = mid + 1
-                elseif cv > j
-                    hi = mid - 1
-                else
-                    perm[q] = Int32(mid)
-                    found = true
-                    break
-                end
-            end
-            found || error("GloVe: internal error — co-occurrence ($i, $j) not found")
-        end
-    end
-    perm
-end
-
-"""
-    _glove_within_word_perm(X_csr, rng) -> Vector{Int32}
-
-Seeded, deterministic permutation of the co-occurrence positions within each
-main word's block. Only built when `shuffle=true`; the identity order is used
-otherwise. This preserves the `shuffle` option's SGD-noise role while keeping
-the word-ownership grouping intact.
-"""
-function _glove_within_word_perm(X_csr::SparseMatricesCSR.SparseMatrixCSR,
-                                 rng::AbstractRNG)
-    n = length(X_csr.rowptr) - 1
-    perm = Vector{Int32}(undef, nnz(X_csr))
-    @inbounds for i in 1:n
-        rng_i = nzrange(X_csr, i)
-        for (t, p) in enumerate(rng_i)
-            perm[X_csr.rowptr[i] + t - 1] = Int32(p)
-        end
-        _inplace_shuffle!(@view(perm[X_csr.rowptr[i]:X_csr.rowptr[i+1]-1]), rng)
-    end
-    perm
+    sum(costs)
 end
 
 """

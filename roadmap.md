@@ -221,6 +221,28 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — GloVe switched to Hogwild (measured trade)
+Experiment first, then decision: a prototype single-pass lock-free GloVe was
+measured against the deterministic 3-phase word-ownership scheme — 0.86× at
+10k, 1.25× at 30k, 1.26× at 100k×100k (millions), with indistinguishable
+convergence (final embedding correlation 1.0, loss curves strictly
+decreasing and stable run-to-run on x86). The R parity gate has 2× margin
+(ratio 0.55 vs 1.15), so the switch cannot flake it (verified green).
+- **GloVe epoch** is now a single-pass Hogwild with word-block chunks:
+  main-vector writes are chunk-owned; context-vector writes race (like BPR).
+  Removed the 3-phase machinery, the CSC→CSR perm map, the within-word
+  shuffle option (`shuffle` kwarg dropped — it existed for the phased
+  design), and the associated tests (determinism across thread partitions,
+  shuffle finiteness). The `shuffle` docstring/README claims updated.
+  Run-to-run reproducibility now requires a single thread + fixed rng
+  (documented); property tests treat GloVe like BPR (excluded from
+  determinism assertions).
+- Benchmark at millions: 9.58s vs 10.65-11.27s (~12%).
+- Fixed stale names in benchmark/run.jl (ConjugateGradient → CGSolver,
+  learning_rate → lr, convergence_tol → tol) that had survived the naming
+  passes.
+- Suite: 17,462 passing; doctests + docs clean; validation green.
+
 ### 2026-08-31 — GPU hardening (parity tests, input contracts, implementation fixes)
 Audit of the CUDA extension found the GPU paths structurally correct but
 underspecified and partially unvalidated:

@@ -18,7 +18,7 @@ recommender systems: matrix factorization, item-item models, low-rank completion
 sparse regression — all on `SparseMatrixCSC` with a single unified API.
 
 It is built for the constraints of real recommendation pipelines: **reproducible**
-training (fixed seed + environment; GloVe bit-identical across thread counts),
+training (fixed seed + environment; GloVe and BPR are the documented Hogwild exceptions),
 **memory-bounded** scoring paths
 that never materialize a full dense score matrix, **optional GPU** acceleration, and
 numerical correctness **validated against R (rsparse) and Python (implicit, sklearn,
@@ -29,7 +29,7 @@ scipy)** references.
 | | |
 |---|---|
 | **One API for everything** | `fit!` / `recommend` / `score` / `predict` / `transform` across 15 algorithms |
-| **Reproducible by design** | training is reproducible for a fixed seed and environment (no `@fastmath` — NaN/Inf-correct); GloVe is bit-identical across thread counts; BPR is the documented Hogwild exception |
+| **Reproducible by design** | training is reproducible for a fixed seed and environment (no `@fastmath` — NaN/Inf-correct); GloVe and BPR are the documented Hogwild exceptions |
 | **Reference-validated** | weights, predictions, and losses compared numerically against R and Python reference implementations |
 | **Sparse-native, memory-safe** | no dense conversions, batched top-k scoring, fit-time `max_memory` guards, sparse fitted weights |
 | **Concurrency-safe** | transactional `fit!`, read-only `recommend`/`score`, safe nesting |
@@ -354,7 +354,7 @@ negative-sampling strategies; their abstract types remain reachable as
 
 **Concurrency guarantees:** separate models train in parallel safely; reads on a fitted
 model are thread-safe; concurrent `fit!` on the *same* instance is unsupported; training
-is reproducible for a given seed and environment (BPR excepted — Hogwild by design).
+is reproducible for a given seed and environment (GloVe and BPR excepted — Hogwild by design).
 
 ---
 
@@ -376,8 +376,7 @@ is reproducible for a given seed and environment (BPR excepted — Hogwild by de
 | CSR dual storage for O(nnz_u) per-user row access | All algorithms, metrics |
 | `Threads.@threads` outer loops with shared chunked-buffer helpers | WMF, IALS, EALS, BPR, GloVe |
 | Gramian caching (avoids per-user recomputation) | IALS, EALS |
-| Deterministic 3-phase reordered epoch (gradient → main → context) | GloVe |
-| Zero-allocation Fisher-Yates shuffle | GloVe epoch shuffling |
+| Lock-free single-pass SGD (Hogwild, word-block chunks) | GloVe |
 | Numerical stability (epsilon floors in AdaGrad) | GloVe, FM |
 | PrecompileTools workloads | All algorithms (reduces TTFX) |
 | Optional GPU offloading via CUDA.jl extension | EASE, IALS, WMF, predict |

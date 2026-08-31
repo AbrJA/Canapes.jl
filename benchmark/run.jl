@@ -85,13 +85,13 @@ function benchmark_models(X; include_dense=true)
         (name="WMF-Cholesky", model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10,
             solver=CholeskySolver(), verbose=false)),
         (name="WMF-CG", model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10,
-            solver=ConjugateGradient(), cg_steps=3, verbose=false)),
+            solver=CGSolver(), cg_steps=3, verbose=false)),
         (name="IALS", model=IALS(rank=64, max_iter=10, verbose=false)),
         (name="EALS", model=EALS(rank=64, max_iter=10, verbose=false)),
         (name="BPR", model=BPR(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
-            learning_rate=0.05, max_iter=10, verbose=false)),
-        (name="LogisticMF", model=LogisticMF(rank=64, λ=0.6, learning_rate=1.0,
-            max_iter=10, n_negative=30, convergence_tol=-1.0, verbose=false)),
+            lr=0.05, max_iter=10, verbose=false)),
+        (name="LogisticMF", model=LogisticMF(rank=64, λ=0.6, lr=1.0,
+            max_iter=10, n_negative=30, tol=-1.0, verbose=false)),
     ]
     include_dense || return models
     vcat(models, [
@@ -222,12 +222,12 @@ function main()
         n = scale.n_users
         d = scale.density * scale.n_items / n
         C = generate_cooccurrence(n, d)
-        glove = GloVe(rank=64, learning_rate=0.05, max_iter=10, verbose=false)
+        glove = GloVe(rank=64, lr=0.05, max_iter=10, verbose=false)
         fit_m = best_of(() -> fit!(glove, C; rng=MersenneTwister(1)), reps[scale.name])
         rec_m = best_of(() -> recommend(glove, C; k=K), reps[scale.name])
         record = log_record(merge(env_record(), Dict(
             "algorithm" => "GloVe",
-            "config" => "rank=64,learning_rate=0.05,max_iter=10",
+            "config" => "rank=64,lr=0.05,max_iter=10",
             "scale" => scale.name,
             "n_users" => n,
             "n_items" => n,

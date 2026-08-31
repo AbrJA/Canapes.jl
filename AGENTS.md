@@ -48,11 +48,13 @@ scales (hundreds/thousands/millions). **Validate any perf change with it.**
   19-50% end-to-end). Bit-identity across SIMD widths/builds is not claimed —
   BLAS paths already differ across BLAS builds.
 - `@simd` is fine on element-wise loops and in loss-monitoring-only code.
-- **GloVe** uses a 3-phase reordered epoch (gradient pass → main pass → context
-  pass) with word ownership: per-pair reductions are computed by the owning
-  thread, so the result stays bit-identical across thread counts.
-- **BPR** is Hogwild (documented non-deterministic). Determinism tests live in
-  `test/test_glove.jl` and `test/test_fixtures.jl`.
+- **GloVe** and **BPR** are Hogwild (lock-free single-pass SGD, documented
+  non-deterministic): results may differ across thread counts and runs; a
+  single thread with a fixed rng reproduces runs. The GloVe epoch was
+  switched from a deterministic 3-phase word-ownership scheme (bit-identical
+  across thread counts) to Hogwild in 2026-08-31 — measured 1.26x at
+  millions scale with identical convergence; determinism tests for GloVe
+  were removed accordingly.
 
 ## Pitfalls we hit
 

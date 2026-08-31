@@ -184,13 +184,13 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
 
         if model.nonneg
             # Soft-threshold + clip to non-negative
-            @inbounds for idx in eachindex(Z)
+            @inbounds @simd for idx in eachindex(Z)
                 z = B_plus_U[idx] - threshold
                 Z[idx] = z > zero(T) ? z : zero(T)
             end
         else
             # Standard soft-thresholding
-            @inbounds for idx in eachindex(Z)
+            @inbounds @simd for idx in eachindex(Z)
                 v = B_plus_U[idx]
                 if v > threshold
                     Z[idx] = v - threshold
@@ -213,7 +213,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
         # ── Convergence check: relative primal residual ──
         primal_resid = zero(T)
         norm_B = zero(T)
-        @inbounds for idx in eachindex(B)
+        @inbounds @simd for idx in eachindex(B)
             d = B[idx] - Z[idx]
             primal_resid += d * d
             norm_B += B[idx] * B[idx]

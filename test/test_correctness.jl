@@ -69,7 +69,7 @@ end
     @testset "WMF: converges on rank-1 data" begin
         X = _rank1_data(20, 15)
         m = WMF(rank=3, λ=0.01, max_iter=10, solver=CholeskySolver(),
-                 feedback=IMPLICIT, tol=0.0, verbose=false)
+                 feedback=Implicit, tol=0.0, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         loss_initial = _wrmf_loss_ref(m.user_factors, m.item_factors, X, 0.01, 0.0)
         @test isfinite(loss_initial)
@@ -220,13 +220,13 @@ end
         X = _rank1_data(25, 20)
         # Cholesky solver
         m_chol = WMF(rank=3, λ=0.01, max_iter=10, solver=CholeskySolver(),
-                      feedback=IMPLICIT, verbose=false)
+                      feedback=Implicit, verbose=false)
         fit!(m_chol, X; rng=MersenneTwister(42))
         @test all(isfinite, m_chol.user_factors)
         @test all(isfinite, m_chol.item_factors)
         # CG solver
         m_cg = WMF(rank=3, λ=0.01, max_iter=10, solver=CGSolver(), cg_steps=3,
-                    feedback=IMPLICIT, verbose=false)
+                    feedback=Implicit, verbose=false)
         fit!(m_cg, X; rng=MersenneTwister(42))
         @test all(isfinite, m_cg.user_factors)
         @test all(isfinite, m_cg.item_factors)

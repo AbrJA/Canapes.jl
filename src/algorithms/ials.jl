@@ -20,14 +20,21 @@
 """
     IALS{T} <: AbstractMatrixFactorization
 
-Implicit Alternating Least Squares with efficient Gramian caching.
+Implicit Alternating Least Squares (Rendle et al. 2021, "IALS++") with
+efficient Gramian caching.
 
-Implements the algorithm from Hu et al. (2008) with the efficient Gramian trick:
-instead of forming the full confidence-weighted system per user, we precompute
-the item Gramian `YᵀY` and add only the diagonal corrections for non-zero entries.
+Solves the classic implicit-ALS objective of Hu et al. (2008) with the IALS++
+acceleration: instead of forming the full confidence-weighted system per user,
+we precompute the item Gramian `YᵀY` and add only the diagonal corrections for
+non-zero entries.
 
 This avoids the O(n_items × d²) cost per user and replaces it with
 O(nnz_per_user × d² + d³) per user, which is dramatically faster for sparse data.
+
+!!! note "Naming"
+    In the literature and in other libraries, "iALS" usually refers to the
+    classic implicit ALS of Hu et al. (2008) — the [`WMF`](@ref) family in this
+    package, not `IALS` (which is the improved IALS++ algorithm).
 
 # Solver Options
 - `CholeskySolver()` — exact solve via Cholesky decomposition, O(d³) per user. Best for d ≤ 128.

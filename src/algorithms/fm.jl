@@ -46,7 +46,7 @@ mutable struct FM{T<:AbstractFloat} <: AbstractSparseRegression
     lr_v::T
     const λ_w::T
     const λ_v::T
-    const family::Family
+    const family::LossFamily
     const intercept::Bool
     const max_iter::Int
     const tol::T
@@ -66,7 +66,7 @@ function FM(;
     lr_v::Float64 = lr_w,
     λ_w::Float64 = 0.0,
     λ_v::Float64 = 0.0,
-    family::Family = Binomial(),
+    family::LossFamily = Binomial(),
     intercept::Bool = true,
     max_iter::Int = 10,
     tol::Float64 = -1.0,

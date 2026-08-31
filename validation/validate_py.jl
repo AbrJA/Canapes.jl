@@ -13,7 +13,7 @@ soft_strict = get(ENV, "GIDEON_PY_SOFT_STRICT", "0") == "1"
 
 const SCORE_CASES = [
     (name="WMF-Cholesky vs ALS", model=() -> WMF(rank=16, λ=0.1, α=40.0, max_iter=20,
-                                                   solver=CholeskySolver(), feedback=IMPLICIT, verbose=false),
+                                                   solver=CholeskySolver(), feedback=Implicit, verbose=false),
      scores_path="py_als_scores.csv", required=true, metrics_path=nothing,
      min_cor=_env_float("GIDEON_PY_ALS_MIN_COR", 0.45),
      min_overlap=_env_float("GIDEON_PY_ALS_MIN_OVERLAP", 0.20),

@@ -50,7 +50,7 @@ mutable struct FTRL{T<:AbstractFloat} <: AbstractSparseRegression
     const λ::T
     const l1_ratio::T
     const dropout::T
-    const family::Family
+    const family::LossFamily
     const grad_clip::T
     const max_iter::Int
     const verbose::Bool
@@ -66,7 +66,7 @@ function FTRL(;
     λ::Float64 = 0.0,
     l1_ratio::Float64 = 1.0,
     dropout::Float64 = 0.0,
-    family::Family = Binomial(),
+    family::LossFamily = Binomial(),
     grad_clip::Float64 = 1000.0,
     max_iter::Int = 1,
     verbose::Bool = true,

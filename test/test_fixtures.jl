@@ -13,7 +13,7 @@ using Test, SparseArrays, LinearAlgebra, Random
     X = sparse([1.0 2.0 3.0; 4.0 5.0 6.0])
 
     model = WMF(rank=2, λ=0.0, max_iter=100, solver=CholeskySolver(),
-                feedback=EXPLICIT, tol=-1.0, verbose=false)
+                feedback=Explicit, tol=-1.0, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
 
     @test size(model.user_factors) == (2, 2)
@@ -32,7 +32,7 @@ end
 @testset "Fixture: test_cg_nan" begin
     X = sparse([0.0 1.0; 1.0 0.0])
     model = WMF(rank=10, λ=0.01, max_iter=10, solver=CGSolver(),
-                cg_steps=3, feedback=IMPLICIT, verbose=false)
+                cg_steps=3, feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     @test all(isfinite, model.user_factors)
     @test all(isfinite, model.item_factors)
@@ -40,7 +40,7 @@ end
     # Single-rating rows/columns must not poison the CG solve either.
     X2 = sparse([1.0 0 0 0 0; 0 1.0 0 0 0])
     model2 = WMF(rank=3, λ=0.01, max_iter=5, solver=CGSolver(),
-                 cg_steps=3, feedback=IMPLICIT, verbose=false)
+                 cg_steps=3, feedback=Implicit, verbose=false)
     fit!(model2, X2; rng=MersenneTwister(7))
     @test all(isfinite, model2.user_factors)
     @test all(isfinite, model2.item_factors)
@@ -79,7 +79,7 @@ end
         for j in axes(X, 2), idx in nzrange(X, j)
             i = rv[idx]; r = Float64(nz[idx])
             pred = dot(view(U, :, i), view(V, :, j))
-            if model.feedback == IMPLICIT
+            if model.feedback == Implicit
                 c = max(1.0, 1.0 + Float64(α) * r)
                 loss += c * (1.0 - pred)^2
             else
@@ -89,7 +89,7 @@ end
         loss + Float64(λ) * (sum(abs2, U) + sum(abs2, V))
     end
 
-    for feedback in [IMPLICIT, EXPLICIT]
+    for feedback in [Implicit, Explicit]
         model = WMF(rank=5, λ=0.1, α=1.0, max_iter=8, solver=CholeskySolver(),
                     feedback=feedback, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
@@ -224,7 +224,7 @@ end
 @testset "Fixture: transform parity (fold-in)" begin
     X = sprand(MersenneTwister(41), 60, 40, 0.1)
     model = WMF(rank=4, λ=0.1, α=1.0, max_iter=150, solver=CholeskySolver(),
-                feedback=IMPLICIT, tol=-1.0, verbose=false)
+                feedback=Implicit, tol=-1.0, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
 
     U_foldin = transform(model, X)

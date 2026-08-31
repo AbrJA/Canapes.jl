@@ -221,6 +221,33 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — Naming pass III (external review)
+Evaluated a friend's recommendations; applied the ones that hold up:
+- `@enum FeedbackType` values `IMPLICIT`/`EXPLICIT` → `Implicit`/`Explicit`
+  (CamelCase per Base convention — `Forward`, `RoundNearest`, … — and
+  internally consistent with the other CamelCase singletons like
+  `Binomial()`, `Uniform()`).
+- `Family` → `LossFamily` (the collision claim vs Distributions/GLM was
+  unfounded — neither exports `Family` — but the descriptive argument holds
+  and matches `NegativeSampling` style).
+- `AbstractSoftALS` moved from the # Models to the # Types block in the
+  export list.
+- WMF/IALS docstring notes about the "iALS" naming trap (in the literature
+  "iALS" = Hu 2008 = this package's `WMF`; this package's `IALS` = Rendle
+  2021 iALS++). Fixing the note surfaced a doc bug: the IALS docstring
+  attributed the IALS++ algorithm to Hu et al. 2008 — corrected to Rendle
+  et al. 2021 with Hu as the objective baseline.
+Rejected with technical grounding: `LogisticMF`→`LMF` (it parallels `WMF`:
+[adjective]MF; matches `implicit`; `lmf.jl` follows the repo file convention
+just like `knn.jl`↔`ItemKNN`), `_gpu` functions→array-type dispatch (the GPU
+ext is a host-in/host-out bridge — inputs are always host `SparseMatrixCSC`,
+so there is nothing to dispatch on), `NonNegativeSolver`→`nonneg::Bool`
+(it IS a method — block-coordinate-descent NNLS — and orthogonalizing the
+flag would permit un-implementable solver/constraint combos),
+`ALSSolver`→`NormalEquationsSolver` (the suggested name is wrong for CG/NNLS;
+would be `LeastSquaresSolver` if ever renamed — left as-is).
+Full suite green (17,456), doctests + docs clean, validation green (R + Python).
+
 ### 2026-08-31 — Naming consistency pass II (scalar/vector metrics, verb symmetry, ergonomics)
 - `map_at_k` → `mean_ap_at_k` — it was the ONLY metric returning a scalar
   (verified: ap/ndcg/precision/recall are per-user vectors), invisible in the

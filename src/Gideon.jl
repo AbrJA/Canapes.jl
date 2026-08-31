@@ -50,9 +50,10 @@ export
     AbstractMatrixFactorization,
     AbstractItemSimilarity,
     AbstractSparseRegression,
+    AbstractSoftALS,
     ALSSolver, CholeskySolver, CGSolver, NonNegativeSolver,
-    FeedbackType, IMPLICIT, EXPLICIT,
-    Family,
+    FeedbackType, Implicit, Explicit,
+    LossFamily,
     NegativeSampling,
 
     # Models
@@ -71,7 +72,6 @@ export
     SoftImpute,
     SoftSVD,
     PureSVD,
-    AbstractSoftALS,
 
     # Generic API
     fit!,

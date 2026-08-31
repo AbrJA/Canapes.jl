@@ -100,7 +100,7 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 - **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS` (best accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise ranking, Hogwild), `LogisticMF` (probabilistic, well-calibrated scores).
 - **Item-item similarity**: `EASE` (state of the art, O(n_items²) memory), `SLIM` (sparse + interpretable), `ADMMSLIM` (same solution as SLIM, 10–100× faster, dense training), `ItemKNN` (lightweight baseline).
 - **Embeddings / related items**: `GloVe` on co-occurrences.
-- **Explicit ratings or completion**: `SoftImpute` / `SoftSVD` / `PureSVD`, or `WMF` with `feedback=EXPLICIT`.
+- **Explicit ratings or completion**: `SoftImpute` / `SoftSVD` / `PureSVD`, or `WMF` with `feedback=Explicit`.
 - **Sparse regression / CTR**: `FTRL` (online, elastic-net, streaming) and `FM` (second-order feature interactions).
 
 ---

@@ -82,47 +82,47 @@ struct NonNegativeSolver <: ALSSolver end
 """
     FeedbackType
 
-Enum for feedback type: `IMPLICIT` or `EXPLICIT`.
+Enum for feedback type: `Implicit` or `Explicit`.
 """
 @enum FeedbackType begin
-    IMPLICIT
-    EXPLICIT
+    Implicit
+    Explicit
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Family types (GLM link functions)
+# LossFamily types (GLM link functions)
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    Family
+    LossFamily
 
 Abstract type for GLM family (link function). Concrete subtypes:
 - [`Binomial`](@ref) — logistic (sigmoid) link
 - [`Gaussian`](@ref) — identity link
 - [`Poisson`](@ref) — exponential link
 """
-abstract type Family end
+abstract type LossFamily end
 
 """
-    Binomial <: Family
+    Binomial <: LossFamily
 
 Logistic link function: sigmoid(x). For binary classification.
 """
-struct Binomial <: Family end
+struct Binomial <: LossFamily end
 
 """
-    Gaussian <: Family
+    Gaussian <: LossFamily
 
 Identity link function: x. For regression.
 """
-struct Gaussian <: Family end
+struct Gaussian <: LossFamily end
 
 """
-    Poisson <: Family
+    Poisson <: LossFamily
 
 Exponential link function: exp(x). For count data.
 """
-struct Poisson <: Family end
+struct Poisson <: LossFamily end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Negative sampling types (for BPR)

@@ -64,7 +64,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
     @testset "WMF CholeskySolver: loss ≤ R × 1.05" begin
         r_loss = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_chol_loss.txt"))
         m = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=50,
-                solver=CholeskySolver(), feedback=IMPLICIT, tol=1e-6, verbose=false)
+                solver=CholeskySolver(), feedback=Implicit, tol=1e-6, verbose=false)
         fit!(m, X_ref; rng=MersenneTwister(42))
         jl_loss = _wrmf_loss_ref(m.user_factors, m.item_factors, X_ref, λ_r, α_r)
         @test isfinite(jl_loss)
@@ -80,7 +80,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
         r_loss = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_chol_loss.txt"))
 
         m_ws = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=1,
-                   solver=CholeskySolver(), feedback=IMPLICIT, tol=-1.0, verbose=false)
+                   solver=CholeskySolver(), feedback=Implicit, tol=-1.0, verbose=false)
         fit!(m_ws, X_ref; rng=MersenneTwister(1), U_init=U_r, V_init=V_r)
         jl_loss_ws = _wrmf_loss_ref(m_ws.user_factors, m_ws.item_factors, X_ref, λ_r, α_r)
         @test jl_loss_ws <= r_loss * 1.05

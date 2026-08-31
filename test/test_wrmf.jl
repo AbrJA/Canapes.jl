@@ -17,7 +17,7 @@ X = sprand(rng, 100, 80, 0.05)
 λ = 0.1; α = 1.0
 
 @testset "Implicit CholeskySolver" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=IMPLICIT, verbose=false)
+    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test size(model.user_factors) == (5, 100)
@@ -27,7 +27,7 @@ X = sprand(rng, 100, 80, 0.05)
 end
 
 @testset "Implicit CG" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CGSolver(), feedback=IMPLICIT, verbose=false)
+    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CGSolver(), feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test size(model.user_factors) == (5, 100)
@@ -35,13 +35,13 @@ end
 end
 
 @testset "Explicit" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=EXPLICIT, verbose=false)
+    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=Explicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
 end
 
 @testset "NonNegativeSolver" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=3, solver=NonNegativeSolver(), feedback=IMPLICIT, verbose=false)
+    model = WMF(rank=5, λ=λ, α=α, max_iter=3, solver=NonNegativeSolver(), feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test all(model.user_factors .>= -1e-12)
@@ -78,7 +78,7 @@ end
     losses = Float64[]
     for n_iter in [2, 5, 15, 30]
         m = WMF(rank=4, λ=λ, α=α, max_iter=n_iter, solver=CholeskySolver(),
-                 feedback=IMPLICIT, tol=-1.0, verbose=false)
+                 feedback=Implicit, tol=-1.0, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         push!(losses, _wrmf_loss(m.user_factors, m.item_factors, X, λ, α))
     end
@@ -148,7 +148,7 @@ end
     rng3 = MersenneTwister(5)
     X_ex = sprand(rng3, 40, 30, 0.2)
     m_ex = WMF(rank=4, λ=0.1, α=1.0, max_iter=20, solver=CholeskySolver(),
-                feedback=EXPLICIT, verbose=false)
+                feedback=Explicit, verbose=false)
     fit!(m_ex, X_ex; rng=rng3)
     rv = rowvals(X_ex); nz = nonzeros(X_ex); mse = 0.0
     for j in axes(X_ex, 2), idx in nzrange(X_ex, j)

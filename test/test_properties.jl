@@ -136,7 +136,7 @@ end
     # design; the signed-feedback models are exercised separately.
     rng = MersenneTwister(99)
     signed_models = [
-        () -> WMF(rank=3, max_iter=3, feedback=EXPLICIT, verbose=false),
+        () -> WMF(rank=3, max_iter=3, feedback=Explicit, verbose=false),
         () -> EASE(λ=100.0, verbose=false),
         () -> SLIM(λ_l1=0.01, max_iter=3, verbose=false),
         () -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false),

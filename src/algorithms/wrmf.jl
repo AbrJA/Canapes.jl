@@ -29,10 +29,15 @@ Supports implicit feedback (Hu et al. 2008) and explicit feedback (MSE).
 Three solvers available: CholeskySolver (exact), CGSolver (approximate, fast),
 and NonNegativeSolver (non-negative least squares).
 
+!!! note "Naming"
+    Hu et al. (2008) is often called "iALS" (implicit ALS) in the literature
+    and in other libraries. It is not the [`IALS`](@ref) type of this package,
+    which implements the improved ALS of Rendle et al. (2021, "IALS++").
+
 # Constructor
 ```julia
 WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, tol=0.005,
-       solver=CGSolver(), cg_steps=3, feedback=IMPLICIT, verbose=true)
+       solver=CGSolver(), cg_steps=3, feedback=Implicit, verbose=true)
 ```
 
 # Fields
@@ -43,7 +48,7 @@ WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, tol=0.005,
 - `tol::T` — relative loss tolerance for early stopping (<0 disables)
 - `solver::ALSSolver`  — `CholeskySolver()`, `CGSolver()`, or `NonNegativeSolver()`
 - `cg_steps::Int`      — max CG inner iterations (only for CG solver)
-- `feedback::FeedbackType` — `IMPLICIT` or `EXPLICIT`
+- `feedback::FeedbackType` — `Implicit` or `Explicit`
 - `user_factors::Matrix{T}`  — rank × n_users (set after `fit!`)
 - `item_factors::Matrix{T}`  — rank × n_items (set after `fit!`)
 
@@ -86,7 +91,7 @@ function WMF(;
     tol::Float64 = 0.005,
     solver::ALSSolver = CGSolver(),
     cg_steps::Int = 3,
-    feedback::FeedbackType = IMPLICIT,
+    feedback::FeedbackType = Implicit,
     verbose::Bool = true,
     T::Type{<:AbstractFloat} = Float32,
 )
@@ -241,7 +246,7 @@ function _als_sweep_cholesky!(
     k = model.rank
     λ = model.λ
     α = model.α
-    is_implicit = model.feedback == IMPLICIT
+    is_implicit = model.feedback == Implicit
     is_nnls     = model.solver isa NonNegativeSolver
 
     # YᵀY via BLAS syrk (symmetric rank-k: C = α·A·Aᵀ + β·C)
@@ -395,7 +400,7 @@ function _als_sweep_cg!(
     λ = model.λ
     α = model.α
     cg_steps = model.cg_steps
-    is_implicit = model.feedback == IMPLICIT
+    is_implicit = model.feedback == Implicit
 
     # Base gram (shared, read-only)
     YtY = Matrix{T}(undef, k, k)
@@ -553,7 +558,7 @@ function _compute_loss(model::WMF{T}, X::SparseMatrixCSC) where {T}
             @inbounds @simd for f in 1:k
                 pred += U[f, i] * V[f, j]
             end
-            if model.feedback == IMPLICIT
+            if model.feedback == Implicit
                 c = max(one(T), one(T) + α * r)
                 loss += c * (one(T) - pred)^2
             else

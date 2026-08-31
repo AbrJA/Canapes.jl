@@ -50,7 +50,7 @@ Safe reciprocal that avoids division by zero.
 @inline safe_inv(x::T; ε::T=T(1e-12)) where {T<:AbstractFloat} = one(T) / (x + ε)
 
 """
-    link_function(family::Family, x)
+    link_function(family::LossFamily, x)
 
 Apply the GLM link function for the given family:
 - `Binomial()` → sigmoid(x)

@@ -1,11 +1,11 @@
 <div align="center">
 
-# Gideon.jl
+# Canapes.jl
 
 **High-performance statistical learning on sparse matrices in pure Julia.**
 
-[![Build Status](https://github.com/AbrJA/Gideon.jl/workflows/CI/badge.svg)](https://github.com/AbrJA/Gideon.jl/actions)
-[![codecov](https://codecov.io/gh/AbrJA/Gideon.jl/graph/badge.svg)](https://codecov.io/gh/AbrJA/Gideon.jl)
+[![Build Status](https://github.com/AbrJA/Canapes.jl/workflows/CI/badge.svg)](https://github.com/AbrJA/Canapes.jl/actions)
+[![codecov](https://codecov.io/gh/AbrJA/Canapes.jl/graph/badge.svg)](https://codecov.io/gh/AbrJA/Canapes.jl)
 [![Julia 1.10+](https://img.shields.io/badge/Julia-1.10%2B-blue?logo=julia)](https://julialang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -13,7 +13,7 @@
 
 ---
 
-Gideon.jl is a production-oriented Julia toolkit for sparse statistical learning and
+Canapes.jl is a production-oriented Julia toolkit for sparse statistical learning and
 recommender systems: matrix factorization, item-item models, low-rank completion, and
 sparse regression — all on `SparseMatrixCSC` with a single unified API.
 
@@ -41,7 +41,7 @@ scipy)** references.
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/AbrJA/Gideon.jl")
+Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
 ```
 
 Requires Julia ≥ 1.10. Full API reference lives in [`docs/src/`](docs/src) (build with `julia --project=docs docs/make.jl`).
@@ -53,7 +53,7 @@ Requires Julia ≥ 1.10. Full API reference lives in [`docs/src/`](docs/src) (bu
 End-to-end in one flow: tabular interactions → sparse matrix → train → recommend → evaluate.
 
 ```julia
-using Gideon, DataFrames, SparseArrays, Random, Statistics
+using Canapes, DataFrames, SparseArrays, Random, Statistics
 
 # 1. Interactions as a table (any Tables.jl source: DataFrames, CSV, Arrow, …)
 df = DataFrame(user=[1,1,2,3,3,4], item=[2,5,3,1,4,2], rating=[1.0,1.0,1.0,1.0,1.0,1.0])
@@ -111,7 +111,7 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 ### Collaborative filtering — WMF
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)   # 1 K users, 500 items, 2% density
 
@@ -129,7 +129,7 @@ U_new = transform(model, sprand(MersenneTwister(7), 50, 500, 0.03))   # (20, 50)
 ### Item-item models — EASE, SLIM, ADMMSLIM, ItemKNN
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 
@@ -152,7 +152,7 @@ fit!(knn, X)
 ### Co-occurrence embeddings — GloVe
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 C = sprand(MersenneTwister(1), 5000, 5000, 0.005)   # square, positive co-occurrences
 C = C + C'
@@ -166,7 +166,7 @@ E = embeddings(glove)             # 100 × 5000 — main + context average (stan
 ### Logistic Matrix Factorization
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 X = sprand(MersenneTwister(3), 800, 300, 0.03)
 lmf = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5)
@@ -176,7 +176,7 @@ fit!(lmf, X; rng=MersenneTwister(3))
 ### Sparse regression — FTRL & FM
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 # FTRL: online logistic regression, elastic-net, streaming updates
 rng = MersenneTwister(7)
@@ -197,12 +197,12 @@ The GLM loss families live in the `Links` submodule:
 `Links.Binomial()` (logistic), `Links.Gaussian()` (squared
 error) and `Links.Poisson()` (counts) — `Links.<TAB>` lists
 exactly these three. Bring them in bare with
-`using Gideon.Links: Binomial`.
+`using Canapes.Links: Binomial`.
 
 ### Matrix completion — SoftImpute / SoftSVD / PureSVD
 
 ```julia
-using Gideon, SparseArrays, LinearAlgebra, Random
+using Canapes, SparseArrays, LinearAlgebra, Random
 
 X_observed = sprand(MersenneTwister(11), 200, 150, 0.3)   # 30% observed entries
 
@@ -225,7 +225,7 @@ matrix: `ap_at_k`, `ndcg_at_k`, `precision_at_k` and `recall_at_k` return a per-
 vector, while `mean_ap_at_k` returns the macro-averaged scalar.
 
 ```julia
-using Gideon, SparseArrays, Random, Statistics
+using Canapes, SparseArrays, Random, Statistics
 
 rng = MersenneTwister(13)
 n_users, n_items, K = 500, 2000, 20
@@ -244,7 +244,7 @@ println("Mean NDCG@$K = ", round(mean(ndcg), digits=4))
 ### Cross-validation & hyperparameter search
 
 ```julia
-using Gideon, SparseArrays
+using Canapes, SparseArrays
 
 X = sprand(1000, 500, 0.02)
 
@@ -275,7 +275,7 @@ NamedTuples, vectors of named tuples — and get a `SparseMatrixCSC` back. Repea
 `(user, item)` pairs are accumulated by summing their values.
 
 ```julia
-using Gideon
+using Canapes
 
 # Column table (NamedTuple of vectors, DataFrame, CSV.File, …)
 data = (user=[1,1,2,3,3], item=[2,5,3,1,4], value=[1.0,2.0,1.0,3.0,1.0])
@@ -300,7 +300,7 @@ Models are saved atomically (temp file + rename, so a crash never leaves a parti
 with a versioned header:
 
 ```julia
-using Gideon, SparseArrays
+using Canapes, SparseArrays
 
 model = EASE(λ=100.0, verbose=false)
 fit!(model, sprand(MersenneTwister(1), 200, 100, 0.05))
@@ -318,7 +318,7 @@ With [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) installed, a package extensi
 provides GPU-accelerated training and scoring — no code changes, just load CUDA:
 
 ```julia
-using Gideon, CUDA
+using Canapes, CUDA
 
 fit_gpu!(model::EASE, X)        # fully on GPU
 fit_gpu!(model::IALS, X)        # Gramian on GPU, solve on CPU

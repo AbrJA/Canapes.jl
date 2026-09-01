@@ -5,9 +5,9 @@
 
 @testset "GPU stubs exist" begin
     # Verify that GPU stub functions are defined even without CUDA
-    @test isdefined(Gideon, :fit_gpu!)
-    @test isdefined(Gideon, :recommend_gpu)
-    @test isdefined(Gideon, :score_gpu)
+    @test isdefined(Canapes, :fit_gpu!)
+    @test isdefined(Canapes, :recommend_gpu)
+    @test isdefined(Canapes, :score_gpu)
 end
 
 # Only run GPU tests if CUDA is available

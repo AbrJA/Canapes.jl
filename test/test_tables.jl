@@ -1,7 +1,7 @@
 # test/test_tables.jl — Tables.jl integration
 
 # `import` (not `using`) so DataFrames' exports (e.g. `transform`) do not
-# leak into the shared test module and shadow Gideon's.
+# leak into the shared test module and shadow Canapes's.
 import DataFrames
 import Tables
 

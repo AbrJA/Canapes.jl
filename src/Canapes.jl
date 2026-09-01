@@ -1,4 +1,4 @@
-module Gideon
+module Canapes
 
 using LinearAlgebra
 using SparseArrays
@@ -123,9 +123,9 @@ export
     triplets_to_sparse,
     sparse_to_triplets
 
-# ── GPU stubs (implemented by ext/GideonCUDAExt.jl when CUDA is loaded) ──
+# ── GPU stubs (implemented by ext/CanapesCUDAExt.jl when CUDA is loaded) ──
 function fit_gpu! end
 function recommend_gpu end
 function score_gpu end
 
-end # module Gideon
+end # module Canapes

@@ -67,7 +67,7 @@ end
     @testset "Load corrupt file" begin
         tmpfile = tempname() * ".jls"
         try
-            write(tmpfile, "NOT_A_GIDEON_FILE\ngarbage")
+            write(tmpfile, "NOT_A_CANAPES_FILE\ngarbage")
             @test_throws ErrorException load_model(tmpfile)
         finally
             rm(tmpfile; force=true)
@@ -75,7 +75,7 @@ end
     end
 
     @testset "Save to nested directory" begin
-        tmpdir = joinpath(tempdir(), "gideon_test_$(rand(1000:9999))", "subdir")
+        tmpdir = joinpath(tempdir(), "canapes_test_$(rand(1000:9999))", "subdir")
         tmpfile = joinpath(tmpdir, "model.jls")
         try
             model = EASE(λ=50.0, verbose=false)
@@ -129,7 +129,7 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 @testset "CheckpointCallback" begin
-    tmpdir = joinpath(tempdir(), "gideon_checkpoint_$(rand(1000:9999))")
+    tmpdir = joinpath(tempdir(), "canapes_checkpoint_$(rand(1000:9999))")
     try
         cb = CheckpointCallback(every=2, path=tmpdir)
         model = IALS(rank=3, verbose=false)
@@ -139,7 +139,7 @@ end
 
         # Simulate epoch callbacks
         for epoch in 1:5
-            info = Gideon.CallbackInfo(epoch, 1.0 / epoch, 0.0, model)
+            info = Canapes.CallbackInfo(epoch, 1.0 / epoch, 0.0, model)
             result = on_epoch_end(cb, info)
             @test result == :continue
         end
@@ -209,7 +209,7 @@ end
         model = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         X_new = sprand(MersenneTwister(7), 5, 60, 0.1)
-        U_new = Gideon.transform(model, X_new)
+        U_new = Canapes.transform(model, X_new)
         @test size(U_new) == (8, 5)
         @test all(isfinite, U_new)
     end
@@ -218,7 +218,7 @@ end
         model = WMF(rank=8, max_iter=5, solver=CGSolver(), verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         X_new = sprand(MersenneTwister(7), 3, 60, 0.1)
-        U_new = Gideon.transform(model, X_new)
+        U_new = Canapes.transform(model, X_new)
         @test size(U_new) == (8, 3)
         @test all(isfinite, U_new)
     end
@@ -494,9 +494,9 @@ if _HAS_CUDA
     end
 else
     @testset "GPU stubs (no CUDA)" begin
-        @test isdefined(Gideon, :fit_gpu!)
-        @test isdefined(Gideon, :recommend_gpu)
-        @test isdefined(Gideon, :score_gpu)
+        @test isdefined(Canapes, :fit_gpu!)
+        @test isdefined(Canapes, :recommend_gpu)
+        @test isdefined(Canapes, :score_gpu)
     end
 end
 

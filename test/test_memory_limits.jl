@@ -7,11 +7,11 @@ const _ADMMSLIM_MATRICES = 6
 
 @testset "Fit-time memory guard" begin
     @testset "estimate helper" begin
-        est32 = Gideon._fit_memory_estimate(20, 4, Float32)
-        est64 = Gideon._fit_memory_estimate(20, 4, Float64)
+        est32 = Canapes._fit_memory_estimate(20, 4, Float32)
+        est64 = Canapes._fit_memory_estimate(20, 4, Float64)
         @test est32 == 20 * 20 * 4 * sizeof(Float32)
         @test est64 == 2 * est32
-        @test Gideon._fit_memory_estimate(0, 4, Float32) == 0
+        @test Canapes._fit_memory_estimate(0, 4, Float32) == 0
     end
 
     rng = MersenneTwister(42)
@@ -26,7 +26,7 @@ const _ADMMSLIM_MATRICES = 6
         @test m.is_fitted
 
         # Limit above the estimate → fits; equality with the estimate fits too.
-        est = Gideon._fit_memory_estimate(10, _EASE_MATRICES, Float32)
+        est = Canapes._fit_memory_estimate(10, _EASE_MATRICES, Float32)
         m = EASE(λ=100.0, verbose=false, max_memory=est + 1000)
         fit!(m, X_small)
         @test m.is_fitted
@@ -41,7 +41,7 @@ const _ADMMSLIM_MATRICES = 6
 
         # Transactional: a refit that exceeds the limit keeps prior state.
         m = EASE(λ=100.0, verbose=false,
-                 max_memory=Gideon._fit_memory_estimate(10, _EASE_MATRICES, Float32))
+                 max_memory=Canapes._fit_memory_estimate(10, _EASE_MATRICES, Float32))
         fit!(m, X_small)
         B_before = copy(m.B)
         @test_throws ArgumentError fit!(m, X_large)  # 20 items exceeds the 10-item limit
@@ -57,7 +57,7 @@ const _ADMMSLIM_MATRICES = 6
         m = SLIM(max_iter=5, verbose=false)
         @test m.max_memory === nothing
 
-        est = Gideon._fit_memory_estimate(10, _SLIM_MATRICES, Float32)
+        est = Canapes._fit_memory_estimate(10, _SLIM_MATRICES, Float32)
         m = SLIM(max_iter=5, verbose=false, max_memory=est)
         fit!(m, X_small)
         @test m.is_fitted
@@ -73,7 +73,7 @@ const _ADMMSLIM_MATRICES = 6
         m = ADMMSLIM(max_iter=5, verbose=false)
         @test m.max_memory === nothing
 
-        est = Gideon._fit_memory_estimate(10, _ADMMSLIM_MATRICES, Float32)
+        est = Canapes._fit_memory_estimate(10, _ADMMSLIM_MATRICES, Float32)
         m = ADMMSLIM(max_iter=5, verbose=false, max_memory=est)
         fit!(m, X_small)
         @test m.is_fitted

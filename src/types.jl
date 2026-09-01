@@ -5,7 +5,7 @@
 """
     AbstractSparseModel
 
-Root abstract type for all Gideon models that operate on sparse matrices.
+Root abstract type for all Canapes models that operate on sparse matrices.
 """
 abstract type AbstractSparseModel end
 

@@ -23,20 +23,20 @@
 end
 
 @testset "Sigmoid" begin
-    @test Gideon.sigmoid(0.0) ≈ 0.5
-    @test Gideon.sigmoid(100.0) ≈ 1.0 atol=1e-10
-    @test Gideon.sigmoid(-100.0) ≈ 0.0 atol=1e-10
-    @test Gideon.sigmoid(1.0) ≈ 1 / (1 + exp(-1.0))
+    @test Canapes.sigmoid(0.0) ≈ 0.5
+    @test Canapes.sigmoid(100.0) ≈ 1.0 atol=1e-10
+    @test Canapes.sigmoid(-100.0) ≈ 0.0 atol=1e-10
+    @test Canapes.sigmoid(1.0) ≈ 1 / (1 + exp(-1.0))
     # Numerical stability at extremes
-    @test isfinite(Gideon.sigmoid(1000.0))
-    @test isfinite(Gideon.sigmoid(-1000.0))
+    @test isfinite(Canapes.sigmoid(1000.0))
+    @test isfinite(Canapes.sigmoid(-1000.0))
 end
 
 @testset "link_function" begin
-    @test Gideon.link_function(Binomial(), 0.0) ≈ 0.5
-    @test Gideon.link_function(Gaussian(), 1.5) ≈ 1.5
-    @test Gideon.link_function(Poisson(), 0.0) ≈ 1.0
-    @test Gideon.link_function(Poisson(), 1.0) ≈ exp(1.0)
+    @test Canapes.link_function(Binomial(), 0.0) ≈ 0.5
+    @test Canapes.link_function(Gaussian(), 1.5) ≈ 1.5
+    @test Canapes.link_function(Poisson(), 0.0) ≈ 1.0
+    @test Canapes.link_function(Poisson(), 1.0) ≈ exp(1.0)
 end
 
 @testset "init_factors" begin
@@ -106,8 +106,8 @@ end
 
 @testset "Recommendation input validation" begin
     X = sparse([1], [1], [1.0], 1, 3)
-    @test Gideon._validate_recommend_input(X, 3, 1) == 1
-    @test_throws ArgumentError Gideon._validate_recommend_input(X, 3, 0)
-    @test_throws ArgumentError Gideon._validate_recommend_input(X, 3, -1)
-    @test_throws DimensionMismatch Gideon._validate_recommend_input(X, 2, 1)
+    @test Canapes._validate_recommend_input(X, 3, 1) == 1
+    @test_throws ArgumentError Canapes._validate_recommend_input(X, 3, 0)
+    @test_throws ArgumentError Canapes._validate_recommend_input(X, 3, -1)
+    @test_throws DimensionMismatch Canapes._validate_recommend_input(X, 2, 1)
 end

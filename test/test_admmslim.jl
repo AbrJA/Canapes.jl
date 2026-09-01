@@ -73,16 +73,16 @@ end
     # Dense-ish W (low λ_l1) → dense batched-GEMM path
     m_dense = ADMMSLIM(λ_l1=0.001, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_dense, X)
-    @test !Gideon._use_sparse_score_path(m_dense.W, X)
+    @test !Canapes._use_sparse_score_path(m_dense.W, X)
     @test recommend(m_dense, X; k=5) ==
-          Gideon._predict_batched_gemm_topk(X, Matrix(m_dense.W), 5)
+          Canapes._predict_batched_gemm_topk(X, Matrix(m_dense.W), 5)
 
     # Truly sparse W (high λ_l1) → sparse-score path
     m_sparse = ADMMSLIM(λ_l1=0.5, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_sparse, X)
-    @test Gideon._use_sparse_score_path(m_sparse.W, X)
+    @test Canapes._use_sparse_score_path(m_sparse.W, X)
     @test recommend(m_sparse, X; k=5) ==
-          Gideon._predict_sparse_score_topk(X * m_sparse.W, X, 5)
+          Canapes._predict_sparse_score_topk(X * m_sparse.W, X, 5)
 
     # Both paths agree with the dense score product up to FP accumulation order
     for m in (m_dense, m_sparse)

@@ -1,5 +1,5 @@
 # test/test_correctness.jl
-# Core correctness validation for Gideon.jl (always run, no external dependencies)
+# Core correctness validation for Canapes.jl (always run, no external dependencies)
 # ─────────────────────────────────────────────────────────────────────────────
 # Tier 1 — Mathematical invariants (no data required)
 #   · Loss convergence: finite, monotone, bounded norms
@@ -19,7 +19,7 @@
 # For reference-based validation (R comparison), see validation/validate_r.jl
 # ─────────────────────────────────────────────────────────────────────────────
 
-using Gideon, SparseArrays, LinearAlgebra, Random
+using Canapes, SparseArrays, LinearAlgebra, Random
 using Test
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

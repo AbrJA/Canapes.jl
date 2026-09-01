@@ -13,7 +13,7 @@
 # Benchmarks are deterministic: fixed seeds, fixed matrices. Run on the same
 # machine and thread count to compare commits.
 
-using Gideon
+using Canapes
 using SparseArrays
 using Random
 using LinearAlgebra
@@ -170,7 +170,7 @@ end
 
 function main()
     println("=" ^ 78)
-    println("Gideon.jl performance harness")
+    println("Canapes.jl performance harness")
     println("=" ^ 78)
     println("  Julia:     $(VERSION)")
     println("  Threads:   $(Threads.nthreads())")

@@ -3,8 +3,8 @@
 # Run via: julia --project=. validation/run.jl --r
 # (or directly: julia --project=. validation/validate_r.jl)
 
-using Gideon, SparseArrays, LinearAlgebra, Random
-using Gideon.Links: Binomial, Gaussian   # family singletons
+using Canapes, SparseArrays, LinearAlgebra, Random
+using Canapes.Links: Binomial, Gaussian   # family singletons
 using Test
 include(joinpath(@__DIR__, "common.jl"))
 
@@ -162,10 +162,10 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             @info "Skipping GloVe comparison: one or more fixture files are missing"
         else
             # Both implementations minimize ½ Σ f(x) diff² (rsparse GloVe.cpp
-            # records 0.5 * cost / nnz; Gideon uses the same ½ convention), with
+            # records 0.5 * cost / nnz; Canapes uses the same ½ convention), with
             # matching init (U(-0.5, 0.5)), AdaGrad ones-init, weighting, and
             # bias terms. rsparse is in-place SGD (converges in ~30 epochs here);
-            # Gideon's deterministic frozen-batch scheme reaches the same cost
+            # Canapes's deterministic frozen-batch scheme reaches the same cost
             # with 60 epochs and keeps decreasing below it — a robust gate.
             r_cost = _read_scalar(glove_files[1])
             X_glove = _load_sparse(glove_files[2], glove_files[3])

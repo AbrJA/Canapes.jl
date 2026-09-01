@@ -3,54 +3,56 @@
 # Run via: julia --project=. validation/run.jl --python
 # (or directly: julia --project=. validation/validate_py.jl)
 
-using Gideon, SparseArrays, LinearAlgebra, Random
+using Canapes, SparseArrays, LinearAlgebra, Random
 using Test
 include(joinpath(@__DIR__, "common.jl"))
 
 # ── Centralized thresholds (env-overridable, defaults unchanged) ─────────────
 
-soft_strict = get(ENV, "GIDEON_PY_SOFT_STRICT", "0") == "1"
+soft_strict = get(ENV, "CANAPES_PY_SOFT_STRICT", "0") == "1"
 
 const SCORE_CASES = [
     (name="WMF-Cholesky vs ALS", model=() -> WMF(rank=16, λ=0.1, α=40.0, max_iter=20,
                                                    solver=CholeskySolver(), feedback=Implicit, verbose=false),
      scores_path="py_als_scores.csv", required=true, metrics_path=nothing,
-     min_cor=_env_float("GIDEON_PY_ALS_MIN_COR", 0.45),
-     min_overlap=_env_float("GIDEON_PY_ALS_MIN_OVERLAP", 0.20),
+     min_cor=_env_float("CANAPES_PY_ALS_MIN_COR", 0.45),
+     min_overlap=_env_float("CANAPES_PY_ALS_MIN_OVERLAP", 0.20),
      max_ndcg=nothing, max_recall=nothing),
     (name="BPR", model=() -> BPR(rank=16, max_iter=40, verbose=false),
      scores_path="py_bpr_scores.csv", required=true, metrics_path="py_bpr_metrics.json",
-     min_cor=_env_float("GIDEON_PY_BPR_MIN_COR", 0.20),
-     min_overlap=_env_float("GIDEON_PY_BPR_MIN_OVERLAP", 0.10),
-     max_ndcg=_env_float("GIDEON_PY_BPR_MAX_NDCG_DELTA", 0.05),
+     min_cor=_env_float("CANAPES_PY_BPR_MIN_COR", 0.20),
+     min_overlap=_env_float("CANAPES_PY_BPR_MIN_OVERLAP", 0.10),
+     max_ndcg=_env_float("CANAPES_PY_BPR_MAX_NDCG_DELTA", 0.05),
      # Both sides are stochastic: Julia's BPR is Hogwild and implicit's BPR is
      # not fully seeded by random_state (reference values move ~0.03-0.08 with
      # every fixture regeneration). 0.10 covers the observed regeneration noise.
-     max_recall=_env_float("GIDEON_PY_BPR_MAX_RECALL_DELTA", 0.10)),
+     max_recall=_env_float("CANAPES_PY_BPR_MAX_RECALL_DELTA", 0.10)),
     (name="IALS", model=() -> IALS(rank=16, λ=0.01, α=40.0, max_iter=15, verbose=false),
      scores_path="py_ials_scores.csv", required=true, metrics_path="py_ials_metrics.json",
-     min_cor=_env_float("GIDEON_PY_IALS_MIN_COR", 0.35),
-     min_overlap=_env_float("GIDEON_PY_IALS_MIN_OVERLAP", 0.15),
-     max_ndcg=_env_float("GIDEON_PY_IALS_MAX_NDCG_DELTA", 0.06),
-     max_recall=_env_float("GIDEON_PY_IALS_MAX_RECALL_DELTA", 0.06)),
+     min_cor=_env_float("CANAPES_PY_IALS_MIN_COR", 0.35),
+     min_overlap=_env_float("CANAPES_PY_IALS_MIN_OVERLAP", 0.15),
+     max_ndcg=_env_float("CANAPES_PY_IALS_MAX_NDCG_DELTA", 0.06),
+     max_recall=_env_float("CANAPES_PY_IALS_MAX_RECALL_DELTA", 0.06)),
     (name="EALS", model=() -> EALS(rank=16, λ=0.01, unobserved_weight=10.0, max_iter=20, verbose=false),
      scores_path="py_eals_scores.csv", required=true, metrics_path="py_eals_metrics.json",
-     min_cor=_env_float("GIDEON_PY_EALS_MIN_COR", 0.15),
-     min_overlap=_env_float("GIDEON_PY_EALS_MIN_OVERLAP", 0.10),
-     max_ndcg=_env_float("GIDEON_PY_EALS_MAX_NDCG_DELTA", 0.06),
-     max_recall=_env_float("GIDEON_PY_EALS_MAX_RECALL_DELTA", 0.06)),
+     min_cor=_env_float("CANAPES_PY_EALS_MIN_COR", 0.15),
+     min_overlap=_env_float("CANAPES_PY_EALS_MIN_OVERLAP", 0.10),
+     max_ndcg=_env_float("CANAPES_PY_EALS_MAX_NDCG_DELTA", 0.06),
+     max_recall=_env_float("CANAPES_PY_EALS_MAX_RECALL_DELTA", 0.06)),
     (name="LogisticMF", model=() -> LogisticMF(rank=16, λ=0.6, α=1.0,
                                                  lr=1.0, max_iter=30,
                                                  n_negative=30, verbose=false),
      scores_path="py_lmf_scores.csv", required=false, metrics_path="py_lmf_metrics.json",
      # Meaningful bounds (was -1.0 / 0.08, which accepted any result): the two
-     # implementations share the same objective and gradient (verified against
-     # implicit/cpu/lmf.pyx) but differ in negative sampling — implicit draws from
-     # the flat occurrence list (can resample seen items), Gideon rejection-samples
-     # unobserved items — so trajectories diverge and split-metric parity is
-     # diagnostic rather than enforced.
-     min_cor=_env_float("GIDEON_PY_LMF_MIN_COR", 0.40),
-     min_overlap=_env_float("GIDEON_PY_LMF_MIN_OVERLAP", 0.40),
+     # implementations share the objective and gradient (verified against
+     # implicit/cpu/lmf.pyx) but differ in negative sampling — implicit draws
+     # from the flat occurrence list (capped at factors+2 by the shape[1] bug,
+     # benfred/implicit#745), Canapes samples the same occurrence-weighted
+     # distribution via alias tables with the docstring-correct count
+     # min(n_items, seen·n_neg) — so trajectories diverge and split-metric
+     # parity is diagnostic rather than enforced.
+     min_cor=_env_float("CANAPES_PY_LMF_MIN_COR", 0.40),
+     min_overlap=_env_float("CANAPES_PY_LMF_MIN_OVERLAP", 0.40),
      max_ndcg=nothing, max_recall=nothing),
 ]
 
@@ -113,8 +115,8 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
         rel_frob = norm(jl_B - py_B) / (norm(py_B) + 1e-12)
         c = _cor(vec(jl_B), vec(py_B))
 
-        max_rel = _env_float("GIDEON_PY_EASE_MAX_REL_FROB", 1e-6)
-        min_cor = _env_float("GIDEON_PY_EASE_MIN_COR", 0.9999)
+        max_rel = _env_float("CANAPES_PY_EASE_MAX_REL_FROB", 1e-6)
+        min_cor = _env_float("CANAPES_PY_EASE_MIN_COR", 0.9999)
 
         @test size(jl_B) == size(py_B)
         @test all(abs.(diag(jl_B)) .< 1e-8)
@@ -137,7 +139,7 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
 
             @test size(jl_w) == size(py_w)
             c = _cor(vec(jl_w), vec(py_w))
-            min_cor = _env_float("GIDEON_PY_SLIM_MIN_W_COR", 0.6)
+            min_cor = _env_float("CANAPES_PY_SLIM_MIN_W_COR", 0.6)
             @test c >= min_cor
             println("  SLIM weight-matrix correlation: $c")
 
@@ -145,8 +147,8 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
                 label="SLIM",
                 model=m, X_train=X_train, X_test=X_test,
                 metrics_path=joinpath(PY_FIXTURE_DIR, "py_slim_metrics.json"),
-                max_ndcg=_env_float("GIDEON_PY_SLIM_MAX_NDCG_DELTA", 0.08),
-                max_recall=_env_float("GIDEON_PY_SLIM_MAX_RECALL_DELTA", 0.08),
+                max_ndcg=_env_float("CANAPES_PY_SLIM_MAX_NDCG_DELTA", 0.08),
+                max_recall=_env_float("CANAPES_PY_SLIM_MAX_RECALL_DELTA", 0.08),
             )
         end
     end
@@ -171,14 +173,14 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
             sv_rel = norm(Float64.(m.d[1:nsv]) .- Float64.(py_svals[1:nsv])) /
                      (norm(Float64.(py_svals[1:nsv])) + 1e-12)
 
-            min_cor = _env_float("GIDEON_PY_SOFT_MIN_RECON_COR", 0.75)
-            max_sv_rel = _env_float("GIDEON_PY_SOFT_MAX_SVAL_REL", 0.40)
+            min_cor = _env_float("CANAPES_PY_SOFT_MIN_RECON_COR", 0.75)
+            max_sv_rel = _env_float("CANAPES_PY_SOFT_MAX_SVAL_REL", 0.40)
 
             if soft_strict
                 @test c >= min_cor
                 @test sv_rel <= max_sv_rel
             else
-                @info "SoftImpute parity is diagnostic by default; set GIDEON_PY_SOFT_STRICT=1 to enforce thresholds"
+                @info "SoftImpute parity is diagnostic by default; set CANAPES_PY_SOFT_STRICT=1 to enforce thresholds"
             end
             println("  SoftImpute reconstruction correlation: $c")
             println("  SoftImpute singular-value relative error: $sv_rel")

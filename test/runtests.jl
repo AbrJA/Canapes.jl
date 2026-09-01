@@ -1,9 +1,9 @@
 using Test
-using Gideon
+using Canapes
 # Names that are internal (not exported) but exercised directly by the tests.
-using Gideon.Links: Binomial, Gaussian, Poisson
-using Gideon.Sampling: Popular, Dynamic
-using Gideon: init_factors, sigmoid,
+using Canapes.Links: Binomial, Gaussian, Poisson
+using Canapes.Sampling: Popular, Dynamic
+using Canapes: init_factors, sigmoid,
               dual_representation, sparse_row_norms, sparse_col_nnz, sparse_row_nnz, run_callbacks
 using SparseArrays
 using LinearAlgebra
@@ -13,7 +13,7 @@ using Aqua
 using JET
 using Pkg
 
-@testset verbose=true "Gideon.jl" begin
+@testset verbose=true "Canapes.jl" begin
     @testset "Quality" begin
         include("test_quality.jl")
     end

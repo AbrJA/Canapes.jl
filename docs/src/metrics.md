@@ -11,7 +11,7 @@ recall_at_k
 ## Example
 
 ```julia
-using Gideon, SparseArrays
+using Canapes, SparseArrays
 
 # Ground truth: user 1 likes items 3, 7, 9
 actual = sparse([1,1,1], [3,7,9], ones(3), 1, 10)
@@ -28,7 +28,7 @@ recall_at_k(predictions, actual; k=4)     # per-user vector → [1.0]
 ## Typical Workflow
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))

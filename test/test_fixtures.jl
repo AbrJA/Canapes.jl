@@ -93,7 +93,7 @@ end
         model = WMF(rank=5, λ=0.1, α=1.0, max_iter=8, solver=CholeskySolver(),
                     feedback=feedback, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
-        reported = Gideon._compute_loss(model, X)
+        reported = Canapes._compute_loss(model, X)
         manual = manual_wmf_loss(model, X)
         @test isapprox(reported, manual; rtol=1e-5)
 

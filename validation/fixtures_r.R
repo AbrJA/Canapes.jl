@@ -1,11 +1,11 @@
 #!/usr/bin/env Rscript
 # validation/fixtures_r.R
-# Generates R reference fixtures for Gideon.jl validation (NOT part of test suite).
+# Generates R reference fixtures for Canapes.jl validation (NOT part of test suite).
 # Run from project root: uvr run validation/fixtures_r.R
 #                       (or: Rscript validation/fixtures_r.R)
 #
-# Outputs to /tmp/gideon_fixtures/ by default (directory is created if absent).
-# You can override with env var GIDEON_R_FIXTURE_DIR.
+# Outputs to /tmp/canapes_fixtures/ by default (directory is created if absent).
+# You can override with env var CANAPES_R_FIXTURE_DIR.
 # These CSV files are used by validation/validate_r.jl for reference comparison.
 # See validation/README.md for details.
 
@@ -15,7 +15,7 @@ suppressPackageStartupMessages({
   library(MatrixExtra)
 })
 
-fixture_dir <- Sys.getenv("GIDEON_R_FIXTURE_DIR", "/tmp/gideon_fixtures")
+fixture_dir <- Sys.getenv("CANAPES_R_FIXTURE_DIR", "/tmp/canapes_fixtures")
 dir.create(fixture_dir, showWarnings = FALSE, recursive = TRUE)
 set.seed(42)
 
@@ -24,7 +24,7 @@ LAMBDA <- 0.1
 ALPHA  <- 1.0
 N_ITER <- 50L   # enough iterations to reach convergence
 
-cat("Generating Gideon.jl correctness fixtures...\n\n")
+cat("Generating Canapes.jl correctness fixtures...\n\n")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -297,4 +297,4 @@ for (f in sort(list.files(fixture_dir))) {
   sz <- file.info(file.path(fixture_dir, f))$size
   cat(sprintf("  %-40s  %6.1f KB\n", f, sz / 1024))
 }
-cat("\nRun Gideon.jl tests with: julia --project=. --threads=4,2 -e 'using Pkg; Pkg.test()'\n")
+cat("\nRun Canapes.jl tests with: julia --project=. --threads=4,2 -e 'using Pkg; Pkg.test()'\n")

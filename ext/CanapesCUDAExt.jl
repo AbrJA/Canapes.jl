@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# GideonCUDAExt — GPU acceleration for Gideon.jl algorithms
+# CanapesCUDAExt — GPU acceleration for Canapes.jl algorithms
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # This extension is loaded automatically when CUDA.jl is available.
@@ -10,9 +10,9 @@
 # - Score computation: Batch user-item scoring on GPU
 # ──────────────────────────────────────────────────────────────────────────────
 
-module GideonCUDAExt
+module CanapesCUDAExt
 
-using Gideon
+using Canapes
 using CUDA
 using CUDA.CUSPARSE
 using CUDA.CUBLAS
@@ -87,13 +87,13 @@ GPU-accelerated EASE fitting. Uses cuSPARSE for the sparse Gramian XᵀX
 and cuSOLVER for the Cholesky inverse, keeping all heavy computation on GPU.
 Falls back to CPU if insufficient GPU memory.
 """
-function Gideon.fit_gpu!(model::Gideon.EASE{T}, X::SparseMatrixCSC{Tv,Ti}) where {T,Tv,Ti}
+function Canapes.fit_gpu!(model::Canapes.EASE{T}, X::SparseMatrixCSC{Tv,Ti}) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    Gideon._require_nonempty_dimensions(X, "EASE-GPU")
-    Gideon._require_finite_input(X, "EASE-GPU")
+    Canapes._require_nonempty_dimensions(X, "EASE-GPU")
+    Canapes._require_finite_input(X, "EASE-GPU")
     # Same fit-time peak estimate as the CPU path (G, factor, P, B) plus the
     # densified X copy on the GPU.
-    Gideon._require_fit_memory(Gideon._fit_memory_estimate(n_items, 4, T),
+    Canapes._require_fit_memory(Canapes._fit_memory_estimate(n_items, 4, T),
                                model.max_memory, "EASE-GPU")
 
     old_B = model.B
@@ -110,7 +110,7 @@ function Gideon.fit_gpu!(model::Gideon.EASE{T}, X::SparseMatrixCSC{Tv,Ti}) where
     if estimated_mem > free_mem * 0.8
         @warn "[EASE-GPU] Insufficient GPU memory (need ~$(estimated_mem ÷ 1_000_000)MB, " *
               "have ~$(free_mem ÷ 1_000_000)MB), falling back to CPU"
-        Gideon.fit!(model, X)
+        Canapes.fit!(model, X)
         return model
     end
 
@@ -167,12 +167,12 @@ end
 GPU-accelerated IALS. Uses cuBLAS syrk for Gramian computation (V*Vᵀ and U*Uᵀ),
 with pre-allocated per-thread buffers for the CPU-side per-user Cholesky solves.
 """
-function Gideon.fit_gpu!(model::Gideon.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
+function Canapes.fit_gpu!(model::Canapes.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
                          rng::Random.AbstractRNG = Random.default_rng()) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    Gideon._require_nonempty_dimensions(X, "IALS-GPU")
-    Gideon._require_finite_input(X, "IALS-GPU")
-    model.solver isa Gideon.CholeskySolver || throw(ArgumentError(
+    Canapes._require_nonempty_dimensions(X, "IALS-GPU")
+    Canapes._require_finite_input(X, "IALS-GPU")
+    model.solver isa Canapes.CholeskySolver || throw(ArgumentError(
         "fit_gpu!(IALS) supports only CholeskySolver, got $(model.solver)"))
 
     old_U = model.user_factors
@@ -190,8 +190,8 @@ function Gideon.fit_gpu!(model::Gideon.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.verbose && @info "[IALS-GPU] Training rank=$k, $(n_users) users × $(n_items) items"
 
-    X_csr = Gideon.to_csr(X)
-    monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
+    X_csr = Canapes.to_csr(X)
+    monitor = Canapes.ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     # Pre-allocate per-thread buffers (avoids allocation inside @threads loop)
     nt = Threads.nthreads()
@@ -240,14 +240,14 @@ function Gideon.fit_gpu!(model::Gideon.IALS{T}, X::SparseMatrixCSC{Tv,Ti};
 
         loss = _ials_loss(U, V, X, α, λ)
         iter_seconds = (time_ns() - iter_start) / 1e9
-        total_seconds = Gideon.elapsed_seconds(monitor)
+        total_seconds = Canapes.elapsed_seconds(monitor)
 
         if model.verbose
-            Gideon.log_iteration("IALS-GPU", iter, model.max_iter, Float64(loss),
+            Canapes.log_iteration("IALS-GPU", iter, model.max_iter, Float64(loss),
                                 iter_seconds, total_seconds)
         end
 
-        if Gideon.record!(monitor, loss)
+        if Canapes.record!(monitor, loss)
             model.verbose && @info "[IALS-GPU] converged at iteration $iter"
             break
         end
@@ -283,7 +283,7 @@ function _gpu_ials_update_buffered!(target::Matrix{T}, source::Matrix{T}, R,
         A = A_bufs[chunk]
         b = b_bufs[chunk]
 
-        for u in Gideon._thread_chunk_bounds(chunk, n, nt)
+        for u in Canapes._thread_chunk_bounds(chunk, n, nt)
 
         # A ← gramian (copy into pre-allocated buffer)
         copyto!(A, gramian)
@@ -349,14 +349,14 @@ pre-allocated per-thread buffers.
 This provides significant speedup for large item/user counts where the
 Gramian computation (O(k² × n_items)) dominates iteration cost.
 """
-function Gideon.fit_gpu!(model::Gideon.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
+function Canapes.fit_gpu!(model::Canapes.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
                          rng::Random.AbstractRNG = Random.default_rng(),
                          U_init::Union{Nothing, Matrix{T}} = nothing,
                          V_init::Union{Nothing, Matrix{T}} = nothing) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    Gideon._require_nonempty_dimensions(X, "WMF-GPU")
-    Gideon._require_finite_input(X, "WMF-GPU")
-    model.solver isa Union{Gideon.CholeskySolver, Gideon.NonNegativeSolver} || throw(
+    Canapes._require_nonempty_dimensions(X, "WMF-GPU")
+    Canapes._require_finite_input(X, "WMF-GPU")
+    model.solver isa Union{Canapes.CholeskySolver, Canapes.NonNegativeSolver} || throw(
         ArgumentError("fit_gpu!(WMF) supports only CholeskySolver and NonNegativeSolver, got $(model.solver)"))
 
     old_U = model.user_factors
@@ -368,18 +368,18 @@ function Gideon.fit_gpu!(model::Gideon.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     k = model.rank
     λ = model.λ
     α = model.α
-    is_implicit = model.feedback == Gideon.Implicit
+    is_implicit = model.feedback == Canapes.Implicit
 
     # Initialize factors
-    model.user_factors = isnothing(U_init) ? Gideon.init_factors(rng, k, n_users) : copy(U_init)
-    model.item_factors = isnothing(V_init) ? Gideon.init_factors(rng, k, n_items) : copy(V_init)
+    model.user_factors = isnothing(U_init) ? Canapes.init_factors(rng, k, n_users) : copy(U_init)
+    model.item_factors = isnothing(V_init) ? Canapes.init_factors(rng, k, n_items) : copy(V_init)
 
     model.verbose && @info "[WMF-GPU] Training rank=$k, solver=$(model.solver), $(n_users) users × $(n_items) items"
 
     # Build transpose for row access
     Xt = SparseMatrixCSC(X')
 
-    monitor = Gideon.ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
+    monitor = Canapes.ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     # Pre-allocate per-thread buffers
     nt = Threads.nthreads()
@@ -397,16 +397,16 @@ function Gideon.fit_gpu!(model::Gideon.WMF{T}, X::SparseMatrixCSC{Tv,Ti};
         _gpu_wrmf_sweep!(model, X, model.item_factors, model.user_factors,
                          n_items, gram_bufs, rhs_bufs)
 
-        loss = Gideon._compute_loss(model, X)
+        loss = Canapes._compute_loss(model, X)
         iter_seconds = (time_ns() - iter_start) / 1e9
-        total_seconds = Gideon.elapsed_seconds(monitor)
+        total_seconds = Canapes.elapsed_seconds(monitor)
 
         if model.verbose
-            Gideon.log_iteration("WMF-GPU", iter, model.max_iter, Float64(loss),
+            Canapes.log_iteration("WMF-GPU", iter, model.max_iter, Float64(loss),
                                 iter_seconds, total_seconds)
         end
 
-        if Gideon.record!(monitor, loss)
+        if Canapes.record!(monitor, loss)
             model.verbose && @info "[WMF-GPU] converged at iteration $iter"
             break
         end
@@ -427,7 +427,7 @@ Single ALS sweep with GPU-accelerated Gramian computation via cuBLAS syrk.
 The Gramian YᵀY is computed on GPU, then per-entity solves run on CPU.
 """
 function _gpu_wrmf_sweep!(
-    model::Gideon.WMF{T},
+    model::Canapes.WMF{T},
     A::SparseMatrixCSC,
     factors::Matrix{T},
     fixed::Matrix{T},
@@ -438,8 +438,8 @@ function _gpu_wrmf_sweep!(
     k = model.rank
     λ = model.λ
     α = model.α
-    is_implicit = model.feedback == Gideon.Implicit
-    is_nnls = model.solver isa Gideon.NonNegativeSolver
+    is_implicit = model.feedback == Canapes.Implicit
+    is_nnls = model.solver isa Canapes.NonNegativeSolver
 
     # ── Compute YᵀY on GPU via cuBLAS syrk ──
     fixed_gpu = CuMatrix{T}(fixed)
@@ -460,7 +460,7 @@ function _gpu_wrmf_sweep!(
         gram = gram_bufs[chunk]
         rhs = rhs_bufs[chunk]
 
-        for u in Gideon._thread_chunk_bounds(chunk, n_entities, nt)
+        for u in Canapes._thread_chunk_bounds(chunk, n_entities, nt)
 
         # gram ← YᵀY + λI
         copyto!(gram, YtY)
@@ -487,7 +487,7 @@ function _gpu_wrmf_sweep!(
         LinearAlgebra.copytri!(gram, 'U')
 
         if is_nnls
-            Gideon._nnls_cd!(rhs, YtY, fixed, rv, nz, nzrange(A, u),
+            Canapes._nnls_cd!(rhs, YtY, fixed, rv, nz, nzrange(A, u),
                              k, α, λ, is_implicit)
             @inbounds factors[:, u] .= rhs
         else
@@ -530,8 +530,8 @@ Works for any model with `user_factors` and `item_factors` fields.
 Memory: O(n_users × n_items) on GPU. For very large problems, use
 `recommend_gpu` which streams results in batches.
 """
-function Gideon.score_gpu(model, X::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
-    Gideon._require_fitted(model.is_fitted)
+function Canapes.score_gpu(model, X::SparseMatrixCSC{Tv,Ti}) where {Tv,Ti}
+    Canapes._require_fitted(model.is_fitted)
     T = eltype(model.user_factors)
     n_users = size(model.user_factors, 2)
     n_items = size(model.item_factors, 2)
@@ -569,8 +569,8 @@ top-k on CPU.
 - `k::Int` — number of items to recommend per user
 - `batch_size::Int` — users per batch (0 = auto based on GPU memory)
 """
-function Gideon.recommend_gpu(model, X::SparseMatrixCSC; k::Int=10, batch_size::Int=0)
-    Gideon._require_fitted(model.is_fitted)
+function Canapes.recommend_gpu(model, X::SparseMatrixCSC; k::Int=10, batch_size::Int=0)
+    Canapes._require_fitted(model.is_fitted)
     T_elem = eltype(model.user_factors)
     n_users = size(model.user_factors, 2)
     n_items = size(model.item_factors, 2)
@@ -628,4 +628,4 @@ function Gideon.recommend_gpu(model, X::SparseMatrixCSC; k::Int=10, batch_size::
     preds
 end
 
-end # module GideonCUDAExt
+end # module CanapesCUDAExt

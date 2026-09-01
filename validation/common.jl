@@ -5,8 +5,8 @@
 using Test, SparseArrays, LinearAlgebra, Random, Statistics
 
 # ── Fixture directories (overridable via env, same defaults as before) ────────
-const R_FIXTURE_DIR  = get(ENV, "GIDEON_R_FIXTURE_DIR", "/tmp/gideon_fixtures")
-const PY_FIXTURE_DIR = get(ENV, "GIDEON_PY_FIXTURE_DIR", "/tmp/gideon_fixtures/python")
+const R_FIXTURE_DIR  = get(ENV, "CANAPES_R_FIXTURE_DIR", "/tmp/canapes_fixtures")
+const PY_FIXTURE_DIR = get(ENV, "CANAPES_PY_FIXTURE_DIR", "/tmp/canapes_fixtures/python")
 
 # ── Threshold helpers ─────────────────────────────────────────────────────────
 

@@ -1,13 +1,13 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Serialization — save and load Gideon models
+# Serialization — save and load Canapes models
 # ──────────────────────────────────────────────────────────────────────────────
 
-const GIDEON_SERIALIZATION_VERSION = 2
+const CANAPES_SERIALIZATION_VERSION = 2
 
 """
     save_model(model, path::String)
 
-Serialize a Gideon model to disk using Julia's native serialization.
+Serialize a Canapes model to disk using Julia's native serialization.
 Includes a version header and type information for forward-compatibility checking.
 
 The model is first written to a temporary file in the target directory and then
@@ -43,7 +43,7 @@ function save_model(model::AbstractSparseModel, path::String)
     tmp_path, io = mktemp(isempty(dir) ? "." : dir)
     try
         # Version header (v2 includes package version)
-        write(io, "GIDEON_v$(GIDEON_SERIALIZATION_VERSION)\n")
+        write(io, "CANAPES_v$(CANAPES_SERIALIZATION_VERSION)\n")
         serialize(io, string(typeof(model)))
         serialize(io, model)
         flush(io)
@@ -92,20 +92,20 @@ function load_model(path::String)
     isfile(path) || error("Model file not found: $path")
     open(path, "r") do io
         header = readline(io)
-        startswith(header, "GIDEON_v") ||
-            error("Invalid model file: missing GIDEON header in '$path'")
+        startswith(header, "CANAPES_v") ||
+            error("Invalid model file: missing CANAPES header in '$path'")
         # Parse version
-        version_str = replace(header, "GIDEON_v" => "")
+        version_str = replace(header, "CANAPES_v" => "")
         version = tryparse(Int, version_str)
         version === nothing && throw(ArgumentError("Invalid version in header: '$header'"))
-        version == GIDEON_SERIALIZATION_VERSION || throw(ArgumentError(
-            "Unsupported Gideon model version $version; expected $GIDEON_SERIALIZATION_VERSION"))
+        version == CANAPES_SERIALIZATION_VERSION || throw(ArgumentError(
+            "Unsupported Canapes model version $version; expected $CANAPES_SERIALIZATION_VERSION"))
         serialized_type = deserialize(io)
         serialized_type isa String || throw(ArgumentError(
             "Invalid model type metadata in '$path'"))
         model = deserialize(io)
         model isa AbstractSparseModel || throw(ArgumentError(
-            "Serialized object is not a Gideon model: $serialized_type"))
+            "Serialized object is not a Canapes model: $serialized_type"))
         model
     end
 end

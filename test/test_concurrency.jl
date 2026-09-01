@@ -80,7 +80,7 @@
 
     @testset "multithreaded subprocess smoke test" begin
         script = """
-        using Gideon, SparseArrays, Random
+        using Canapes, SparseArrays, Random
         X = sprand(MersenneTwister(1), 100, 50, 0.05)
         for m in (WMF(rank=4, max_iter=3, verbose=false), EASE(λ=100.0, verbose=false))
             fit!(m, X; rng=MersenneTwister(2))

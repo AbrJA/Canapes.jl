@@ -6,8 +6,14 @@
 #   "Logistic Matrix Factorization for Implicit Feedback Data"
 #
 # Loss:
-#   L = Σ_{u,i} [r_{ui} · xᵤᵀ yᵢ - (1 + α·r_{ui}) · log(1 + exp(xᵤᵀ yᵢ))]
-#       - λ/2 (||X||² + ||Y||²)
+#   L = Σ_{u,i} [α·r_{ui}·(xᵤᵀ yᵢ + β_u + β_i)
+#                − (1 + α·r_{ui})·log(1 + exp(xᵤᵀ yᵢ + β_u + β_i))]
+#       − λ/2 (||X||² + ||Y||²)
+#
+# Layout follows implicit's lmf.pyx: factors are rank+2 dimensional. The user's
+# second-to-last column is pinned to 1 and the item's last column is pinned to
+# 1, so the dot includes the learned item bias + user bias (paper eq. 1):
+#   s = xᵤᵀ yᵢ + β_u + β_i
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
@@ -15,11 +21,19 @@
 
 Logistic Matrix Factorization for implicit feedback via Adagrad with negative sampling.
 
+The score of a user-item pair includes per-user and per-item bias terms
+(Johnson 2014, eq. 1): factors are stored with `rank + 2` rows, the user's
+second-to-last column and the item's last column are pinned to 1 (matching
+implicit's `lmf.pyx` layout), so `score = xᵤᵀ yᵢ + β_u + β_i`.
+
 # Constructor
 ```julia
 LogisticMF(; rank=10, λ=0.6, α=1.0, lr=1.0, max_iter=30,
     n_negative=30, tol=-1.0, verbose=true)
 ```
+
+`α` scales the confidence of positive observations (`c = α·r`, paper eq. 2-3).
+The default `α=1.0` reproduces implicit's logisticmatrixfactorization exactly.
 
 # Example
 ```julia
@@ -88,6 +102,7 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     nnz(X) > 0 || throw(ArgumentError("LogisticMF requires at least one observed interaction"))
     _require_finite_input(X, "LogisticMF")
     k = model.rank
+    kf = k + 2  # rank dims + user/item bias (implicit's factors+2 layout)
     old_user_factors = model.user_factors
     old_item_factors = model.item_factors
     old_is_fitted = model.is_fitted
@@ -96,64 +111,83 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     try
 
     # Standard normal initialization (matching implicit)
-    model.user_factors = randn(rng, T, k, n_users)
-    model.item_factors = randn(rng, T, k, n_items)
+    model.user_factors = randn(rng, T, kf, n_users)
+    model.item_factors = randn(rng, T, kf, n_items)
 
-    U = model.user_factors  # k × n_users
-    V = model.item_factors  # k × n_items
+    U = model.user_factors  # kf × n_users
+    V = model.item_factors  # kf × n_items
 
     # Build CSR for user→item access and CSC (= item→user) access
     X_csr = to_csr(X)
-    n_interactions = nnz(X)
 
-    # Flat interaction arrays for negative sampling (popularity-biased, like implicit)
-    all_items = Vector{Int32}(undef, n_interactions)
-    pos = 1
+    # Occurrence counts for popularity-weighted negatives (implicit's pool
+    # distribution: P(item) ∝ times-observed). Pool draws cost one random
+    # dereference into a 20MB+ array per sample; the alias tables below
+    # reproduce the exact same distribution from L1/L2-resident arrays
+    # (benfred/implicit#745: uniform-over-catalogue sampling measured worse on
+    # MovieLens-100k — P@10 0.0853 vs 0.0981, MAP@10 0.0476 vs 0.0505 — so the
+    # popularity weighting is kept).
+    item_counts = zeros(Int, n_items)
     for u in 1:n_users
         for idx in nzrange(X_csr, u)
-            all_items[pos] = Int32(X_csr.colval[idx])
-            pos += 1
+            item_counts[Int(X_csr.colval[idx])] += 1
         end
     end
+    alias_p_items, alias_items = _lmf_build_alias(item_counts, T)
 
     # Item→user CSR (transpose structure)
     Xt = sparse(X')  # n_items × n_users
     Xt_csr = to_csr(Xt)
 
-    # Flat arrays for item-side negative sampling
-    all_users = Vector{Int32}(undef, n_interactions)
-    pos = 1
+    # User-side alias tables (item phase samples negatives over users)
+    user_counts = zeros(Int, n_users)
     for j in 1:n_items
         for idx in nzrange(Xt_csr, j)
-            all_users[pos] = Int32(Xt_csr.colval[idx])
-            pos += 1
+            user_counts[Int(Xt_csr.colval[idx])] += 1
         end
+    end
+    alias_p_users, alias_users = _lmf_build_alias(user_counts, T)
+
+    # Bias dims (implicit's lmf.pyx): the user's second-to-last factor column is
+    # pinned to 1 — its dot with the item's last column (the learned item bias)
+    # yields β_i — and the item's last column is pinned to 1, yielding the
+    # learned user bias β_u:  s = xᵤᵀ yᵢ + β_u + β_i.
+    U[kf - 1, :] .= one(T)
+    V[kf, :] .= one(T)
+    # Entities without observations start at zero (implicit parity); the kernels
+    # skip them, so they never evolve.
+    for u in 1:n_users
+        isempty(nzrange(X_csr, u)) && (U[:, u] .= zero(T))
+    end
+    for j in 1:n_items
+        isempty(nzrange(Xt_csr, j)) && (V[:, j] .= zero(T))
     end
 
     lr = model.lr
     λ  = model.λ
+    α  = model.α
     n_neg = model.n_negative
     ada_eps = T(1e-6)
 
     # Adagrad accumulators
-    grad2_U = zeros(T, k, n_users)::Matrix{T}
-    grad2_V = zeros(T, k, n_items)::Matrix{T}
+    grad2_U = zeros(T, kf, n_users)::Matrix{T}
+    grad2_V = zeros(T, kf, n_items)::Matrix{T}
 
     monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
     # Per-thread RNGs and pre-allocated gradient buffers (zero alloc inner loop)
     nt = Threads.nthreads()
     thread_rngs = [Random.Xoshiro(rand(rng, UInt64)) for _ in 1:nt]
-    deriv_bufs = [Vector{T}(undef, k) for _ in 1:nt]
+    deriv_bufs = [Vector{T}(undef, kf) for _ in 1:nt]
     # Gather buffers for the BLAS-based entity updates: the columns of the
-    # fixed matrix are collected into a contiguous per-thread buffer (k × max
+    # fixed matrix are collected into a contiguous per-thread buffer (kf × max
     # negatives) and processed with GEMVs; the random column loads are paid
     # once per entity update.
     max_seen_user = maximum(length(nzrange(X_csr, u)) for u in 1:n_users; init=0)
     max_seen_item = maximum(length(nzrange(Xt_csr, j)) for j in 1:n_items; init=0)
     max_m = max(min(n_items, max_seen_user * n_neg),
                 min(n_users, max_seen_item * n_neg))
-    col_bufs = [Matrix{T}(undef, k, max_m) for _ in 1:nt]
+    col_bufs = [Matrix{T}(undef, kf, max_m) for _ in 1:nt]
     idx_bufs = [Vector{Int32}(undef, max_m) for _ in 1:nt]
     score_bufs = [Vector{T}(undef, max_m) for _ in 1:nt]
 
@@ -161,17 +195,19 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
         epoch_start = time_ns()
 
         # ── Phase 1: Update user factors (items fixed) ──
-        _lmf_update_users!(U, V, X_csr, all_items, grad2_U,
-                           lr, λ, n_neg, ada_eps, k, n_users, n_interactions,
+        _lmf_update_users!(U, V, X_csr, alias_p_items, alias_items, grad2_U,
+                           lr, λ, α, n_neg, ada_eps, kf, n_users, n_items,
                            thread_rngs, deriv_bufs, col_bufs, idx_bufs, score_bufs)
+        U[kf - 1, :] .= one(T)  # re-pin user bias column (implicit parity)
 
         # ── Phase 2: Update item factors (users fixed) ──
-        _lmf_update_items!(V, U, Xt_csr, all_users, grad2_V,
-                           lr, λ, n_neg, ada_eps, k, n_items, n_interactions,
+        _lmf_update_items!(V, U, Xt_csr, alias_p_users, alias_users, grad2_V,
+                           lr, λ, α, n_neg, ada_eps, kf, n_items, n_users,
                            thread_rngs, deriv_bufs, col_bufs, idx_bufs, score_bufs)
+        V[kf, :] .= one(T)  # re-pin item bias column (implicit parity)
 
         # ── Compute epoch loss (sampled estimate) ──
-        loss = _lmf_loss_estimate(U, V, X_csr, n_users, k)
+        loss = _lmf_loss_estimate(U, V, X_csr, n_users, kf)
 
         iter_seconds = (time_ns() - epoch_start) / 1e9
         total_seconds = elapsed_seconds(monitor)
@@ -209,15 +245,14 @@ then single Adagrad update. Uses pre-allocated per-chunk buffers for zero alloca
 """
 function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
                             X_csr::SparseMatricesCSR.SparseMatrixCSR,
-                            all_items::Vector{Int32},
+                            alias_p::Vector{T}, alias_items::Vector{Int},
                             grad2_U::Matrix{T},
-                            lr::T, λ::T, n_neg::Int, ada_eps::T,
-                            k::Int, n_users::Int, n_interactions::Int,
+                            lr::T, λ::T, α::T, n_neg::Int, ada_eps::T,
+                            kf::Int, n_users::Int, n_items::Int,
                             thread_rngs::Vector{Random.Xoshiro}, deriv_bufs::Vector{Vector{T}},
                             col_bufs::Vector{Matrix{T}},
                             idx_bufs::Vector{Vector{Int32}},
                             score_bufs::Vector{Vector{T}}) where {T}
-    n_items = size(V, 2)
     nt = Threads.nthreads()
     chunk_size = cld(n_users, nt)
 
@@ -238,7 +273,7 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         # accumulate the weighted column sum with a second GEMV.
         @inbounds for (t, idx) in enumerate(rng_u)
             j = Int(X_csr.colval[idx])
-            for f in 1:k
+            for f in 1:kf
                 colbuf[f, t] = V[f, j]
             end
         end
@@ -246,24 +281,24 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         colsub = @view colbuf[:, 1:user_seen]
         BLAS.gemv!('T', one(T), colsub, Ucol, zero(T), @view(zbuf[1:user_seen]))
         r0 = first(rng_u)
-        # z = c * σ(-s) = c / (1 + exp(s))
+        # z = c * σ(-s) with c = α·r (paper confidence; α=1 reproduces implicit)
         @inbounds @simd for t in 1:user_seen
-            zbuf[t] = T(X_csr.nzval[r0 + t - 1]) / (one(T) + exp(zbuf[t]))
+            zbuf[t] = α * T(X_csr.nzval[r0 + t - 1]) / (one(T) + exp(zbuf[t]))
         end
         BLAS.gemv!('N', one(T), colsub, @view(zbuf[1:user_seen]), zero(T), deriv)
 
-        # ── Negatives: sample to buffer first (same draws as before), ──
-        # then gather + GEMV. Sample min(n_items, seen * n_neg) negatives like
-        # implicit (lmf.pyx), with rejection sampling so a user's own
-        # interactions are never drawn.
+        # ── Negatives: sample to buffer first, then gather + GEMV. ──
+        # Sample min(n_items, seen * n_neg) negatives like implicit (lmf.pyx),
+        # popularity-weighted via the alias tables (identical distribution to
+        # implicit's flat-observation-pool draw).
         n_neg_samples = min(n_items, user_seen * n_neg)
         @inbounds for s in 1:n_neg_samples
-            idxbuf[s] = Int32(_lmf_sample_negative(local_rng, all_items, n_interactions))
+            idxbuf[s] = Int32(_lmf_sample_alias(local_rng, alias_p, alias_items))
         end
         colsubn = @view colbuf[:, 1:n_neg_samples]
         @inbounds for s in 1:n_neg_samples
             j = Int(idxbuf[s])
-            for f in 1:k
+            for f in 1:kf
                 colbuf[f, s] = V[f, j]
             end
         end
@@ -275,7 +310,7 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         BLAS.gemv!('N', one(T), colsubn, @view(zbuf[1:n_neg_samples]), one(T), deriv)
 
         # Regularization + Adagrad update (fused)
-        @inbounds @simd for f in 1:k
+        @inbounds @simd for f in 1:kf
             d = deriv[f] - λ * U[f, u]
             grad2_U[f, u] += d * d
             U[f, u] += (lr / sqrt(ada_eps + grad2_U[f, u])) * d
@@ -290,15 +325,14 @@ Uses pre-allocated per-chunk buffers for zero allocation.
 """
 function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
                             Xt_csr::SparseMatricesCSR.SparseMatrixCSR,
-                            all_users::Vector{Int32},
+                            alias_p::Vector{T}, alias_users::Vector{Int},
                             grad2_V::Matrix{T},
-                            lr::T, λ::T, n_neg::Int, ada_eps::T,
-                            k::Int, n_items::Int, n_interactions::Int,
+                            lr::T, λ::T, α::T, n_neg::Int, ada_eps::T,
+                            kf::Int, n_items::Int, n_users::Int,
                             thread_rngs::Vector{Random.Xoshiro}, deriv_bufs::Vector{Vector{T}},
                             col_bufs::Vector{Matrix{T}},
                             idx_bufs::Vector{Vector{Int32}},
                             score_bufs::Vector{Vector{T}}) where {T}
-    n_users = size(U, 2)
     nt = Threads.nthreads()
     chunk_size = cld(n_items, nt)
 
@@ -316,7 +350,7 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         # ── Positive pass via gather + BLAS ──
         @inbounds for (t, idx) in enumerate(rng_j)
             u = Int(Xt_csr.colval[idx])
-            for f in 1:k
+            for f in 1:kf
                 colbuf[f, t] = U[f, u]
             end
         end
@@ -324,21 +358,21 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         colsub = @view colbuf[:, 1:item_seen]
         BLAS.gemv!('T', one(T), colsub, Vcol, zero(T), @view(zbuf[1:item_seen]))
         r0 = first(rng_j)
-        # z = c * σ(-s) = c / (1 + exp(s))
+        # z = c * σ(-s) with c = α·r (paper confidence; α=1 reproduces implicit)
         @inbounds @simd for t in 1:item_seen
-            zbuf[t] = T(Xt_csr.nzval[r0 + t - 1]) / (one(T) + exp(zbuf[t]))
+            zbuf[t] = α * T(Xt_csr.nzval[r0 + t - 1]) / (one(T) + exp(zbuf[t]))
         end
         BLAS.gemv!('N', one(T), colsub, @view(zbuf[1:item_seen]), zero(T), deriv)
 
         # ── Negatives: sample to buffer first (same draws), then gather + GEMV ──
         n_neg_samples = min(n_users, item_seen * n_neg)
         @inbounds for s in 1:n_neg_samples
-            idxbuf[s] = Int32(_lmf_sample_negative(local_rng, all_users, n_interactions))
+            idxbuf[s] = Int32(_lmf_sample_alias(local_rng, alias_p, alias_users))
         end
         colsubn = @view colbuf[:, 1:n_neg_samples]
         @inbounds for s in 1:n_neg_samples
             u = Int(idxbuf[s])
-            for f in 1:k
+            for f in 1:kf
                 colbuf[f, s] = U[f, u]
             end
         end
@@ -350,7 +384,7 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         BLAS.gemv!('N', one(T), colsubn, @view(zbuf[1:n_neg_samples]), one(T), deriv)
 
         # Regularization + Adagrad update (fused)
-        @inbounds @simd for f in 1:k
+        @inbounds @simd for f in 1:kf
             d = deriv[f] - λ * V[f, j]
             grad2_V[f, j] += d * d
             V[f, j] += (lr / sqrt(ada_eps + grad2_V[f, j])) * d
@@ -359,20 +393,50 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
     end
 end
 
-"""Sample a negative item index from the global observation pool.
+"""Build a Walker/Vose alias table for popularity-weighted negative sampling.
 
-This mirrors implicit's lmf.pyx scheme (`i = indices[rand]`): the draw is
-uniform over all observed (user, item) pairs, so a sampled item may
-occasionally be one the entity has already seen (probability ≈ entity
-density, ~0.1% at typical scales). One RNG draw + one contiguous array load
-per sample — no exclusion check, no binary search.
+`P(item/entity e) ∝ counts[e]` — the identical distribution to implicit's
+flat-observation-pool draw (`pool[rand(1:nnz)]`) — but sampleable in O(1) from
+two L1/L2-resident arrays instead of one random dereference into the full-size
+interaction pool (which costs an extra cache miss per sample).
 """
-@inline function _lmf_sample_negative(rng::AbstractRNG, pool::Vector{Int32}, n_pool::Int)
-    Int(pool[rand(rng, 1:n_pool)])
+function _lmf_build_alias(counts::Vector{Int}, ::Type{T}) where {T<:AbstractFloat}
+    n = length(counts)
+    total = sum(counts)
+    p = Vector{T}(undef, n)
+    alias = fill(-1, n)
+    small = Int[]
+    large = Int[]
+    @inbounds for i in 1:n
+        p[i] = T(counts[i] * n / total)
+        p[i] < 1 ? push!(small, i) : push!(large, i)
+    end
+    while !isempty(small) && !isempty(large)
+        s = pop!(small)
+        l = pop!(large)
+        alias[s] = l
+        p[l] -= (one(T) - p[s])
+        p[l] < 1 ? push!(small, l) : push!(large, l)
+    end
+    # entries left on either side after the balancing loop alias to themselves
+    # (their mass is 1 up to rounding; the clamp keeps u < p[i] almost surely)
+    @inbounds for i in 1:n
+        p[i] = min(p[i], one(T) - eps(T))
+        alias[i] < 0 && (alias[i] = i)
+    end
+    (p, alias)
+end
+
+"""Sample a popularity-weighted negative via the alias tables `(p, alias)`."""
+@inline function _lmf_sample_alias(rng::AbstractRNG, p::Vector{T}, alias::Vector{Int}) where {T}
+    n = length(p)
+    i = rand(rng, UInt32(0):UInt32(n - 1)) + UInt32(1)
+    u = rand(rng, T)
+    Int(u < p[i] ? i : alias[i])
 end
 
 function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
-                            X_csr::SparseMatricesCSR.SparseMatrixCSR, n_users::Int, k::Int) where {T}
+                            X_csr::SparseMatricesCSR.SparseMatrixCSR, n_users::Int, kf::Int) where {T}
     nt = Threads.nthreads()
     partial = zeros(T, nt)
     chunk_size = cld(n_users, nt)
@@ -381,7 +445,7 @@ function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
             for idx in nzrange(X_csr, u)
                 j = Int(X_csr.colval[idx])
                 s = zero(T)
-                @simd for f in 1:k
+                @simd for f in 1:kf
                     s += U[f, u] * V[f, j]
                 end
                 partial[chunk] -= log(one(T) / (one(T) + exp(-s)) + T(1e-10))

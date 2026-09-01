@@ -1,13 +1,13 @@
 # Validation
 
-This directory contains optional reference-based validation scripts for Gideon.jl.
-They are **not part of the test suite** — they compare Gideon against the R
+This directory contains optional reference-based validation scripts for Canapes.jl.
+They are **not part of the test suite** — they compare Canapes against the R
 `rsparse` package and the Python `implicit`/scikit-learn/scipy implementations to
 answer "is my implementation numerically equivalent to a known-good reference?".
 
-By default, R fixtures are stored in `/tmp/gideon_fixtures`
-(override with `GIDEON_R_FIXTURE_DIR`); Python fixtures in
-`/tmp/gideon_fixtures/python` (override with `GIDEON_PY_FIXTURE_DIR`).
+By default, R fixtures are stored in `/tmp/canapes_fixtures`
+(override with `CANAPES_R_FIXTURE_DIR`); Python fixtures in
+`/tmp/canapes_fixtures/python` (override with `CANAPES_PY_FIXTURE_DIR`).
 
 ## Quick Start
 
@@ -77,9 +77,9 @@ table of every step.
 | ItemKNN | W / score correlation + top-k overlap | ≥ 0.95 / 0.95 / 0.70 |
 | ADMMSLIM | W Frobenius error + W/score correlation + overlap | < 0.05, ≥ 0.99 / 0.99 / 0.85 |
 
-All thresholds can be overridden via `GIDEON_PY_*` environment variables
+All thresholds can be overridden via `CANAPES_PY_*` environment variables
 (see `validate_py.jl` for the full list). Diagnostic-only comparisons are
-enforced by setting `GIDEON_PY_LMF_STRICT=1` or `GIDEON_PY_SOFT_STRICT=1`.
+enforced by setting `CANAPES_PY_LMF_STRICT=1` or `CANAPES_PY_SOFT_STRICT=1`.
 
 ## Requirements
 

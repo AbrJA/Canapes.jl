@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Generate Python reference fixtures for Gideon validation.
+Generate Python reference fixtures for Canapes validation.
 
 Usage:
     python3 validation/fixtures_py.py
 
 Outputs:
-    /tmp/gideon_fixtures/python/
+    /tmp/canapes_fixtures/python/
     - X_small.csv
     - X_small_dims.csv
     - X_train.csv
@@ -216,7 +216,7 @@ def main() -> int:
         return 2
 
     out_dir = pathlib.Path(
-        os.environ.get("GIDEON_PY_FIXTURE_DIR", "/tmp/gideon_fixtures/python")
+        os.environ.get("CANAPES_PY_FIXTURE_DIR", "/tmp/canapes_fixtures/python")
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 

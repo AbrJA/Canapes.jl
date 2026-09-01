@@ -6,10 +6,10 @@ end
 
 struct FailingCallback <: AbstractCallback end
 
-Gideon.on_train_begin(cb::LifecycleCallback, _) = push!(cb.events, :begin)
-Gideon.on_epoch_end(cb::LifecycleCallback, ::Gideon.CallbackInfo) = (push!(cb.events, :epoch); :continue)
-Gideon.on_train_end(cb::LifecycleCallback, _) = push!(cb.events, :end)
-Gideon.on_epoch_end(::FailingCallback, ::Gideon.CallbackInfo) =
+Canapes.on_train_begin(cb::LifecycleCallback, _) = push!(cb.events, :begin)
+Canapes.on_epoch_end(cb::LifecycleCallback, ::Canapes.CallbackInfo) = (push!(cb.events, :epoch); :continue)
+Canapes.on_train_end(cb::LifecycleCallback, _) = push!(cb.events, :end)
+Canapes.on_epoch_end(::FailingCallback, ::Canapes.CallbackInfo) =
     throw(ArgumentError("intentional callback failure"))
 
 @testset "Callbacks" begin
@@ -19,13 +19,13 @@ Gideon.on_epoch_end(::FailingCallback, ::Gideon.CallbackInfo) =
 
         # Improving losses
         for loss in [1.0, 0.9, 0.8, 0.7]
-            info = Gideon.CallbackInfo(1, loss, 0.0, model)
+            info = Canapes.CallbackInfo(1, loss, 0.0, model)
             @test on_epoch_end(cb, info) == :continue
         end
 
         # Stagnating losses → should stop after patience
         for i in 1:3
-            info = Gideon.CallbackInfo(i, 0.7, 0.0, model)
+            info = Canapes.CallbackInfo(i, 0.7, 0.0, model)
             result = on_epoch_end(cb, info)
             if i < 3
                 @test result == :continue
@@ -39,7 +39,7 @@ Gideon.on_epoch_end(::FailingCallback, ::Gideon.CallbackInfo) =
         cb = LossHistoryCallback()
         model = IALS(rank=3, verbose=false)
         for i in 1:5
-            info = Gideon.CallbackInfo(i, Float64(i) * 0.1, 0.0, model)
+            info = Canapes.CallbackInfo(i, Float64(i) * 0.1, 0.0, model)
             @test on_epoch_end(cb, info) == :continue
         end
         @test length(cb.losses) == 5
@@ -49,7 +49,7 @@ Gideon.on_epoch_end(::FailingCallback, ::Gideon.CallbackInfo) =
     @testset "LearningRateCallback" begin
         cb = LearningRateCallback(decay=0.5, min_lr=0.001)
         model = BPR(rank=3, lr=1.0, verbose=false)
-        info = Gideon.CallbackInfo(1, 0.5, 0.0, model)
+        info = Canapes.CallbackInfo(1, 0.5, 0.0, model)
         on_epoch_end(cb, info)
         @test model.lr ≈ 0.5
         on_epoch_end(cb, info)
@@ -62,11 +62,11 @@ Gideon.on_epoch_end(::FailingCallback, ::Gideon.CallbackInfo) =
         model = IALS(rank=3, verbose=false)
 
         # First call - improving
-        info1 = Gideon.CallbackInfo(1, 1.0, 0.0, model)
+        info1 = Canapes.CallbackInfo(1, 1.0, 0.0, model)
         @test run_callbacks([cb1, cb2], info1) == false
 
         # Second call - stagnant
-        info2 = Gideon.CallbackInfo(2, 1.0, 1.0, model)
+        info2 = Canapes.CallbackInfo(2, 1.0, 1.0, model)
         @test run_callbacks([cb1, cb2], info2) == true
     end
 end
@@ -146,7 +146,9 @@ end
 
         # Incompatible format versions must be rejected.
         bytes = read(tmpfile)
-        bytes[9] = UInt8('9')
+        header = bytes[1:findfirst(==(UInt8('\n')), bytes) - 1]
+        version_pos = findlast(==(UInt8('v')), header) + 1
+        bytes[version_pos] = UInt8('9')
         write(tmpfile, bytes)
         @test_throws ArgumentError load_model(tmpfile)
     finally

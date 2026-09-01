@@ -3,9 +3,9 @@
 
 using Pkg
 Pkg.develop(path=joinpath(@__DIR__, ".."))
-using Gideon, SparseArrays, Random, LinearAlgebra, Test
-using Gideon.Links: Binomial, Gaussian, Poisson   # family singletons
-using Gideon.Sampling: Popular, Dynamic
+using Canapes, SparseArrays, Random, LinearAlgebra, Test
+using Canapes.Links: Binomial, Gaussian, Poisson   # family singletons
+using Canapes.Sampling: Popular, Dynamic
 
 println("=" ^ 60)
 println("Validating documentation code examples")

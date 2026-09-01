@@ -1,4 +1,4 @@
-# Gideon.jl Production Roadmap
+# Canapes.jl Production Roadmap
 
 Status legend: ✅ done · 🟡 partial (what remains is listed) · ⬜ not started
 
@@ -20,7 +20,7 @@ these commits unless explicitly reviewed as part of the corresponding phase.
 ## Phase 1: Public API
 
 1. Freeze and simplify the public API — ✅ done
-   - `temporal_split` alias removed (d516d44), exports frozen in `src/Gideon.jl`,
+   - `temporal_split` alias removed (d516d44), exports frozen in `src/Canapes.jl`,
      unused files deleted (b0d33b7).
    - Model/verb matrix is final: `fit!`/`update!`/`recommend`/`score`/`predict`
      documented in README + docs.
@@ -87,7 +87,7 @@ these commits unless explicitly reviewed as part of the corresponding phase.
 
 9. Define a stable model persistence schema — ✅ done (current form)
    - `save_model`/`load_model` write a versioned header
-     (`GIDEON_v2` + package version + model type) in front of native
+     (`CANAPES_v2` + package version + model type) in front of native
      serialization; unsupported versions are rejected with `ArgumentError`.
    - Native serialization is isolated behind the header/version check.
 
@@ -326,7 +326,7 @@ decreasing and stable run-to-run on x86). The R parity gate has 2× margin
 ### 2026-08-31 — GPU hardening (parity tests, input contracts, implementation fixes)
 Audit of the CUDA extension found the GPU paths structurally correct but
 underspecified and partially unvalidated:
-- **Fixes (ext/GideonCUDAExt.jl)**: GPU `fit_gpu!`/`score_gpu`/`recommend_gpu`
+- **Fixes (ext/CanapesCUDAExt.jl)**: GPU `fit_gpu!`/`score_gpu`/`recommend_gpu`
   now share the CPU validators (`_require_nonempty_dimensions`,
   `_require_finite_input`, `_require_fitted`, `_require_fit_memory`,
   DimensionMismatch on item counts). WMF-GPU was NOT transactional (assigned
@@ -366,9 +366,9 @@ Adopted the submodule pattern for the collision-prone singletons:
   exported as root aliases so signatures keep reading `family::LossFamily`.
 - Canonical call site: `family=LossFamilies.Binomial()`,
   `negative_sampling=Sampling.Uniform()`. The singletons are NOT imported
-  into the root namespace (single canonical path; `Gideon.Binomial` no longer
+  into the root namespace (single canonical path; `Canapes.Binomial` no longer
   resolves). Tests/validation import them via
-  `using Gideon.LossFamilies: Binomial` / `using Gideon.Sampling: Uniform`.
+  `using Canapes.LossFamilies: Binomial` / `using Canapes.Sampling: Uniform`.
 - `Implicit`/`Explicit` (FeedbackType) deliberately stay at root: no
   collision, and FeedbackType already carries the context.
 - Note: saved models serialize type positions — pre-1.0, no released files
@@ -438,9 +438,9 @@ Full suite green (17,456), doctests + docs clean, validation green (R + Python).
 
 ### 2026-08-31 — Public API naming pass (descriptive + short, no collisions)
 - **Fixed a real UX bug**: `Uniform`, `Binomial`, `Poisson` were exported and
-  collided with `Distributions.jl` (verified: `using Distributions, Gideon`
+  collided with `Distributions.jl` (verified: `using Distributions, Canapes`
   left them ambiguous). These six generic singletons are now **unexported**
-  (`Gideon.Binomial()` / `using Gideon: Binomial`); `Gaussian/Dynamic/Popular`
+  (`Canapes.Binomial()` / `using Canapes: Binomial`); `Gaussian/Dynamic/Popular`
   don't collide but were unexported for consistency of the sampling/family
   surface. Defaults mean most users never type them.
 - **Reduced export surface 82 → 67**: unexported internal drivers and utils
@@ -454,8 +454,8 @@ Full suite green (17,456), doctests + docs clean, validation green (R + Python).
 - **Solver suffix consistency**: `ConjugateGradient`→`CGSolver`,
   `NonNegative`→`NonNegativeSolver` (all `*Solver`; `CholeskySolver` kept —
   bare `Cholesky` would collide with `LinearAlgebra`).
-- Docs/README/validation: family examples qualified as `Gideon.Binomial()`;
-  test/validation entry points `using Gideon:` the unexported names they test.
+- Docs/README/validation: family examples qualified as `Canapes.Binomial()`;
+  test/validation entry points `using Canapes:` the unexported names they test.
 - Full suite green (17,456), doctests pass, `validation/run.jl --all` green,
   docs build clean with `checkdocs=:exports`.
 

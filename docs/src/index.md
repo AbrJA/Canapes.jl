@@ -1,4 +1,4 @@
-# Gideon.jl
+# Canapes.jl
 
 A high-performance Julia package for sparse matrix factorization, collaborative filtering, and recommendation systems. Julia port and enhancement of R's [rsparse](https://github.com/rexyai/rsparse).
 
@@ -34,7 +34,7 @@ A high-performance Julia package for sparse matrix factorization, collaborative 
 ## Quick Start
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 # Create a sparse user-item interaction matrix (1000 users, 500 items)
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
@@ -69,12 +69,12 @@ ids, sims = similar_items(model, 42; k=5)
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/AbrJA/Gideon.jl")
+Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
 ```
 
 ## API Design
 
-Gideon separates **recommender models** from **regression models** with domain-appropriate verbs:
+Canapes separates **recommender models** from **regression models** with domain-appropriate verbs:
 
 | Model type | Top-k predictions | Raw scores | Regression |
 |---|---|---|---|
@@ -103,7 +103,7 @@ New models inheriting from `AbstractMatrixFactorization` automatically get `reco
 ## Cross-Validation & Hyperparameter Search
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 
@@ -134,7 +134,7 @@ best_params, best_score, _ = random_search(
 ## Callbacks
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 
@@ -174,7 +174,7 @@ loss_history.losses  # Vector of per-iteration losses
 ## Tables.jl Integration
 
 ```julia
-using Gideon
+using Canapes
 
 # From a NamedTuple of vectors (column table)
 data = (user=[1, 1, 2, 2, 3], item=[1, 3, 2, 4, 1], value=[1.0, 1.0, 1.0, 1.0, 1.0])
@@ -191,7 +191,7 @@ triplets = sparse_to_triplets(X)
 ## Serialization
 
 ```julia
-using Gideon
+using Canapes
 
 # Save any fitted model
 save_model(model, "my_model.jls")

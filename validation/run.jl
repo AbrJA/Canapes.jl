@@ -34,7 +34,7 @@ const PREP_PY = PREP && (_has("--python") || !(_has("--r") || _has("--python")))
 
 if _has("--help")
     println("""
-    Gideon reference validation runner
+    Canapes reference validation runner
 
     Flags:
       --all        Prepare fixtures and run both R and Python comparisons
@@ -44,15 +44,15 @@ if _has("--help")
       --help       Show this help
 
     Fixture directories (overridable):
-      GIDEON_R_FIXTURE_DIR  (default /tmp/gideon_fixtures)
-      GIDEON_PY_FIXTURE_DIR (default /tmp/gideon_fixtures/python)
+      CANAPES_R_FIXTURE_DIR  (default /tmp/canapes_fixtures)
+      CANAPES_PY_FIXTURE_DIR (default /tmp/canapes_fixtures/python)
 
     Exit code is 0 only if every requested step passed.
     """)
     exit(0)
 end
 
-println("\nGideon reference validation runner")
+println("\nCanapes reference validation runner")
 println("  R comparison:      $RUN_R")
 println("  Python comparison: $RUN_PY")
 println("  prepare R:         $PREP_R")

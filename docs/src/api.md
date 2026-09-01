@@ -3,7 +3,7 @@
 ## Core Types & Utilities
 
 ```@autodocs
-Modules = [Gideon]
+Modules = [Canapes]
 Pages = [
 	"types.jl",
 	"utils.jl",
@@ -21,21 +21,21 @@ Sampling
 ## Callbacks
 
 ```@autodocs
-Modules = [Gideon]
+Modules = [Canapes]
 Pages = ["callbacks.jl"]
 ```
 
 ## Cross-Validation & Hyperparameter Search
 
 ```@autodocs
-Modules = [Gideon]
+Modules = [Canapes]
 Pages = ["crossval.jl"]
 ```
 
 ## Serialization
 
 ```@autodocs
-Modules = [Gideon]
+Modules = [Canapes]
 Pages = ["serialization.jl"]
 ```
 
@@ -48,6 +48,6 @@ AbstractSoftALS
 ## Tables.jl Integration
 
 ```@autodocs
-Modules = [Gideon]
+Modules = [Canapes]
 Pages = ["tables.jl"]
 ```

@@ -11,7 +11,7 @@ WMF
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 300, 0.03)
 
 # Cholesky solver (default for small-medium datasets)
@@ -41,7 +41,7 @@ IALS
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 1000, 500, 0.02)
 model = IALS(rank=32, λ=0.01, α=1.0, max_iter=15)
 fit!(model, X; rng=MersenneTwister(42))
@@ -58,7 +58,7 @@ EALS
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 1000, 500, 0.02)
 model = EALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=20)
 fit!(model, X; rng=MersenneTwister(42))
@@ -78,7 +78,7 @@ BPR
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 300, 0.03)
 model = BPR(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=50)
 fit!(model, X; rng=MersenneTwister(42))
@@ -94,7 +94,7 @@ LogisticMF
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 800, 300, 0.03)
 model = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5)
 fit!(model, X; rng=MersenneTwister(42))
@@ -111,7 +111,7 @@ GloVe
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 # GloVe expects a symmetric co-occurrence matrix
 X = sprand(MersenneTwister(1), 100, 100, 0.1)
@@ -134,7 +134,7 @@ PureSVD
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 200, 150, 0.3)
 
 # SoftImpute: full imputation correction (better for missing data recovery)
@@ -164,7 +164,7 @@ EASE
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 200, 0.05)
 
 # Closed-form solution — no iterations, just λ controls regularization
@@ -183,7 +183,7 @@ SLIM
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
 # λ_l1 controls L1 sparsity, λ_l2 controls L2 shrinkage
@@ -202,7 +202,7 @@ ADMMSLIM
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
 # Same objective as SLIM but 10-100× faster via ADMM
@@ -223,7 +223,7 @@ ItemKNN
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 200, 0.05)
 
 # Cosine similarity with top-20 neighbors
@@ -247,7 +247,7 @@ FTRL
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 # Binary classification
 X = sprand(MersenneTwister(1), 1000, 50, 0.1)
@@ -278,7 +278,7 @@ FM
 #### Example
 
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random
 
 # XOR problem with second-order interactions
 X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])

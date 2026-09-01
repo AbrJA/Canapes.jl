@@ -95,6 +95,37 @@ Used by BPR and LogisticMF for negative sampling.
 end
 
 """
+    _sparse_hcat_vectors(cols::Vector{SparseVector{T,Ti}}) -> SparseMatrixCSC
+
+Build a `SparseMatrixCSC` from a collection of sparse columns in a single O(nnz)
+pass: the `nzind`/`nzval` buffers of each column are copied straight into the
+final CSC buffers, so there are no intermediate matrices. Structurally
+identical to `hcat(cols...)`, but ~10x fewer allocations at thousands of
+columns and it never triggers the variadic-splat inference notice that
+`hcat(cols...)` does on Julia 1.12 (used by SLIM's W assembly — see AGENTS.md).
+"""
+function _sparse_hcat_vectors(cols::Vector{SparseVector{T,Ti}}) where {T,Ti}
+    m = isempty(cols) ? 0 : length(cols[1])
+    n = length(cols)
+    total_nnz = sum(nnz, cols; init=0)
+    colptr = Vector{Ti}(undef, n + 1)
+    rowval = Vector{Ti}(undef, total_nnz)
+    nzval = Vector{T}(undef, total_nnz)
+    colptr[1] = 1
+    curr = 1
+    @inbounds for (j, col) in enumerate(cols)
+        inds = col.nzind
+        vals = col.nzval
+        len = length(inds)
+        copyto!(rowval, curr, inds, 1, len)
+        copyto!(nzval, curr, vals, 1, len)
+        curr += len
+        colptr[j + 1] = curr
+    end
+    SparseMatrixCSC(m, n, colptr, rowval, nzval)
+end
+
+"""
     _thread_chunk_bounds(chunk, n, nt) -> UnitRange{Int}
 
 Return the contiguous range of `1:n` assigned to chunk `chunk` (1 ≤ chunk ≤ nt).

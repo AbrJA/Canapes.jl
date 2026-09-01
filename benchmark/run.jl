@@ -5,10 +5,10 @@
 # benchmark/logs/results.jsonl (git sha, environment, config and metrics).
 #
 # Usage:
-#   julia --project=. --threads=8 benchmark/run.jl
+#   julia --project=benchmark --threads=8 benchmark/run.jl
 #
 # Compare runs:
-#   julia --project=. benchmark/compare.jl --strict
+#   julia --project=benchmark benchmark/compare.jl --strict
 #
 # Benchmarks are deterministic: fixed seeds, fixed matrices. Run on the same
 # machine and thread count to compare commits.

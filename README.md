@@ -413,8 +413,8 @@ three fixed scales (hundreds / thousands / millions of interactions) with
 deterministic seeds:
 
 ```bash
-julia --project=. --threads=8 benchmark/run.jl          # appends JSONL records
-julia --project=. benchmark/compare.jl --strict         # diff runs across git SHAs
+julia --project=benchmark --threads=8 benchmark/run.jl   # appends JSONL records
+julia --project=benchmark benchmark/compare.jl --strict  # diff runs across git SHAs
 ```
 
 Records (git SHA, environment, config, metrics) accumulate in

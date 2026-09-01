@@ -104,8 +104,8 @@ function fit!(model::SLIM{T}, X::SparseMatrixCSC{Tv,Ti};
         W_cols[j] = _slim_fit_column(G, diag_G, j, n_items, model)
     end
 
-    # Assemble sparse weight matrix
-    model.W = hcat(W_cols...)
+    # Assemble sparse weight matrix (single O(nnz) pass over the column buffers)
+    model.W = _sparse_hcat_vectors(W_cols)
     model.is_fitted = true
 
     nnz_w = nnz(model.W)

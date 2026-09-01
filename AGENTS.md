@@ -87,9 +87,15 @@ scales (hundreds/thousands/millions). **Validate any perf change with it.**
 - **IALS requires non-negative ratings**: its confidence uses `sqrt(α·x)`
   (Rendle 2021); negative input throws `DomainError`. Signed feedback only
   through the explicit WMF/EASE/SLIM/ADMMSLIM/ItemKNN/SoftImpute families.
-- **LogisticMF needs an unobserved item per user**: negative sampling throws
-  "no unobserved entity is available" when a user has a fully-observed row;
-  property tests skip that degenerate case for LMF.
+- **LogisticMF negative sampling** (2026-08-31): matches implicit's lmf.pyx
+  scheme — uniform over the global observation pool (one RNG draw + one
+  contiguous array load per sample), so a negative may occasionally be an
+  item the entity already saw (~0.1% at typical scales). The earlier
+  rejection sampling on unobserved items was a "deliberate improvement" but
+  cost ~2 random accesses + a binary search per sample; dropping it aligned
+  parity with implicit and was worth 1.4x on fit at millions. Per-entity
+  updates use gather + BLAS GEMV (fixed-factor columns into a contiguous
+  per-thread buffer, scored with GEMV 'T', weighted column sum with GEMV 'N').
 - **rsparse quirks**: its FM init uses Armadillo's `std::random_device` RNG
   (nondeterministic — gate FM parity with margin, cor ≥ 0.95); its GloVe
   cost records the ½·loss convention; its FM fails to converge on very sparse

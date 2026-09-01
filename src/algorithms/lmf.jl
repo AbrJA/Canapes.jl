@@ -258,8 +258,7 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         # interactions are never drawn.
         n_neg_samples = min(n_items, user_seen * n_neg)
         @inbounds for s in 1:n_neg_samples
-            idxbuf[s] = Int32(_lmf_sample_unobserved(local_rng, n_items, X_csr, u,
-                                                     all_items, n_interactions))
+            idxbuf[s] = Int32(_lmf_sample_negative(local_rng, all_items, n_interactions))
         end
         colsubn = @view colbuf[:, 1:n_neg_samples]
         @inbounds for s in 1:n_neg_samples
@@ -334,8 +333,7 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         # ── Negatives: sample to buffer first (same draws), then gather + GEMV ──
         n_neg_samples = min(n_users, item_seen * n_neg)
         @inbounds for s in 1:n_neg_samples
-            idxbuf[s] = Int32(_lmf_sample_unobserved(local_rng, n_users, Xt_csr, j,
-                                                     all_users, n_interactions))
+            idxbuf[s] = Int32(_lmf_sample_negative(local_rng, all_users, n_interactions))
         end
         colsubn = @view colbuf[:, 1:n_neg_samples]
         @inbounds for s in 1:n_neg_samples
@@ -361,48 +359,16 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
     end
 end
 
-"""Sample from `pool` while excluding entries observed by `entity`.
+"""Sample a negative item index from the global observation pool.
 
-Membership is tested with a binary search over the (sorted) CSR row slice of
-the entity: O(log nnz) per candidate instead of a linear O(nnz) scan, which
-is what made training superlinear in user/item density.
+This mirrors implicit's lmf.pyx scheme (`i = indices[rand]`): the draw is
+uniform over all observed (user, item) pairs, so a sampled item may
+occasionally be one the entity has already seen (probability ≈ entity
+density, ~0.1% at typical scales). One RNG draw + one contiguous array load
+per sample — no exclusion check, no binary search.
 """
-@inline function _lmf_sample_unobserved(rng::AbstractRNG, limit::Int,
-                                        observed::SparseMatricesCSR.SparseMatrixCSR,
-                                        entity::Int, pool::Vector{Int32},
-                                        n_pool::Int)
-    range_e = nzrange(observed, entity)
-    lo0, hi0 = first(range_e), last(range_e)
-    colvals = observed.colval
-    is_observed = candidate -> @inbounds begin
-        lo, hi = lo0, hi0
-        while lo <= hi
-            mid = (lo + hi) >>> 1
-            c = colvals[mid]
-            if c < candidate
-                lo = mid + 1
-            elseif c > candidate
-                hi = mid - 1
-            else
-                return true
-            end
-        end
-        false
-    end
-
-    # Rejection sampling is cheap for sparse rows and bounded for dense ones.
-    for _ in 1:min(16, limit)
-        candidate = Int(pool[rand(rng, 1:n_pool)])
-        is_observed(candidate) || return candidate
-    end
-
-    # Start at a random offset so the fallback does not always favor low IDs.
-    start = rand(rng, 1:limit)
-    for offset in 0:(limit - 1)
-        candidate = mod1(start + offset, limit)
-        is_observed(candidate) || return candidate
-    end
-    throw(ArgumentError("no unobserved entity is available for LogisticMF negative sampling"))
+@inline function _lmf_sample_negative(rng::AbstractRNG, pool::Vector{Int32}, n_pool::Int)
+    Int(pool[rand(rng, 1:n_pool)])
 end
 
 function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},

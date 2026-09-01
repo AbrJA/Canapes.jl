@@ -55,14 +55,19 @@ end
     @test all(isfinite, model.user_factors)
 end
 
-@testset "Negative samples exclude observed entries" begin
+@testset "Negative sampler draws from the observation pool" begin
+    # Mirrors implicit's lmf.pyx scheme: uniform over the global observation
+    # pool (one draw + one contiguous load), no exclusion check.
     X = sparse([1, 1, 2], [1, 2, 1], [1.0, 1.0, 1.0], 2, 3)
-    X_csr = Gideon.to_csr(X)
     pool = Int32[1, 2, 1, 2, 1]
-    for _ in 1:100
-        item = Gideon._lmf_sample_unobserved(MersenneTwister(1), 3, X_csr, 1, pool, length(pool))
-        @test item == 3
+    rng = MersenneTwister(1)
+    seen = Set{Int}()
+    for _ in 1:200
+        item = Gideon._lmf_sample_negative(rng, pool, length(pool))
+        @test item in (1, 2)   # only values present in the pool
+        push!(seen, item)
     end
+    @test Set([1, 2]) == seen
 end
 
 @testset "Empty input" begin

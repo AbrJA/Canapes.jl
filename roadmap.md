@@ -221,6 +221,33 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — LMF: match implicit's sampler (1.47× more, 90s → 42s at millions)
+Iterative optimization of LogisticMF against the Python reference (fair
+comparison measured: implicit 6.74s vs us 60.9s at 8 threads — the "×10-20"
+was inflated by implicit defaulting to 16 cores vs our 8; both scale ~linearly
+with threads):
+- **Sampler** (the primary lever): replaced the exclusion+rejection sampler
+  (rand + pool load + binary search + retry) with implicit's lmf.pyx scheme —
+  one draw + one contiguous load over the global observation pool, no
+  exclusion check. A negative may occasionally be an item the entity already
+  saw (~0.1%). Aligns parity with implicit; measured 60.9s → 42.8s (1.42×).
+  Updated the sampler test and AGENTS.md.
+- **Compute structure** (re-benchmarked post-sampler): gather+BLAS GEMV per
+  entity remains the winner (1.58-1.8s user-phase) vs fused-scalar (3.43s,
+  2.4× slower) and merged single-gather (1.84s) — the earlier commit's
+  gather+GEMV is optimal; Julia's @simd scalar loops don't reach BLAS GEMV
+  at k=64.
+- **Rejected with data**: dtype pre-conversion (Float32 input is 0.94× — the
+  per-access casts are free); loss-estimate skip (loss_history is a contract
+  the tests assert; only 1.8%).
+- Benchmark millions: 63.0s → 41.9s (1.5× vs the pre-sampler gather+BLAS
+  version; 90.3s → 41.9s = 2.15× total vs the original scalar sampler).
+  thousands: 2.07s → 1.36s.
+- Remaining honest gap: implicit ~6.7s vs us ~42s at 8 threads (~6×) —
+  their fused in-place SIMD C loop (no gather, no BLAS call) is out of reach
+  for Julia's @simd; documented as the practical ceiling. Suite 17,563 green,
+  validation R + Python green.
+
 ### 2026-08-31 — LMF: gather + BLAS GEMV entity updates (1.48×)
 Following the three-axis audit (column-major / dtype / BLAS), the lesson from
 the fast ALS family applied to LMF: the per-entity update now gathers the

@@ -74,3 +74,18 @@ end
     @test all(preds .>= 1)
     @test all(preds .<= 40)
 end
+
+@testset "Scale-mixed inputs stay finite" begin
+    # Ratings spanning ~1e60 mix confidence terms large enough to make the
+    # shared Gramian numerically singular inside float eps under λ ≈ 0.
+    rng = MersenneTwister(11)
+    X_scale = spzeros(60, 50)
+    for _ in 1:400
+        r = rand(rng, 1:60); c = rand(rng, 1:50)
+        X_scale[r, c] += rand(rng) < 0.5 ? rand(rng, 1:10) : 10.0^rand(rng, 1:60)
+    end
+    model = IALS(rank=6, λ=0.0, α=40.0, max_iter=6, solver=CholeskySolver(), verbose=false)
+    fit!(model, X_scale; rng=rng)
+    @test all(isfinite, model.user_factors)
+    @test all(isfinite, model.item_factors)
+end

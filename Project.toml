@@ -1,6 +1,6 @@
 name = "Canapes"
 uuid = "1bae8cb1-bebd-407c-99cb-cb5362d1cdf2"
-version = "2.0.0"
+version = "0.1.0"
 authors = ["AbrJA <abraham.jaimes.mx@gmail.com>"]
 
 [deps]

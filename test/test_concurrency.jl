@@ -13,39 +13,41 @@
     C = sprand(rng, 150, 150, 0.05)
     C = C + C'
 
-    build_models = () -> [
+    # Deterministic solvers: serial and parallel fits must be bit-identical.
+    # GloVe (and BPR) is Hogwild lock-free single-pass SGD, so it is excluded
+    # from the equality check and asserted for validity only.
+    det_model = () -> [
         WMF(rank=8, max_iter=5, verbose=false),
         IALS(rank=8, max_iter=5, verbose=false),
         EALS(rank=8, max_iter=5, verbose=false),
         LogisticMF(rank=8, max_iter=3, verbose=false),
-        GloVe(rank=8, max_iter=3, verbose=false),
         EASE(λ=200.0, verbose=false),
         SLIM(max_iter=10, verbose=false),
         ADMMSLIM(max_iter=10, verbose=false),
         ItemKNN(k=20, verbose=false),
     ]
-    fit_input = m -> m isa GloVe ? C : X
 
     @testset "shared-nothing concurrent training" begin
-        serial = build_models()
+        serial = det_model()
         for m in serial
-            fit!(m, fit_input(m); rng=MersenneTwister(1))
+            fit!(m, X; rng=MersenneTwister(1))
         end
-        serial_recs = [recommend(m, fit_input(m); k=5) for m in serial]
+        serial_recs = [recommend(m, X; k=5) for m in serial]
 
-        parallel = build_models()
+        parallel = det_model()
         parallel_recs = Vector{Matrix{Int}}(undef, length(parallel))
         Threads.@threads for i in eachindex(parallel)
-            fit!(parallel[i], fit_input(parallel[i]); rng=MersenneTwister(1))
-            parallel_recs[i] = recommend(parallel[i], fit_input(parallel[i]); k=5)
+            fit!(parallel[i], X; rng=MersenneTwister(1))
+            parallel_recs[i] = recommend(parallel[i], X; k=5)
         end
 
         @test parallel_recs == serial_recs
     end
 
-    # BPR uses Hogwild! lock-free SGD: concurrent writes to shared factors are
-    # intentionally racing, so fits are not bit-reproducible across thread
-    # counts. Concurrent training must still succeed and produce valid output.
+    # BPR and GloVe use Hogwild! lock-free SGD: concurrent writes to shared
+    # factors are intentionally racing, so fits are not bit-reproducible across
+    # thread counts or schedules. Concurrent training must still succeed and
+    # produce valid output.
     @testset "hogwild concurrent training" begin
         models = [BPR(rank=8, max_iter=3, verbose=false) for _ in 1:2]
         recs = Vector{Matrix{Int}}(undef, length(models))
@@ -55,6 +57,15 @@
         end
         @test all(r -> size(r) == (size(X, 1), 5), recs)
         @test all(r -> all(in(1:size(X, 2)), r), recs)
+
+        glove = [GloVe(rank=8, max_iter=3, verbose=false) for _ in 1:2]
+        glove_recs = Vector{Matrix{Int}}(undef, length(glove))
+        Threads.@threads for i in eachindex(glove)
+            fit!(glove[i], C; rng=MersenneTwister(1))
+            glove_recs[i] = recommend(glove[i], C; k=5)
+        end
+        @test all(r -> size(r) == (size(C, 1), 5), glove_recs)
+        @test all(r -> all(in(1:size(C, 2)), r), glove_recs)
     end
 
     @testset "concurrent reads on a shared fitted model" begin

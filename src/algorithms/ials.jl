@@ -148,6 +148,8 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
     nt = Threads.nthreads()
     A_bufs = [Matrix{T}(undef, k, k) for _ in 1:nt]
     b_bufs = [Vector{T}(undef, k) for _ in 1:nt]
+    # Guard scratch: original RHS preserved for guarded-solve retries
+    save_bufs = [Vector{T}(undef, k) for _ in 1:nt]
     # CG-specific buffers
     r_bufs = [Vector{T}(undef, k) for _ in 1:nt]
     p_bufs = [Vector{T}(undef, k) for _ in 1:nt]
@@ -170,7 +172,7 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
                                      Z_bufs, w_bufs)
         else
             _ials_update_factors!(U, V, X_csr, α, λ, k, A_bufs, b_bufs,
-                                  Z_bufs, w_bufs)
+                                  save_bufs, Z_bufs, w_bufs)
         end
 
         # ── Update items: fix U, solve for V ──
@@ -180,7 +182,7 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
                                      Z_bufs, w_bufs)
         else
             _ials_update_factors!(V, U, X, α, λ, k, A_bufs, b_bufs,
-                                  Z_bufs, w_bufs)
+                                  save_bufs, Z_bufs, w_bufs)
         end
 
         # ── Compute loss ──
@@ -228,6 +230,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
                                R::SparseMatricesCSR.SparseMatrixCSR, α::T, λ::T, k::Int,
                                A_bufs::Vector{Matrix{T}},
                                b_bufs::Vector{Vector{T}},
+                               save_bufs::Vector{Vector{T}},
                                Z_bufs::Vector{Matrix{T}},
                                w_bufs::Vector{Vector{T}}) where {T}
     n = size(target, 2)
@@ -246,6 +249,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         A = A_bufs[chunk]
         b = b_bufs[chunk]
         Z = Z_bufs[chunk]
+        save = save_bufs[chunk]
 
         for u in _thread_chunk_bounds(chunk, n, nt)
         # Gather rated item vectors, scale for syrk, and accumulate b in one pass
@@ -275,24 +279,21 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         copyto!(A, gramian)
         BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), A)
 
-        # Solve via CholeskySolver, with a singular-gramian fallback
-        # (λ ≈ 0 with very few ratings can produce a singular gram).
-        _, info = LAPACK.potrf!('U', A)
-        if info != 0
-            copyto!(A, gramian)
-            @inbounds for d in 1:k
-                A[d, d] += max(λ, eps(T))
+        # Guarded solve: adaptive regularisation + finite-check so scale-mixed
+        # inputs can never write NaN/Inf into the factors (gramian near- or
+        # exactly singular within float eps under λ ≈ 0).
+        scale = _gram_scale!(A, k, one(T))
+        copyto!(save, b)
+        ok = _guarded_cholesky_solve!(A, b, gramian, save, scale, k)
+        if ok
+            @inbounds for f in 1:k
+                target[f, u] = b[f]
             end
-            LinearAlgebra.copytri!(A, 'U')
-            _, info = LAPACK.potrf!('U', A)
-        end
-        if info == 0
-            LAPACK.potrs!('U', A, b)
         else
             fill!(b, zero(T))
-        end
-        @inbounds for f in 1:k
-            target[f, u] = b[f]
+            @inbounds for f in 1:k
+                target[f, u] = b[f]
+            end
         end
         end
     end
@@ -302,6 +303,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
                                R::SparseMatrixCSC, α::T, λ::T, k::Int,
                                A_bufs::Vector{Matrix{T}},
                                b_bufs::Vector{Vector{T}},
+                               save_bufs::Vector{Vector{T}},
                                Z_bufs::Vector{Matrix{T}},
                                w_bufs::Vector{Vector{T}}) where {T}
     n = size(target, 2)
@@ -320,6 +322,7 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         A = A_bufs[chunk]
         b = b_bufs[chunk]
         Z = Z_bufs[chunk]
+        save = save_bufs[chunk]
 
         for j in _thread_chunk_bounds(chunk, n, nt)
 
@@ -348,24 +351,21 @@ function _ials_update_factors!(target::Matrix{T}, source::Matrix{T},
         copyto!(A, gramian)
         BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), A)
 
-        # Solve via CholeskySolver, with a singular-gramian fallback
-        # (λ ≈ 0 with very few ratings can produce a singular gram).
-        _, info = LAPACK.potrf!('U', A)
-        if info != 0
-            copyto!(A, gramian)
-            @inbounds for d in 1:k
-                A[d, d] += max(λ, eps(T))
+        # Guarded solve: adaptive regularisation + finite-check so scale-mixed
+        # inputs can never write NaN/Inf into the factors (gramian near- or
+        # exactly singular within float eps under λ ≈ 0).
+        scale = _gram_scale!(A, k, one(T))
+        copyto!(save, b)
+        ok = _guarded_cholesky_solve!(A, b, gramian, save, scale, k)
+        if ok
+            @inbounds for f in 1:k
+                target[f, j] = b[f]
             end
-            LinearAlgebra.copytri!(A, 'U')
-            _, info = LAPACK.potrf!('U', A)
-        end
-        if info == 0
-            LAPACK.potrs!('U', A, b)
         else
             fill!(b, zero(T))
-        end
-        @inbounds for f in 1:k
-            target[f, j] = b[f]
+            @inbounds for f in 1:k
+                target[f, j] = b[f]
+            end
         end
         end
     end

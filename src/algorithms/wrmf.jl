@@ -34,6 +34,17 @@ and NonNegativeSolver (non-negative least squares).
     and in other libraries. It is not the [`IALS`](@ref) type of this package,
     which implements the improved ALS of Rendle et al. (2021, "IALS++").
 
+!!! note "Mixed input scales"
+    The confidence term `c_ui = 1 + α·r_ui` makes the Gramian
+    `A = YᵀCᵘY + λI` scale with the magnitude of the ratings. Mixing ratings
+    of very different scales in one matrix (e.g. implicit counts 1–10
+    alongside scores 1–1000) makes `A` numerically near-singular within
+    float `eps`. Prefer a monotone transformation such as `r_ui' = log(1 + r_ui)`
+    before fitting when this is expected. As a safety net, the Cholesky path
+    detects non-positive pivots and NaN/Inf solve results and retries with
+    adaptive regularisation, reverting the affected factor to its previous
+    state if no finite solve is possible — factors never become NaN/Inf.
+
 # Constructor
 ```julia
 WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, tol=0.005,
@@ -229,8 +240,79 @@ function _als_workspace(model::WMF{T}, k::Int, nt::Int, max_nnz::Int) where {T}
         Z_CAP = 4096
         (; gram_bufs = _thread_buffers(() -> Matrix{T}(undef, k, k), nt),
            rhs_bufs = _thread_buffers(() -> Vector{T}(undef, k), nt),
-           z_bufs   = _thread_buffers(() -> Matrix{T}(undef, k, min(max_nnz, Z_CAP)), nt))
+           z_bufs   = _thread_buffers(() -> Matrix{T}(undef, k, min(max_nnz, Z_CAP)), nt),
+           prev_bufs = _thread_buffers(() -> Vector{T}(undef, k), nt),
+           save_bufs = _thread_buffers(() -> Vector{T}(undef, k), nt))
     end
+end
+
+# ──────────────── Numerical-stability guard ────────────────
+
+"""
+    _gram_scale!(A, k, fallback) -> T
+
+Largest *finite* absolute diagonal entry of the assembled Gramian `A`. Used as
+the reference scale for adaptive regularisation so extremes in a single entity
+cannot distort the rest of the model.
+"""
+@inline function _gram_scale!(A::Matrix{T}, k::Int, fallback::T) where {T}
+    s = zero(T)
+    @inbounds for d in 1:k
+        v = abs(A[d, d])
+        if v > s && v == v && v != T(Inf)
+            s = v
+        end
+    end
+    s > zero(T) ? s : fallback
+end
+
+"""
+    _guarded_cholesky_solve!(A, b, base, save, scale, k) -> Bool
+
+In-place Cholesky solve of `A x = b` guarded against scale-mixed inputs.
+
+`A` initially holds the assembled Gramian (upper triangle, plus the shared
+`base = YᵀY + λI` diagonal already folded in) and is used as scratch.
+`save` is a scratch copy of `b` kept for the retry attempts.
+
+The confidence terms `c_ui = 1 + α·r_ui` make the Gramian numerically singular
+within float `eps` when ratings of wildly different scales are mixed (e.g.
+implicit counts 1–10 with scores 1–1000): `potrf!` can then report a failure
+or `potrs!` can return NaN/Inf. When either happens the diagonal is
+regularised adaptively — lifted by increasing fractions of the Gramian's own
+scale — and the solve retried.
+
+Returns `true` with the solution in `b`, or `false` when no finite solve could
+be obtained; the caller then decides between reverting to the previous factor
+vector and zeroing it.
+"""
+function _guarded_cholesky_solve!(
+    A::Matrix{T}, b::Vector{T}, base::Matrix{T}, save::Vector{T},
+    scale::T, k::Int,
+) where {T}
+    # First attempt on the assembled Gramian (no reprojection of the scale).
+    _, info = LAPACK.potrf!('U', A)
+    if info == 0
+        LAPACK.potrs!('U', A, b)
+        all(isfinite, b) && return true
+    end
+
+    # Adaptive regularisation: lift the diagonal by fractions of the Gramian's
+    # own scale, retrying up to five escalation levels.
+    for eta in (T(1e-10), T(1e-8), T(1e-6), T(1e-4), T(1e-2))
+        copyto!(A, base)
+        lift = scale * eta
+        @inbounds for d in 1:k
+            A[d, d] += lift
+        end
+        LinearAlgebra.copytri!(A, 'U')
+        _, info = LAPACK.potrf!('U', A)
+        info == 0 || continue
+        copyto!(b, save)
+        LAPACK.potrs!('U', A, b)
+        all(isfinite, b) && return true
+    end
+    return false
 end
 
 # ──────────────── CholeskySolver path ────────────────
@@ -269,12 +351,16 @@ function _als_sweep_cholesky!(
     gram_bufs = ws.gram_bufs
     rhs_bufs  = ws.rhs_bufs
     z_bufs    = ws.z_bufs
+    prev_bufs = ws.prev_bufs
+    save_bufs = ws.save_bufs
     Z_CAP = size(z_bufs[1], 2)
 
     Base.Threads.@threads for chunk in 1:length(gram_bufs)
         gram = gram_bufs[chunk]
         rhs  = rhs_bufs[chunk]
         Z    = z_bufs[chunk]
+        prev = prev_bufs[chunk]
+        save = save_bufs[chunk]
 
         for u in _thread_chunk_bounds(chunk, n_entities, length(gram_bufs))
 
@@ -317,30 +403,31 @@ function _als_sweep_cholesky!(
         # Mirror upper triangle
         LinearAlgebra.copytri!(gram, 'U')
 
-        # In-place Cholesky solve, with a singular-gramian fallback
-        # (λ ≈ 0 with very few ratings can produce a singular gram).
-        _, info = LAPACK.potrf!('U', gram)
-        if info != 0
-            copyto!(gram, base_gram)
-            floor_val = max(λ, eps(T))
-            @inbounds for d in 1:k
-                gram[d, d] += floor_val
-            end
-            LinearAlgebra.copytri!(gram, 'U')
-            _, info = LAPACK.potrf!('U', gram)
-        end
-        if info == 0
-            LAPACK.potrs!('U', gram, rhs)
-        else
-            fill!(rhs, zero(T))
-        end
+        # Reference scale for adaptive regularisation, plus snapshots so a
+        # failed solve can be contained without poisoning the model.
+        scale = _gram_scale!(gram, k, one(T))
+        view_factors = @view factors[:, u]
+        copyto!(prev, view_factors)
+        copyto!(save, rhs)
+
+        ok = _guarded_cholesky_solve!(gram, rhs, base_gram, save, scale, k)
 
         if is_nnls
             rhs .= max.(rhs, zero(T))
             _nnls_cd!(rhs, YtY, fixed, rv, nz, nzrange(A, u), k, α, λ, is_implicit)
+            ok &= all(isfinite, rhs)
         end
 
-        @inbounds factors[:, u] .= rhs
+        if ok
+            @inbounds view_factors .= rhs
+        elseif isempty(nzrange(A, u))
+            # Cold entity with no signal: the exact ALS solution is zero.
+            fill!(view_factors, zero(T))
+        else
+            # Scale-mixed inputs can make the Gramian numerically singular;
+            # revert rather than let NaN/Inf propagate through the model.
+            @inbounds view_factors .= prev
+        end
         end
     end
 end

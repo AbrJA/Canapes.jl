@@ -165,3 +165,21 @@ end
     @test model.is_fitted
     # Should converge before 100 iterations
 end
+
+@testset "Scale-mixed inputs stay finite" begin
+    # Ratings spanning ~1e118 mix confidence terms c_ui = 1 + α·r_ui huge enough
+    # to make the Gramian numerically singular inside float eps. The guarded
+    # Cholesky path must never leave NaN/Inf in the factors.
+    rng = MersenneTwister(11)
+    X_scale = spzeros(60, 50)
+    for _ in 1:400
+        r = rand(rng, 1:60); c = rand(rng, 1:50)
+        X_scale[r, c] += rand(rng) < 0.5 ? rand(rng, 1:10) : 10.0^rand(rng, 1:60)
+    end
+    for solver in (CholeskySolver(), NonNegativeSolver())
+        model = WMF(rank=6, λ=0.0, α=40.0, max_iter=6, solver=solver, verbose=false)
+        fit!(model, X_scale; rng=rng)
+        @test all(isfinite, model.user_factors)
+        @test all(isfinite, model.item_factors)
+    end
+end

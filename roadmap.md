@@ -221,6 +221,38 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — LMF: full profile attribution + final hypothesis sweep
+Closed the "87% unaccounted" gap — the user-phase time is now fully
+attributed by sub-stage (aggregated work, millions, 1 epoch):
+- sampler negatives: **37%** (rand + random load from the 20MB observation
+  pool — memory-latency, shared with implicit)
+- gather negatives: **35%** (random V-column loads + buffer write)
+- gemv + sigmoid: **26%**
+- adagrad / gather-pos: 2%
+
+Final hypothesis sweep (all measured, all discarded):
+- BLAS oversubscription (`BLAS.set_num_threads(1)`): no change (20.6 vs
+  20.8s) — the 64×1500 GEMV is below OpenBLAS's parallelization threshold.
+- GEMV fusion (2→1): 0.88× (already tested); @simd scalar: 2.2× slower.
+- Gather with @simd/copyto!/unsafe_copyto!: no gain (12.8 vs 12.4/16.5/18.5
+  µs) — the gather is memory-bound on the random V accesses, not
+  vectorization-bound.
+- Sampler with modulo instead of rand(1:n): 2.2× faster per draw but only
+  ~1.5% of total fit (and introduces bias like implicit's) — not worth it.
+- `thread_rngs::Vector` in the phase signatures (Vector{Any} concern): typed
+  as `Vector{Random.Xoshiro}` — neutral (20.6 vs 20.9s, noise); Julia
+  already specializes the body on the concrete argument type. Kept for
+  correctness.
+- Allocations: confirmed 0.0MB per phase with @allocated (pre-allocated
+  buffers; the earlier "342MB" was one-time JIT).
+
+Conclusion (now evidence-complete): ~72% of the time is random memory
+accesses (pool + V columns) that implicit pays identically; the 26% gemv is
+optimal vs every Julia alternative measured; the structural residual vs their
+fused in-place C loop (read V once, no buffer write, no BLAS call) accounts
+for the remaining ~6×, and every Julia formulation of it measured slower.
+"Requires a native kernel" is now supported by full attribution, not guess.
+
 ### 2026-08-31 — LMF: match implicit's sampler (1.47× more, 90s → 42s at millions)
 Iterative optimization of LogisticMF against the Python reference (fair
 comparison measured: implicit 6.74s vs us 60.9s at 8 threads — the "×10-20"

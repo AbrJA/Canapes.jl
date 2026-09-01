@@ -145,6 +145,17 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     nt = Threads.nthreads()
     thread_rngs = [Random.Xoshiro(rand(rng, UInt64)) for _ in 1:nt]
     deriv_bufs = [Vector{T}(undef, k) for _ in 1:nt]
+    # Gather buffers for the BLAS-based entity updates: the columns of the
+    # fixed matrix are collected into a contiguous per-thread buffer (k × max
+    # negatives) and processed with GEMVs; the random column loads are paid
+    # once per entity update.
+    max_seen_user = maximum(length(nzrange(X_csr, u)) for u in 1:n_users; init=0)
+    max_seen_item = maximum(length(nzrange(Xt_csr, j)) for j in 1:n_items; init=0)
+    max_m = max(min(n_items, max_seen_user * n_neg),
+                min(n_users, max_seen_item * n_neg))
+    col_bufs = [Matrix{T}(undef, k, max_m) for _ in 1:nt]
+    idx_bufs = [Vector{Int32}(undef, max_m) for _ in 1:nt]
+    score_bufs = [Vector{T}(undef, max_m) for _ in 1:nt]
 
     for epoch in 1:model.max_iter
         epoch_start = time_ns()
@@ -152,12 +163,12 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
         # ── Phase 1: Update user factors (items fixed) ──
         _lmf_update_users!(U, V, X_csr, all_items, grad2_U,
                            lr, λ, n_neg, ada_eps, k, n_users, n_interactions,
-                           thread_rngs, deriv_bufs)
+                           thread_rngs, deriv_bufs, col_bufs, idx_bufs, score_bufs)
 
         # ── Phase 2: Update item factors (users fixed) ──
         _lmf_update_items!(V, U, Xt_csr, all_users, grad2_V,
                            lr, λ, n_neg, ada_eps, k, n_items, n_interactions,
-                           thread_rngs, deriv_bufs)
+                           thread_rngs, deriv_bufs, col_bufs, idx_bufs, score_bufs)
 
         # ── Compute epoch loss (sampled estimate) ──
         loss = _lmf_loss_estimate(U, V, X_csr, n_users, k)
@@ -202,7 +213,10 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
                             grad2_U::Matrix{T},
                             lr::T, λ::T, n_neg::Int, ada_eps::T,
                             k::Int, n_users::Int, n_interactions::Int,
-                            thread_rngs::Vector, deriv_bufs::Vector{Vector{T}}) where {T}
+                            thread_rngs::Vector, deriv_bufs::Vector{Vector{T}},
+                            col_bufs::Vector{Matrix{T}},
+                            idx_bufs::Vector{Vector{Int32}},
+                            score_bufs::Vector{Vector{T}}) where {T}
     n_items = size(V, 2)
     nt = Threads.nthreads()
     chunk_size = cld(n_users, nt)
@@ -210,49 +224,56 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
     Threads.@threads for chunk in 1:nt
         local_rng = thread_rngs[chunk]
         deriv = deriv_bufs[chunk]
+        colbuf = col_bufs[chunk]
+        idxbuf = idx_bufs[chunk]
+        zbuf = score_bufs[chunk]
         for u in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_users)
         rng_u = nzrange(X_csr, u)
         user_seen = length(rng_u)
         user_seen == 0 && continue
 
-        # Use pre-allocated buffer (zero alloc)
-        @inbounds @simd for f in 1:k
-            deriv[f] = zero(T)
-        end
-
-        # Fused positive pass: deriv += c * (1 - σ(s)) * v = c * σ(-s) * v
-        @inbounds for idx in rng_u
+        # ── Positive pass via gather + BLAS ──
+        # Gather the user's seen item columns into a contiguous buffer (the
+        # random column loads are paid once), then score with GEMV and
+        # accumulate the weighted column sum with a second GEMV.
+        @inbounds for (t, idx) in enumerate(rng_u)
             j = Int(X_csr.colval[idx])
-            c_uj = T(X_csr.nzval[idx])
-            # Compute dot product
-            s = zero(T)
-            @inbounds @simd for g in 1:k
-                s += U[g, u] * V[g, j]
-            end
-            # c * (1 - σ(s)) = c * σ(-s)
-            z = c_uj / (one(T) + exp(s))
-            @simd for f in 1:k
-                deriv[f] += z * V[f, j]
+            for f in 1:k
+                colbuf[f, t] = V[f, j]
             end
         end
+        Ucol = @view U[:, u]
+        colsub = @view colbuf[:, 1:user_seen]
+        BLAS.gemv!('T', one(T), colsub, Ucol, zero(T), @view(zbuf[1:user_seen]))
+        r0 = first(rng_u)
+        # z = c * σ(-s) = c / (1 + exp(s))
+        @inbounds @simd for t in 1:user_seen
+            zbuf[t] = T(X_csr.nzval[r0 + t - 1]) / (one(T) + exp(zbuf[t]))
+        end
+        BLAS.gemv!('N', one(T), colsub, @view(zbuf[1:user_seen]), zero(T), deriv)
 
-        # Negatives: deriv -= σ(s) * v
-        # Sample min(n_items, seen * n_neg) negatives like implicit (lmf.pyx:
-        # `range(min(n_items, user_seen_item * neg_prop))`), with rejection
-        # sampling so a user's own interactions are never drawn.
+        # ── Negatives: sample to buffer first (same draws as before), ──
+        # then gather + GEMV. Sample min(n_items, seen * n_neg) negatives like
+        # implicit (lmf.pyx), with rejection sampling so a user's own
+        # interactions are never drawn.
         n_neg_samples = min(n_items, user_seen * n_neg)
-        @inbounds for _ in 1:n_neg_samples
-            j = _lmf_sample_unobserved(local_rng, n_items, X_csr, u,
-                                        all_items, n_interactions)
-            s = zero(T)
-            @inbounds @simd for g in 1:k
-                s += U[g, u] * V[g, j]
-            end
-            σ_s = one(T) / (one(T) + exp(-s))
-            @simd for f in 1:k
-                deriv[f] -= σ_s * V[f, j]
+        @inbounds for s in 1:n_neg_samples
+            idxbuf[s] = Int32(_lmf_sample_unobserved(local_rng, n_items, X_csr, u,
+                                                     all_items, n_interactions))
+        end
+        colsubn = @view colbuf[:, 1:n_neg_samples]
+        @inbounds for s in 1:n_neg_samples
+            j = Int(idxbuf[s])
+            for f in 1:k
+                colbuf[f, s] = V[f, j]
             end
         end
+        BLAS.gemv!('T', one(T), colsubn, Ucol, zero(T), @view(zbuf[1:n_neg_samples]))
+        # -σ(s): negatives are subtracted (deriv -= σ·v)
+        @inbounds @simd for s in 1:n_neg_samples
+            zbuf[s] = -one(T) / (one(T) + exp(-zbuf[s]))
+        end
+        BLAS.gemv!('N', one(T), colsubn, @view(zbuf[1:n_neg_samples]), one(T), deriv)
 
         # Regularization + Adagrad update (fused)
         @inbounds @simd for f in 1:k
@@ -274,7 +295,10 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
                             grad2_V::Matrix{T},
                             lr::T, λ::T, n_neg::Int, ada_eps::T,
                             k::Int, n_items::Int, n_interactions::Int,
-                            thread_rngs::Vector, deriv_bufs::Vector{Vector{T}}) where {T}
+                            thread_rngs::Vector, deriv_bufs::Vector{Vector{T}},
+                            col_bufs::Vector{Matrix{T}},
+                            idx_bufs::Vector{Vector{Int32}},
+                            score_bufs::Vector{Vector{T}}) where {T}
     n_users = size(U, 2)
     nt = Threads.nthreads()
     chunk_size = cld(n_items, nt)
@@ -282,45 +306,50 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
     Threads.@threads for chunk in 1:nt
         local_rng = thread_rngs[chunk]
         deriv = deriv_bufs[chunk]
+        colbuf = col_bufs[chunk]
+        idxbuf = idx_bufs[chunk]
+        zbuf = score_bufs[chunk]
         for j in ((chunk - 1) * chunk_size + 1):min(chunk * chunk_size, n_items)
         rng_j = nzrange(Xt_csr, j)
         item_seen = length(rng_j)
         item_seen == 0 && continue
 
-        @inbounds @simd for f in 1:k
-            deriv[f] = zero(T)
-        end
-
-        # Fused positive pass: deriv += c * (1 - σ(s)) * u = c * σ(-s) * u
-        @inbounds for idx in rng_j
+        # ── Positive pass via gather + BLAS ──
+        @inbounds for (t, idx) in enumerate(rng_j)
             u = Int(Xt_csr.colval[idx])
-            c_uj = T(Xt_csr.nzval[idx])
-            s = zero(T)
-            @inbounds @simd for g in 1:k
-                s += U[g, u] * V[g, j]
-            end
-            z = c_uj / (one(T) + exp(s))
-            @simd for f in 1:k
-                deriv[f] += z * U[f, u]
+            for f in 1:k
+                colbuf[f, t] = U[f, u]
             end
         end
+        Vcol = @view V[:, j]
+        colsub = @view colbuf[:, 1:item_seen]
+        BLAS.gemv!('T', one(T), colsub, Vcol, zero(T), @view(zbuf[1:item_seen]))
+        r0 = first(rng_j)
+        # z = c * σ(-s) = c / (1 + exp(s))
+        @inbounds @simd for t in 1:item_seen
+            zbuf[t] = T(Xt_csr.nzval[r0 + t - 1]) / (one(T) + exp(zbuf[t]))
+        end
+        BLAS.gemv!('N', one(T), colsub, @view(zbuf[1:item_seen]), zero(T), deriv)
 
-        # Negatives: deriv -= σ(s) * u
-        # Sample min(n_users, seen * n_neg) negatives like implicit (lmf.pyx),
-        # with rejection sampling so an item's own interactions are never drawn.
+        # ── Negatives: sample to buffer first (same draws), then gather + GEMV ──
         n_neg_samples = min(n_users, item_seen * n_neg)
-        @inbounds for _ in 1:n_neg_samples
-            u = _lmf_sample_unobserved(local_rng, n_users, Xt_csr, j,
-                                        all_users, n_interactions)
-            s = zero(T)
-            @inbounds @simd for g in 1:k
-                s += U[g, u] * V[g, j]
-            end
-            σ_s = one(T) / (one(T) + exp(-s))
-            @simd for f in 1:k
-                deriv[f] -= σ_s * U[f, u]
+        @inbounds for s in 1:n_neg_samples
+            idxbuf[s] = Int32(_lmf_sample_unobserved(local_rng, n_users, Xt_csr, j,
+                                                     all_users, n_interactions))
+        end
+        colsubn = @view colbuf[:, 1:n_neg_samples]
+        @inbounds for s in 1:n_neg_samples
+            u = Int(idxbuf[s])
+            for f in 1:k
+                colbuf[f, s] = U[f, u]
             end
         end
+        BLAS.gemv!('T', one(T), colsubn, Vcol, zero(T), @view(zbuf[1:n_neg_samples]))
+        # -σ(s): negatives are subtracted (deriv -= σ·u)
+        @inbounds @simd for s in 1:n_neg_samples
+            zbuf[s] = -one(T) / (one(T) + exp(-zbuf[s]))
+        end
+        BLAS.gemv!('N', one(T), colsubn, @view(zbuf[1:n_neg_samples]), one(T), deriv)
 
         # Regularization + Adagrad update (fused)
         @inbounds @simd for f in 1:k
@@ -332,36 +361,46 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
     end
 end
 
-"""Sample from `pool` while excluding entries observed by `entity`."""
+"""Sample from `pool` while excluding entries observed by `entity`.
+
+Membership is tested with a binary search over the (sorted) CSR row slice of
+the entity: O(log nnz) per candidate instead of a linear O(nnz) scan, which
+is what made training superlinear in user/item density.
+"""
 @inline function _lmf_sample_unobserved(rng::AbstractRNG, limit::Int,
                                         observed::SparseMatricesCSR.SparseMatrixCSR,
                                         entity::Int, pool::Vector{Int32},
                                         n_pool::Int)
+    range_e = nzrange(observed, entity)
+    lo0, hi0 = first(range_e), last(range_e)
+    colvals = observed.colval
+    is_observed = candidate -> @inbounds begin
+        lo, hi = lo0, hi0
+        while lo <= hi
+            mid = (lo + hi) >>> 1
+            c = colvals[mid]
+            if c < candidate
+                lo = mid + 1
+            elseif c > candidate
+                hi = mid - 1
+            else
+                return true
+            end
+        end
+        false
+    end
+
     # Rejection sampling is cheap for sparse rows and bounded for dense ones.
     for _ in 1:min(16, limit)
         candidate = Int(pool[rand(rng, 1:n_pool)])
-        is_observed = false
-        for idx in nzrange(observed, entity)
-            if Int(observed.colval[idx]) == candidate
-                is_observed = true
-                break
-            end
-        end
-        !is_observed && return candidate
+        is_observed(candidate) || return candidate
     end
 
     # Start at a random offset so the fallback does not always favor low IDs.
     start = rand(rng, 1:limit)
     for offset in 0:(limit - 1)
         candidate = mod1(start + offset, limit)
-        is_observed = false
-        for idx in nzrange(observed, entity)
-            if Int(observed.colval[idx]) == candidate
-                is_observed = true
-                break
-            end
-        end
-        !is_observed && return candidate
+        is_observed(candidate) || return candidate
     end
     throw(ArgumentError("no unobserved entity is available for LogisticMF negative sampling"))
 end

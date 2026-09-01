@@ -221,6 +221,27 @@ All roadmap items are complete. Only the release process gates remain
 
 ## Session log
 
+### 2026-08-31 — LMF: gather + BLAS GEMV entity updates (1.48×)
+Following the three-axis audit (column-major / dtype / BLAS), the lesson from
+the fast ALS family applied to LMF: the per-entity update now gathers the
+fixed factor columns into a contiguous per-thread buffer (k × max negatives),
+scores them with BLAS GEMV ('T'), applies the sigmoid elementwise, and
+accumulates the weighted column sum with a second GEMV ('N'). The random
+column loads are paid once per entity instead of per scalar loop, and all
+compute runs through BLAS. Sampling stays identical (same draws, same
+exclusive rejection sampler) — only the accumulation order changes (Float32
+noise, verified Δ ~1e-5 vs the scalar version with an A/B at three scales).
+- Found and fixed a sign bug caught by the correctness A/B (negatives must be
+  subtracted; the first prototype had accumulated them, making the earlier
+  1.45× measurement technically invalid — re-measured with the corrected
+  sign: the speedup holds at 1.48×).
+- Benchmark millions: 90.3s → 63.0s (1.43×); thousands 2.66s → 2.07s.
+- Correctness: full suite 17,462 green, doctests green, validation R + Python
+  green (LMF parity gate passes with the new accumulation order).
+- Honest gap status: implicit LMF still ~13-20× faster per epoch (C++ tight
+  loop, no exclusion), out of reach in pure Julia except a structural
+  rewrite; documented.
+
 ### 2026-08-31 — GloVe switched to Hogwild (measured trade)
 Experiment first, then decision: a prototype single-pass lock-free GloVe was
 measured against the deterministic 3-phase word-ownership scheme — 0.86× at

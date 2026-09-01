@@ -15,7 +15,9 @@ macro validate(name, ex)
     quote
         print("  ", $name, "... ")
         try
-            $(esc(ex))
+            let
+                $(esc(ex))
+            end
             println("OK")
         catch e
             println("FAILED: ", e)

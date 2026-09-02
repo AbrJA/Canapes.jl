@@ -353,16 +353,71 @@ end
 
 # ──────────────── CholeskySolver path ────────────────
 
+# Assemble the per-entity Gram + RHS for one Cholesky ALS entity update.
+# Implicit: gram += Σ (c_ui - 1) yᵢyᵢᵀ (batched syrk!), rhs = Σ c_ui yᵢ.
+# Explicit (BiasedMF): gram += Σ ỹᵢỹᵢᵀ, rhs = Σ ỹᵢ (r - μ - b_other_i); the
+# pinned 1 fills the bias row/col and the corner = n_obs + λ.
+@inline function _cholesky_assemble!(
+    gram::Matrix{T}, rhs::Vector{T}, Z::Matrix{T},
+    fixed_a::Matrix{T}, A::SparseMatrixCSC{Tv,Ti},
+    rv::Vector{Ti}, nz::Vector{Tv},
+    u::Int, is_implicit::Bool, k::Int, kdim::Int,
+    α::T, μ::T, bias_other::Vector{T}, Z_CAP::Int,
+) where {T,Tv,Ti}
+    if is_implicit
+        m = 0
+        for idx in nzrange(A, u)
+            i   = rv[idx]
+            rui = T(nz[idx])
+            cui = max(one(T), one(T) + α * rui)
+            sq  = sqrt(cui - one(T))
+            @inbounds for f in 1:k
+                sf = fixed_a[f, i]
+                Z[f, m+1] = sf * sq
+                rhs[f] += cui * sf
+            end
+            m += 1
+            if m == Z_CAP
+                BLAS.syrk!('U', 'N', one(T), Z, one(T), gram)
+                m = 0
+            end
+        end
+        if m > 0
+            BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), gram)
+        end
+    else
+        m = 0
+        for idx in nzrange(A, u)
+            i   = rv[idx]
+            resid = T(nz[idx]) - μ - bias_other[i]
+            @inbounds for f in 1:kdim
+                sf = fixed_a[f, i]
+                Z[f, m+1] = sf
+                rhs[f] += resid * sf
+            end
+            m += 1
+            if m == Z_CAP
+                BLAS.syrk!('U', 'N', one(T), Z, one(T), gram)
+                m = 0
+            end
+        end
+        if m > 0
+            BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), gram)
+        end
+    end
+    nothing
+end
+
 function _als_sweep_cholesky!(
     model::WMF{T},
-    A::SparseMatrixCSC,
+    A::SparseMatrixCSC{Tv,Ti},
     factors::Matrix{T},
     fixed::Matrix{T},
     n_entities::Int,
     ws,
     bias_out::Vector{T},
     bias_other::Vector{T},
-) where {T}
+) where {T,Tv,Ti}
     k = model.rank
     λ = model.λ
     α = model.α
@@ -425,50 +480,8 @@ function _als_sweep_cholesky!(
         copyto!(gram, base_gram)
         fill!(rhs, zero(T))
 
-        if is_implicit
-            # Batched gather + syrk!: gram += Σ (cui - 1) yᵢyᵢᵀ, rhs = Σ cui yᵢ
-            m = 0
-            for idx in nzrange(A, u)
-                i   = rv[idx]
-                rui = T(nz[idx])
-                cui = max(one(T), one(T) + α * rui)
-                sq  = sqrt(cui - one(T))
-                @inbounds for f in 1:k
-                    sf = fixed_a[f, i]
-                    Z[f, m+1] = sf * sq
-                    rhs[f] += cui * sf
-                end
-                m += 1
-                if m == Z_CAP
-                    BLAS.syrk!('U', 'N', one(T), Z, one(T), gram)
-                    m = 0
-                end
-            end
-            if m > 0
-                BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), gram)
-            end
-        else
-            # BiasedMF: gram += Σ ỹᵢỹᵢᵀ, rhs = Σ ỹᵢ (r - μ - b_other_i)
-            # (the pinned 1 fills the bias row/col and the corner = n_obs + λ)
-            m = 0
-            for idx in nzrange(A, u)
-                i   = rv[idx]
-                resid = T(nz[idx]) - μ - bias_other[i]
-                @inbounds for f in 1:kdim
-                    sf = fixed_a[f, i]
-                    Z[f, m+1] = sf
-                    rhs[f] += resid * sf
-                end
-                m += 1
-                if m == Z_CAP
-                    BLAS.syrk!('U', 'N', one(T), Z, one(T), gram)
-                    m = 0
-                end
-            end
-            if m > 0
-                BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), gram)
-            end
-        end
+        _cholesky_assemble!(gram, rhs, Z, fixed_a, A, rv, nz, u,
+                            is_implicit, k, kdim, α, μ, bias_other, Z_CAP)
 
         # Mirror upper triangle
         LinearAlgebra.copytri!(gram, 'U')
@@ -563,16 +576,42 @@ end
 
 # ──────────────── Conjugate Gradient path ────────────────
 
+# Fill the CG RHS, neighbor indices and per-item weights for one entity.
+# Implicit: w = c_ui - 1, rhs += c_ui·yᵢ. Explicit: w = 1, rhs += (r-μ-b)·ỹᵢ.
+@inline function _cg_assemble!(
+    rhs::Vector{T}, idxs::Vector{Int}, wgts::Vector{T},
+    fixed_a::Matrix{T}, A::SparseMatrixCSC{Tv,Ti},
+    rv::Vector{Ti}, nz::Vector{Tv},
+    u::Int, col_range::AbstractRange{<:Integer},
+    is_implicit::Bool, α::T, μ::T, bias_other::Vector{T},
+) where {T,Tv,Ti}
+    for (pos, idx) in enumerate(col_range)
+        i   = rv[idx]
+        rui = T(nz[idx])
+        idxs[pos] = i
+        if is_implicit
+            cui = max(one(T), one(T) + α * rui)
+            wgts[pos] = cui - one(T)
+            BLAS.axpy!(cui, @view(fixed_a[:, i]), rhs)
+        else
+            wgts[pos] = one(T)
+            resid = rui - μ - bias_other[i]
+            BLAS.axpy!(resid, @view(fixed_a[:, i]), rhs)
+        end
+    end
+    nothing
+end
+
 function _als_sweep_cg!(
     model::WMF{T},
-    A::SparseMatrixCSC,
+    A::SparseMatrixCSC{Tv,Ti},
     factors::Matrix{T},
     fixed::Matrix{T},
     n_entities::Int,
     ws,
     bias_out::Vector{T},
     bias_other::Vector{T},
-) where {T}
+) where {T,Tv,Ti}
     k = model.rank
     λ = model.λ
     α = model.α
@@ -626,20 +665,8 @@ function _als_sweep_cg!(
         col_range = nzrange(A, u)
         n_nz = length(col_range)
 
-        for (pos, idx) in enumerate(col_range)
-            i   = rv[idx]
-            rui = T(nz[idx])
-            idxs[pos] = i
-            if is_implicit
-                cui = max(one(T), one(T) + α * rui)
-                wgts[pos] = cui - one(T)
-                BLAS.axpy!(cui, @view(fixed_a[:, i]), rhs)
-            else
-                wgts[pos] = one(T)
-                resid = rui - μ - bias_other[i]
-                BLAS.axpy!(resid, @view(fixed_a[:, i]), rhs)
-            end
-        end
+        _cg_assemble!(rhs, idxs, wgts, fixed_a, A, rv, nz, u, col_range,
+                      is_implicit, α, μ, bias_other)
 
         # Warm start: previous factor column (and bias slot) as the CG
         # initial guess — converges faster and never starts from garbage.

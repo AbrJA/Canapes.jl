@@ -51,6 +51,19 @@ function SlopeOne(; verbose::Bool=true, T::Type{<:AbstractFloat}=Float32)
                 Matrix{T}(undef, 0, 0), T[], false)
 end
 
+# Accumulate pair differences dev(i,j) and co-occurrence counts freq(i,j)
+# from one user's CSR row (items `it`, ratings `rv` of length m).
+@inline function _slopeone_accumulate!(
+    dev::Matrix{T}, freq::Matrix{Int}, it::Vector{Int}, rv::Vector{T}, m::Int,
+) where {T}
+    @inbounds for a in 1:m, b in 1:m
+        a == b && continue
+        dev[it[a], it[b]] += rv[a] - rv[b]
+        freq[it[a], it[b]] += 1
+    end
+    nothing
+end
+
 function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
               callbacks::Vector{<:AbstractCallback}=AbstractCallback[]) where {T,Tv,Ti}
@@ -62,7 +75,7 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
     try
-    dev = zeros(T, n_items, n_items)
+    dev = fill(zero(T), n_items, n_items)
     freq = zeros(Int, n_items, n_items)
 
     user_mean = zeros(T, n_users)
@@ -93,11 +106,7 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
             rv[p] = T(X_csr.nzval[idx])
             p += 1
         end
-        for a in 1:m, b in 1:m
-            a == b && continue
-            dev[it[a], it[b]] += rv[a] - rv[b]
-            freq[it[a], it[b]] += 1
-        end
+        _slopeone_accumulate!(dev, freq, it, rv, m)
     end
 
     # normalize into means (Surprise semantics): divide the upper triangle by
@@ -117,7 +126,7 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     # co-occurrence), so the numerator can accumulate over contiguous columns
     # of `dev` directly; only the relevant-count mask is materialized.
     # Column-major iteration (j outer, i inner) keeps freq/mask access contiguous.
-    mask = zeros(T, n_items, n_items)
+    mask = fill(zero(T), n_items, n_items)
     @inbounds for j in 1:n_items, i in 1:n_items
         freq[i, j] > 0 && (mask[i, j] = one(T))
     end

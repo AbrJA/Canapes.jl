@@ -483,10 +483,16 @@ Records (git SHA, environment, config, metrics) accumulate in
 ## Testing
 
 ```bash
-julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'
+julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'                 # full suite
+TEST_SUITE=fast julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'  # fast (skip Aqua/JET, docs, GPU)
 ```
 
-The suite runs **17,450 tests** in ~3 minutes, covering:
+The full suite runs **17,450 tests** in ~5 minutes; the fast suite (~2.5 min)
+skips only the slow static-analysis, documentation-validation and GPU blocks
+and still covers every algorithm, metric, property, fixture and contract test.
+CI runs the full suite.
+
+Covering:
 
 - Unit correctness for all 15 algorithms (dimensions, NaN/Inf guards, convergence)
 - Pure-Julia fixtures ported from `implicit` + reference-style recommender contracts

@@ -14,9 +14,17 @@ using Aqua
 using JET
 using Pkg
 
+# Full vs fast suite: heavy static-analysis (Aqua/JET), docs-validation, and
+# GPU tests only run under TEST_SUITE=full (the default). Set TEST_SUITE=fast
+# for quick local iteration (~2 min): it still runs every algorithm, metric,
+# property, fixture and contract test.
+const TEST_FULL = get(ENV, "TEST_SUITE", "full") == "full"
+
 @testset verbose=true "Canapes.jl" begin
-    @testset "Quality" begin
-        include("test_quality.jl")
+    if TEST_FULL
+        @testset "Quality" begin
+            include("test_quality.jl")
+        end
     end
     @testset "Types & Utils" begin
         include("test_utils.jl")
@@ -84,9 +92,11 @@ using Pkg
     @testset "Properties" begin
         include("test_properties.jl")
     end
-    @testset "Docs examples" begin
-        include("validate_docs.jl")
-        @test !failed
+    if TEST_FULL
+        @testset "Docs examples" begin
+            include("validate_docs.jl")
+            @test !failed
+        end
     end
     @testset "Tables" begin
         include("test_tables.jl")
@@ -94,8 +104,10 @@ using Pkg
     @testset "Concurrency" begin
         include("test_concurrency.jl")
     end
-    @testset "GPU" begin
-        include("test_gpu.jl")
+    if TEST_FULL
+        @testset "GPU" begin
+            include("test_gpu.jl")
+        end
     end
     @testset "Coverage" begin
         include("test_coverage.jl")

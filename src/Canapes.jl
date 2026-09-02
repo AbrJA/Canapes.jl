@@ -31,6 +31,7 @@ include("algorithms/admmslim.jl")
 include("algorithms/knn.jl")
 include("algorithms/rp3beta.jl")
 include("algorithms/soft_impute.jl")
+include("algorithms/explicit_models.jl")
 
 # ── Experimental algorithms (namespaced, not in root exports) ──
 include("experimental.jl")
@@ -77,6 +78,9 @@ export
     SoftImpute,
     SoftSVD,
     PureSVD,
+    BaselineOnly,
+    SlopeOne,
+    PearsonKNN,
 
     # Namespaced experimental models (Canapes.Experimental.LogisticMF)
     Experimental,

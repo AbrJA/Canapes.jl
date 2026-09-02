@@ -57,6 +57,17 @@ import PrecompileTools: @setup_workload, @compile_workload
         fit!(m_rw, X_small)
         recommend(m_rw, X_small; k=3)
 
+        # Explicit models
+        m_baseline = BaselineOnly(max_iter=2, verbose=false)
+        fit!(m_baseline, X_small)
+        predict(m_baseline, X_small)
+        m_slope = SlopeOne(verbose=false)
+        fit!(m_slope, X_small)
+        predict(m_slope, X_small)
+        m_pearson = PearsonKNN(k=3, verbose=false)
+        fit!(m_pearson, X_small)
+        predict(m_pearson, X_small)
+
         # LogisticMF (experimental)
         m_lmf = Experimental.LogisticMF(rank=4, max_iter=2, verbose=false)
         fit!(m_lmf, X_small; rng=MersenneTwister(7))

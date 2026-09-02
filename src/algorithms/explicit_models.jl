@@ -410,8 +410,6 @@ mutable struct PearsonKNN{T<:AbstractFloat} <: AbstractExplicitModel
     user_mean::Vector{T}
     centered::SparseMatrixCSC{T,Int}          # r_ui - r̄_u
     neighbors::Vector{Vector{Pair{Int,T}}}    # top-k (v, sim) per user, sim > 0
-    weights::SparseMatrixCSC{T,Int}           # W[u, v] = sim(u, v)
-    denominator::Vector{T}                    # Σ_v |sim(u, v)|
     is_fitted::Bool
 end
 
@@ -424,7 +422,7 @@ function PearsonKNN(;
     k >= 1 || throw(ArgumentError("k must be ≥ 1, got $k"))
     min_k >= 1 || throw(ArgumentError("min_k must be ≥ 1, got $min_k"))
     PearsonKNN{T}(k, min_k, verbose, T[], spzeros(T, 0, 0),
-                  Vector{Pair{Int,T}}[], spzeros(T, 0, 0), T[], false)
+                  Vector{Pair{Int,T}}[], false)
 end
 
 function fit!(model::PearsonKNN{T}, X::SparseMatrixCSC{Tv,Ti};
@@ -466,15 +464,14 @@ function fit!(model::PearsonKNN{T}, X::SparseMatrixCSC{Tv,Ti};
     neighbors = Vector{Vector{Pair{Int,T}}}(undef, n_users)
 
     nt = Threads.nthreads()
-    local_rows = _thread_buffers(() -> Int[], nt)
-    local_cols = _thread_buffers(() -> Int[], nt)
-    local_vals = _thread_buffers(() -> T[], nt)
-    local_den  = [zeros(T, n_users) for _ in 1:nt]
 
     Threads.@threads for chunk in 1:nt
         for u in _thread_chunk_bounds(chunk, n_users, nt)
         nu = cnorm[u]
-        nu == zero(T) && (neighbors[u] = Pair{Int,T}[])
+        if nu == zero(T)
+            neighbors[u] = Pair{Int,T}[]
+            continue
+        end
         sims = Vector{Pair{Int,T}}()
         @inbounds for v in 1:n_users
             v == u && continue
@@ -487,38 +484,18 @@ function fit!(model::PearsonKNN{T}, X::SparseMatrixCSC{Tv,Ti};
             partialsort!(sims, 1:model.k; by=last, rev=true)
             resize!(sims, model.k)
         end
-        neighbor_count = length(sims)
         # if fewer than min_k positive neighbors, fall back to the user mean
-        if neighbor_count < model.min_k
-            neighbors[u] = Pair{Int,T}[]
-        else
-            neighbors[u] = sims
-            den = local_den[chunk]
-            for (v, s) in sims
-                den[u] += abs(s)
-                push!(local_rows[chunk], u)
-                push!(local_cols[chunk], v)
-                push!(local_vals[chunk], s)
-            end
-        end
+        neighbors[u] = length(sims) < model.min_k ? Pair{Int,T}[] : sims
         end
     end
-
-    weights = sparse(reduce(vcat, local_rows), reduce(vcat, local_cols),
-                     reduce(vcat, local_vals), n_users, n_users)
-    denom = sum(local_den)  # Σ|sim| per user
 
     model.user_mean = user_mean
     model.centered = centered
     model.neighbors = neighbors
-    model.weights = weights
-    model.denominator = denom
     model.is_fitted = true
     model
     catch
         model.user_mean, model.centered, model.neighbors = old
-        model.weights = spzeros(T, 0, 0)
-        model.denominator = T[]
         model.is_fitted = false
         rethrow()
     finally
@@ -556,20 +533,41 @@ function predict(model::PearsonKNN{T}, X::SparseMatrixCSC) where {T}
         "X has $n_u users but the fitted model has $(length(model.user_mean))"))
     n_i == size(model.centered, 2) || throw(DimensionMismatch(
         "X has $n_i items but the fitted model has $(size(model.centered, 2))"))
-    # N[u, i] = Σ_v W[u, v] · C[v, i]; ŷ = r̄_u + N[u,i] / denom[u,i], where
-    # denom counts only neighbors v that rated item i (Surprise semantics:
-    # a neighbor without a rating contributes nothing to either side).
-    N = Matrix{T}(model.weights * model.centered)
-    israted = SparseMatrixCSC(size(model.centered, 1), size(model.centered, 2),
-                              model.centered.colptr, model.centered.rowval,
-                              fill(one(T), nnz(model.centered)))
-    denom = Matrix{T}(model.weights * israted)
-    @inbounds for u in 1:n_u
-        μu = model.user_mean[u]
-        for i in 1:n_i
-            du = denom[u, i]
-            N[u, i] = du > zero(T) ? μu + N[u, i] / du : μu
+
+    # Fused single pass per user (threaded): for each neighbor v, scatter
+    # sim(u,v) · C[v, i] into num[i] and sim(u,v) into cnt[i] over the items v
+    # rated. ŷ = r̄_u + num/cnt where cnt > 0 (Surprise semantics: a neighbor
+    # without a rating contributes to neither side).
+    S = Matrix{T}(undef, n_u, n_i)
+    cent_csr = to_csr(model.centered)
+    nt = Threads.nthreads()
+    num_bufs = _thread_buffers(() -> Vector{T}(undef, n_i), nt)
+    cnt_bufs = _thread_buffers(() -> Vector{T}(undef, n_i), nt)
+
+    Threads.@threads for chunk in 1:nt
+        num = num_bufs[chunk]
+        cbuf = cnt_bufs[chunk]
+        for u in _thread_chunk_bounds(chunk, n_u, nt)
+            μu = model.user_mean[u]
+            nbrs = model.neighbors[u]
+            if isempty(nbrs)
+                fill!(view(S, u, :), μu)
+                continue
+            end
+            fill!(num, zero(T))
+            fill!(cbuf, zero(T))
+            @inbounds for (v, s) in nbrs
+                for idx in nzrange(cent_csr, v)
+                    i = Int(cent_csr.colval[idx])
+                    c = cent_csr.nzval[idx]
+                    num[i] += s * c
+                    cbuf[i] += s
+                end
+            end
+            @inbounds for i in 1:n_i
+                S[u, i] = cbuf[i] > zero(T) ? μu + num[i] / cbuf[i] : μu
+            end
         end
     end
-    N
+    S
 end

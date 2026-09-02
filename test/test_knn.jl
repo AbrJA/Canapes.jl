@@ -111,3 +111,32 @@ end
 
     @test m1.W ≈ m2.W
 end
+
+@testset "Asymmetric cosine & BM25 similarities" begin
+    rng = MersenneTwister(42)
+    X = sprand(rng, 60, 40, 0.08)
+    for sim in (:asym_cosine, :bm25)
+        m = ItemKNN(k=15, similarity=sim, verbose=false)
+        fit!(m, X)
+        @test size(m.W) == (40, 40)
+        @test all(isfinite, nonzeros(m.W))
+        @test all(nonzeros(m.W) .>= 0)
+        @test size(recommend(m, X; k=5)) == (60, 5)
+        # score equals the dense product
+        @test Matrix(score(m, X)) ≈ Matrix(X * Matrix(m.W))
+    end
+
+    # asym_cosine(α = 0.5) on binary data equals cosine exactly:
+    # cosine denom is ‖i‖·‖j‖ = √deg_i·√deg_j for 0/1 vectors
+    X_b = copy(X); nonzeros(X_b) .= 1.0
+    m_ac = ItemKNN(k=15, similarity=:asym_cosine, asym_alpha=0.5, verbose=false)
+    fit!(m_ac, X_b)
+    m_co = ItemKNN(k=15, similarity=:cosine, shrinkage=0.0, verbose=false)
+    fit!(m_co, X_b)
+    @test m_ac.W ≈ m_co.W
+
+    @test_throws ArgumentError ItemKNN(similarity=:asym_cosine, asym_alpha=0.0)
+    @test_throws ArgumentError ItemKNN(similarity=:asym_cosine, asym_alpha=1.5)
+    @test_throws ArgumentError ItemKNN(similarity=:bm25, k1=0.0)
+    @test_throws ArgumentError ItemKNN(similarity=:bm25, b=1.5)
+end

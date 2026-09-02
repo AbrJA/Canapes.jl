@@ -23,13 +23,16 @@ No training loop — similarity is computed in a single pass.
 
 # Constructor
 ```julia
-ItemKNN(; k=20, similarity=:cosine, shrinkage=0.0, normalize=true)
+ItemKNN(; k=20, similarity=:cosine, shrinkage=0.0, asym_alpha=0.5,
+          k1=1.2, b=0.75, normalize=true)
 ```
 
 # Fields
 - `k::Int` — number of neighbors to retain per item
-- `similarity::Symbol` — `:cosine` or `:jaccard`
+- `similarity::Symbol` — `:cosine`, `:jaccard`, `:asym_cosine` or `:bm25`
 - `shrinkage::T` — additive shrinkage to denominator (regularizes rare items)
+- `asym_alpha::T` — asymmetry exponent for `:asym_cosine` (0.5 = symmetric binary cosine; values below 0.5 favor niche candidates)
+- `k1::T`, `b::T` — BM25 parameters for `:bm25` (saturation and length normalization; standard IR values 1.2 / 0.75)
 - `normalize::Bool` — row-normalize the similarity matrix (divide by row sum)
 - `W::SparseMatrixCSC{T,Int}` — sparse item-item similarity matrix after fitting
 
@@ -53,6 +56,9 @@ mutable struct ItemKNN{T<:AbstractFloat} <: AbstractItemSimilarity
     const k::Int
     const similarity::Symbol
     const shrinkage::T
+    const asym_alpha::T
+    const k1::T
+    const b::T
     const normalize::Bool
     const verbose::Bool
     W::SparseMatrixCSC{T,Int}
@@ -63,15 +69,22 @@ function ItemKNN(;
     k::Int = 20,
     similarity::Symbol = :cosine,
     shrinkage::Float64 = 0.0,
+    asym_alpha::Float64 = 0.5,
+    k1::Float64 = 1.2,
+    b::Float64 = 0.75,
     normalize::Bool = true,
     verbose::Bool = true,
     T::Type{<:AbstractFloat} = Float32,
 )
     k >= 1 || throw(ArgumentError("k must be ≥ 1, got $k"))
-    similarity in (:cosine, :jaccard) || throw(ArgumentError("similarity must be :cosine or :jaccard, got :$similarity"))
+    similarity in (:cosine, :jaccard, :asym_cosine, :bm25) ||
+        throw(ArgumentError("similarity must be :cosine, :jaccard, :asym_cosine or :bm25, got :$similarity"))
     shrinkage >= 0.0 || throw(ArgumentError("shrinkage must be non-negative, got $shrinkage"))
-    ItemKNN{T}(k, similarity, T(shrinkage), normalize, verbose,
-               spzeros(T, 0, 0), false)
+    0.0 < asym_alpha <= 1.0 || throw(ArgumentError("asym_alpha must be in (0, 1], got $asym_alpha"))
+    k1 > 0.0 || throw(ArgumentError("k1 must be positive, got $k1"))
+    0.0 <= b <= 1.0 || throw(ArgumentError("b must be in [0, 1], got $b"))
+    ItemKNN{T}(k, similarity, T(shrinkage), T(asym_alpha), T(k1), T(b),
+               normalize, verbose, spzeros(T, 0, 0), false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -100,8 +113,12 @@ function fit!(model::ItemKNN{T}, X::SparseMatrixCSC{Tv,Ti};
 
     if model.similarity == :cosine
         W = _cosine_knn(X, kn, T(model.shrinkage))
-    else  # :jaccard
+    elseif model.similarity == :jaccard
         W = _jaccard_knn(X, kn, T(model.shrinkage))
+    elseif model.similarity == :asym_cosine
+        W = _asym_cosine_knn(X, kn, T(model.shrinkage), model.asym_alpha)
+    else  # :bm25
+        W = _bm25_knn(X, kn, T(model.shrinkage), model.k1, model.b)
     end
 
     # Optional row-normalization: each row sums to 1
@@ -235,6 +252,145 @@ function _jaccard_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv
             intersection = Int(nonzeros(G)[idx])
             union_size = ni + nj - intersection
             sim = T(intersection) / (T(union_size) + shrinkage)
+            sim > zero(T) && push!(sims, i => sim)
+        end
+
+        if length(sims) > k
+            partialsort!(sims, 1:k; by=last, rev=true)
+            resize!(sims, k)
+        end
+
+        for (i, s) in sims
+            push!(local_rows[chunk], i)
+            push!(local_cols[chunk], j)
+            push!(local_vals[chunk], s)
+        end
+        end
+    end
+
+    all_rows = reduce(vcat, local_rows)
+    all_cols = reduce(vcat, local_cols)
+    all_vals = reduce(vcat, local_vals)
+    sparse(all_rows, all_cols, all_vals, n_items, n_items)
+end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Asymmetric cosine similarity (Aiolli 2013 / RecBole ACoS)
+# ──────────────────────────────────────────────────────────────────────────────
+
+function _asym_cosine_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T,
+                          alpha::T) where {Tv,Ti,T}
+    n_users, n_items = size(X)
+
+    col_nnz = Vector{Int}(undef, n_items)
+    @inbounds for j in 1:n_items
+        col_nnz[j] = length(nzrange(X, j))
+    end
+
+    X_bin = SparseMatrixCSC(n_users, n_items, X.colptr, rowvals(X), ones(Int, nnz(X)))
+    G = X_bin' * X_bin  # intersection counts
+
+    nt = Threads.nthreads()
+    local_rows = _thread_buffers(() -> Int[], nt)
+    local_cols = _thread_buffers(() -> Int[], nt)
+    local_vals = _thread_buffers(() -> T[], nt)
+
+    Threads.@threads for chunk in 1:nt
+        for j in _thread_chunk_bounds(chunk, n_items, nt)
+        nj = col_nnz[j]
+        nj == 0 && continue
+        denom_j = T(nj)^alpha
+
+        sims = Vector{Pair{Int,T}}()
+        for idx in nzrange(G, j)
+            i = rowvals(G)[idx]
+            i == j && continue
+            ni = col_nnz[i]
+            ni == 0 && continue
+            intersection = Int(nonzeros(G)[idx])
+            # asymmetric: the candidate item's popularity is exponentiated
+            # with (1-α) and the target's with α; α=0.5 reduces to binary cosine
+            sim = T(intersection) / (T(ni)^(one(T) - alpha) * denom_j + shrinkage)
+            sim > zero(T) && push!(sims, i => sim)
+        end
+
+        if length(sims) > k
+            partialsort!(sims, 1:k; by=last, rev=true)
+            resize!(sims, k)
+        end
+
+        for (i, s) in sims
+            push!(local_rows[chunk], i)
+            push!(local_cols[chunk], j)
+            push!(local_vals[chunk], s)
+        end
+        end
+    end
+
+    all_rows = reduce(vcat, local_rows)
+    all_cols = reduce(vcat, local_cols)
+    all_vals = reduce(vcat, local_vals)
+    sparse(all_rows, all_cols, all_vals, n_items, n_items)
+end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BM25 item similarity
+# ──────────────────────────────────────────────────────────────────────────────
+
+function _bm25_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T,
+                   k1::T, b::T) where {Tv,Ti,T}
+    n_users, n_items = size(X)
+
+    # Per-user frequency (document frequency of the "user-as-term" view): how
+    # many items the user interacted with.
+    user_df = zeros(Int, n_users)
+    @inbounds for j in 1:n_items
+        for idx in nzrange(X, j)
+            user_df[rowvals(X)[idx]] += 1
+        end
+    end
+
+    # IDF of a user spreads mass over few items: log((N - df + 0.5)/(df + 0.5))
+    idf = Vector{T}(undef, n_users)
+    @inbounds for u in 1:n_users
+        df = user_df[u]
+        idf[u] = df > 0 ? T(log((n_items - df + 0.5) / (df + 0.5))) : zero(T)
+    end
+
+    # Weighted Gram: G[i, j] = Σ_{u ∈ N(i)∩N(j)} idf_u  = (D^{1/2} X)' (D^{1/2} X)
+    rv = rowvals(X)
+    Xw = SparseMatrixCSC(n_users, n_items, X.colptr, rv,
+                         [T(sqrt(idf[rv[idx]])) for idx in 1:nnz(X)])
+    G = Xw' * Xw
+
+    col_nnz = Vector{Int}(undef, n_items)
+    @inbounds for j in 1:n_items
+        col_nnz[j] = length(nzrange(X, j))
+    end
+    avgdl = sum(col_nnz) / max(n_items, 1)
+
+    # Document-length normalization of the target item j (saturating at k1)
+    scale_j = Vector{T}(undef, n_items)
+    @inbounds for j in 1:n_items
+        len = col_nnz[j]
+        denom = len > 0 ? k1 * (one(T) - b + b * T(len) / T(max(avgdl, 1))) + one(T) : one(T)
+        scale_j[j] = (k1 + one(T)) / (denom + shrinkage)
+    end
+
+    nt = Threads.nthreads()
+    local_rows = _thread_buffers(() -> Int[], nt)
+    local_cols = _thread_buffers(() -> Int[], nt)
+    local_vals = _thread_buffers(() -> T[], nt)
+
+    Threads.@threads for chunk in 1:nt
+        for j in _thread_chunk_bounds(chunk, n_items, nt)
+        col_nnz[j] == 0 && continue
+
+        sims = Vector{Pair{Int,T}}()
+        for idx in nzrange(G, j)
+            i = rowvals(G)[idx]
+            i == j && continue
+            sim = T(nonzeros(G)[idx]) * scale_j[j]
             sim > zero(T) && push!(sims, i => sim)
         end
 

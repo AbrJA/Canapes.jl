@@ -3,6 +3,7 @@ using Canapes
 # Names that are internal (not exported) but exercised directly by the tests.
 using Canapes.Links: Binomial, Gaussian, Poisson
 using Canapes.Sampling: Popular, Dynamic
+using Canapes.Experimental: LogisticMF
 using Canapes: init_factors, sigmoid,
               dual_representation, sparse_row_norms, sparse_col_nnz, sparse_row_nnz, run_callbacks
 using SparseArrays
@@ -55,6 +56,9 @@ using Pkg
     end
     @testset "ItemKNN" begin
         include("test_knn.jl")
+    end
+    @testset "RandomWalk" begin
+        include("test_randomwalk.jl")
     end
     @testset "SoftImpute" begin
         include("test_soft_impute.jl")

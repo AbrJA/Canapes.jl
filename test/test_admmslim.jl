@@ -77,15 +77,23 @@ end
     @test recommend(m_dense, X; k=5) ==
           Canapes._predict_batched_gemm_topk(X, Matrix(m_dense.W), 5)
 
-    # Truly sparse W (high λ_l1) → sparse-score path
+    # Path selection is a pure function of (W, X): hand-crafted sparse W must
+    # take the sparse path regardless of how fit!'s adaptive ρ shaped W.
     m_sparse = ADMMSLIM(λ_l1=0.5, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_sparse, X)
+    m_sparse.W = sparse([1.0f0], [2], [1], 20, 20)
+    m_sparse.is_fitted = true
     @test Canapes._use_sparse_score_path(m_sparse.W, X)
     @test recommend(m_sparse, X; k=5) ==
           Canapes._predict_sparse_score_topk(X * m_sparse.W, X, 5)
 
-    # Both paths agree with the dense score product up to FP accumulation order
+    # Whatever sparsity fit! produced, recommend must agree with the chosen
+    # path and with the dense score product up to FP accumulation order
     for m in (m_dense, m_sparse)
+        ref = Canapes._use_sparse_score_path(m.W, X) ?
+              Canapes._predict_sparse_score_topk(X * m.W, X, 5) :
+              Canapes._predict_batched_gemm_topk(X, Matrix(m.W), 5)
+        @test recommend(m, X; k=5) == ref
         @test Matrix(score(m, X)) ≈ Matrix(X * Matrix(m.W))
     end
 end
@@ -162,4 +170,19 @@ end
     @test_throws ArgumentError ADMMSLIM(λ_l1=-0.1)
     @test_throws ArgumentError ADMMSLIM(λ_l2=-1.0)
     @test_throws ArgumentError ADMMSLIM(ρ=0.0)
+end
+
+@testset "Adaptive penalty" begin
+    rng = MersenneTwister(7)
+    X = sprand(rng, 60, 25, 0.15)
+    m1 = ADMMSLIM(λ_l1=0.01, λ_l2=50.0, ρ=1.0, max_iter=30, verbose=false)
+    m2 = ADMMSLIM(λ_l1=0.01, λ_l2=50.0, ρ=1.0, max_iter=30, verbose=false)
+    fit!(m1, X)
+    fit!(m2, X)
+    # identical inputs (no rng dependence) → identical fits
+    @test m1.W ≈ m2.W
+    # ρ is recorded within the adaptive-ρ bounds
+    @test 1e-3 <= m1.ρ <= 1e4
+    @test all(isfinite, nonzeros(m1.W))
+    @test recommend(m1, X; k=5) == recommend(m2, X; k=5)
 end

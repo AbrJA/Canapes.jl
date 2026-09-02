@@ -9,15 +9,16 @@ A high-performance Julia package for sparse matrix factorization, collaborative 
 - **IALS** — Implicit ALS with Gramian caching (Rendle et al. 2021)
 - **EALS** — Element-wise ALS with popularity-based weighting (He et al. 2016)
 - **BPR** — Bayesian Personalized Ranking (pairwise learning)
-- **LogisticMF** — Logistic Matrix Factorization with negative sampling
+
 - **GloVe** — Global Vectors for word/item embeddings
-- **SoftImpute / SoftSVD / PureSVD** — Nuclear-norm regularized matrix completion
+- **SoftImpute / SoftSVD / PureSVD** — Nuclear-norm regularized matrix completion (explicit ratings)
 
 ### Item Similarity
 - **EASE** — Embarrassingly Shallow Autoencoders (closed-form)
 - **SLIM** — Sparse Linear Methods (elastic-net, coordinate descent)
-- **ADMMSLIM** — ADMM-based SLIM (10-100× faster than SLIM)
-- **ItemKNN** — Item-based K-Nearest Neighbors (cosine / Jaccard)
+- **ADMMSLIM** — ADMM-based SLIM (dense joint solve)
+- **ItemKNN** — Item-based K-Nearest Neighbors (cosine / Jaccard / asymmetric / BM25)
+- **RandomWalk** — RP3β 3-step graph random walk with long-tail bias
 
 ### Regression
 - **FTRL** — Follow The Regularized Leader (Binomial, Gaussian, Poisson)
@@ -91,9 +92,9 @@ The type hierarchy uses Julia's dispatch to provide default implementations:
 ```
 AbstractSparseModel
 ├── AbstractRecommender
-│   ├── AbstractMatrixFactorization   # WMF, IALS, EALS, LogisticMF, BPR, GloVe
+│   ├── AbstractMatrixFactorization   # WMF, IALS, EALS, BPR, GloVe
 │   │   └── AbstractSoftALS           # SoftImpute, SoftSVD, PureSVD
-│   └── AbstractItemSimilarity        # EASE, SLIM, ADMMSLIM, ItemKNN
+│   └── AbstractItemSimilarity        # EASE, SLIM, ADMMSLIM, ItemKNN, RandomWalk
 └── AbstractSparseRegression          # FTRL, FM
 ```
 

@@ -40,7 +40,7 @@ ADMMSLIM(; λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, tol=1e-4,
 - `λ_l2::T` — L2 penalty (shrinkage / regularization)
 - `ρ::T` — ADMM penalty parameter (controls convergence speed)
 - `max_iter::Int` — max ADMM iterations
-- `tol::T` — relative primal residual tolerance
+- `tol::T` — relative primal-residual and solution-drift tolerance (both must be met)
 - `nonnegative::Bool` — enforce non-negative weights
 - `max_memory::Union{Nothing,Int}` — fit-time peak-memory limit in bytes
   (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
@@ -81,7 +81,7 @@ julia> size(preds)
 mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const λ_l1::T
     const λ_l2::T
-    const ρ::T
+    ρ::T
     const max_iter::Int
     const tol::T
     const nonnegative::Bool
@@ -90,6 +90,10 @@ mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     W::SparseMatrixCSC{T,Int}
     is_fitted::Bool
 end
+
+# Dense n_items² working matrices during fit!: G, lhs, Cholesky factor, B,
+# Z, Z_prev, U (the fitted W is built afterwards as sparse).
+const _ADMMSLIM_DENSE_MATRICES = 7
 
 function ADMMSLIM(;
     λ_l1::Float64 = 0.01,
@@ -120,10 +124,25 @@ end
 
 Fit ADMM-SLIM on interaction matrix `X` (users × items).
 
-Computes the Gram matrix once, pre-factors `(G + ρI)`, then iterates ADMM:
+Computes the Gram matrix once, pre-factors `(G + (λ_l2+ρ)I)`, then iterates ADMM:
 - B-update: solve linear system (pre-factored Cholesky)
 - Z-update: soft-thresholding (proximal L1) + optional non-negativity
 - U-update: dual variable accumulation
+
+Convergence is monitored on the primal residual (`‖B-Z‖`) and on the solution
+drift (`‖Z-Z_prev‖/‖Z‖`; the ADMM dual residual `ρ‖Z-Z_prev‖` is used for the
+ρ-adaptation instead, since it grows with ρ and would never satisfy a fixed
+tolerance). The penalty `ρ` adapts per Boyd et al. (2011): doubled when the
+primal residual dominates, halved when the dual dominates, with the Cholesky
+factor re-computed whenever `ρ` changes.
+
+The B-update solves the dense positive-definite system `(G + (λ₂+ρ)I) B = rhs`
+directly via the pre-factored Cholesky. This is intentional: the Gram matrix
+`G = XᵀX` of typical implicit interaction data is nearly dense (99.9% for
+MovieLens-1M), so an iterative per-column solver (CG/PCG) would cost
+`nnz(G)·cg_iters` per column — 5-10× more than the direct substitution at the
+scales where ADMMSLIM is usable. SLIM (coordinate descent, per-item) and EASE
+(one-shot dense solve) remain the preferred models at movie-scale item counts.
 """
 function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
@@ -132,6 +151,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     λ_l1 = model.λ_l1
     λ_l2 = model.λ_l2
     ρ = model.ρ
+    old_ρ = model.ρ
     old_W = model.W
     old_is_fitted = model.is_fitted
     model.is_fitted = false
@@ -139,9 +159,10 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     _require_nonempty_dimensions(X, "ADMMSLIM")
     _require_finite_input(X, "ADMMSLIM")
 
-    # Peak fit memory: G, lhs, Cholesky factor, B, Z, U — six dense n_items²
-    # matrices (the fitted W is built afterwards as sparse).
-    _require_fit_memory(_fit_memory_estimate(n_items, 6, T), model.max_memory, "ADMMSLIM")
+    # Peak fit memory: G, lhs, Cholesky factor, B, Z, Z_prev, U — seven dense
+    # n_items² matrices (the fitted W is built afterwards as sparse).
+    _require_fit_memory(_fit_memory_estimate(n_items, _ADMMSLIM_DENSE_MATRICES, T),
+                        model.max_memory, "ADMMSLIM")
 
     model.verbose && @info "[ADMM-SLIM] Computing Gram matrix ($n_items × $n_items)..."
 
@@ -166,8 +187,11 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     B = fill(zero(T), n_items, n_items)
     Z = fill(zero(T), n_items, n_items)
     U = fill(zero(T), n_items, n_items)  # scaled dual variable
+    Z_prev = fill(zero(T), n_items, n_items)  # for the dual residual
 
     for iter in 1:model.max_iter
+        copyto!(Z_prev, Z)
+
         # ── B-update: B = (G + (λ₂+ρ)I)⁻¹ (G + ρ(Z - U)) ──
         rhs = G .+ ρ .* (Z .- U)
         B .= C \ rhs
@@ -209,28 +233,64 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
         # ── U-update: dual variable ──
         U .+= B .- Z
 
-        # ── Convergence check: relative primal residual ──
+        # ── Residuals: primal ‖B-Z‖; drift ‖Z-Z_prev‖ (the true dual residual
+        # ρ‖Z-Z_prev‖ drives the ρ adaptation below, but as a stopping metric
+        # it grows with ρ and never meets a fixed tol — use drift instead) ──
         primal_resid = zero(T)
+        dual_resid = zero(T)
         norm_B = zero(T)
+        norm_Z = zero(T)
         @inbounds @simd for idx in eachindex(B)
-            d = B[idx] - Z[idx]
-            primal_resid += d * d
+            db = B[idx] - Z[idx]
+            primal_resid += db * db
+            dz = Z[idx] - Z_prev[idx]
+            dual_resid += dz * dz
             norm_B += B[idx] * B[idx]
+            norm_Z += Z[idx] * Z[idx]
         end
-        rel_resid = sqrt(primal_resid) / (sqrt(norm_B) + T(1e-12))
+        primal_rel = sqrt(primal_resid) / (sqrt(norm_B) + T(1e-12))
+        drift_rel = sqrt(dual_resid) / (sqrt(norm_Z) + T(1e-12))
+
+        # ── Adaptive ρ (Boyd et al. 2011): rebalance primal/dual residuals ──
+        # The Cholesky operator (G + (λ₂+ρ)I) depends on ρ, so a change
+        # refactorizes the dense system (≈ 1/6 the cost of one B-update).
+        if 10 * sqrt(primal_resid) > sqrt(dual_resid)
+            ρ_new = min(ρ * T(2.0), T(1e4))
+            if ρ_new != ρ
+                ρ_old = ρ
+                ρ = ρ_new
+                U .*= ρ_old / ρ
+                @inbounds for j in 1:n_items
+                    lhs[j, j] = G[j, j] + λ_l2 + ρ
+                end
+                C = cholesky(Symmetric(lhs))
+            end
+        elseif 10 * sqrt(dual_resid) > sqrt(primal_resid)
+            ρ_new = max(ρ * T(0.5), T(1e-3))
+            if ρ_new != ρ
+                ρ_old = ρ
+                ρ = ρ_new
+                U .*= ρ_old / ρ
+                @inbounds for j in 1:n_items
+                    lhs[j, j] = G[j, j] + λ_l2 + ρ
+                end
+                C = cholesky(Symmetric(lhs))
+            end
+        end
 
         if model.verbose && (iter <= 5 || iter % 10 == 0 || iter == model.max_iter)
             nnz_iter = count(>(T(1e-10)), Z)
-            @info "[ADMM-SLIM] iter=$iter  rel_resid=$(round(rel_resid; sigdigits=4))  nnz=$(nnz_iter)"
+            @info "[ADMM-SLIM] iter=$iter  primal=$(round(primal_rel; sigdigits=4))  drift=$(round(drift_rel; sigdigits=4))  ρ=$(round(ρ; sigdigits=3))  nnz=$(nnz_iter)"
         end
 
-        if rel_resid < model.tol
-            model.verbose && @info "[ADMM-SLIM] Converged at iteration $iter (rel_resid=$(round(rel_resid; sigdigits=4)))"
+        if primal_rel < model.tol && drift_rel < model.tol
+            model.verbose && @info "[ADMM-SLIM] Converged at iteration $iter (primal=$(round(primal_rel; sigdigits=4)), drift=$(round(drift_rel; sigdigits=4)))"
             break
         end
     end
 
     model.W = dropzeros!(sparse(Z))
+    model.ρ = ρ
     model.is_fitted = true
 
     nnz_w = nnz(model.W)
@@ -239,6 +299,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     model
     catch
         model.W = old_W
+        model.ρ = old_ρ
         model.is_fitted = old_is_fitted
         rethrow()
     end

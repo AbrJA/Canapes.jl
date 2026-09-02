@@ -94,11 +94,11 @@ end
     # (benfred/implicit#745: popularity-weighted measured better than uniform
     # on MovieLens-100k, so the weighting is kept).
     counts = Int[2, 5, 0, 3]
-    p, alias = Canapes._lmf_build_alias(counts, Float32)
+    p, alias = Canapes.Experimental._lmf_build_alias(counts, Float32)
     rng = MersenneTwister(1)
     freq = zeros(Int, 4)
     for _ in 1:500_000
-        freq[Canapes._lmf_sample_alias(rng, p, alias)] += 1
+        freq[Canapes.Experimental._lmf_sample_alias(rng, p, alias)] += 1
     end
     # never draws an entity with zero observations
     @test freq[3] == 0
@@ -114,4 +114,25 @@ end
 @testset "Empty input" begin
     @test_throws ArgumentError fit!(LogisticMF(rank=2, max_iter=1, verbose=false), spzeros(2, 2))
     @test_throws ArgumentError fit!(LogisticMF(rank=2, max_iter=1, verbose=false), spzeros(0, 2))
+end
+
+@testset "RMSProp optimizer" begin
+    rng = MersenneTwister(42)
+    X = sprand(rng, 80, 60, 0.05)
+    m = LogisticMF(rank=5, λ=0.01, lr=0.1, max_iter=5, optimizer=:rmsprop, verbose=false)
+    fit!(m, X; rng=MersenneTwister(1))
+    @test m.is_fitted
+    @test size(m.user_factors) == (5 + 2, 80)
+    @test all(isfinite, m.user_factors)
+    @test all(isfinite, m.item_factors)
+    # moves under a small learning rate where Adagrad stalls
+    ma = LogisticMF(rank=5, λ=0.01, lr=0.1, max_iter=5, optimizer=:adagrad, verbose=false)
+    fit!(ma, X; rng=MersenneTwister(1))
+    @test recommend(m, X; k=5) != recommend(ma, X; k=5) || m.user_factors != ma.user_factors
+end
+
+@testset "Optimizer validation" begin
+    @test LogisticMF(optimizer=:adagrad) isa LogisticMF
+    @test LogisticMF(optimizer=:rmsprop) isa LogisticMF
+    @test_throws ArgumentError LogisticMF(optimizer=:sgd)
 end

@@ -52,8 +52,13 @@ import PrecompileTools: @setup_workload, @compile_workload
         fit!(m_glove, C; rng=MersenneTwister(6))
         embeddings(m_glove)
 
-        # LogisticMF
-        m_lmf = LogisticMF(rank=4, max_iter=2, verbose=false)
+        # RandomWalk
+        m_rw = RandomWalk(β=0.0, k=3, verbose=false)
+        fit!(m_rw, X_small)
+        recommend(m_rw, X_small; k=3)
+
+        # LogisticMF (experimental)
+        m_lmf = Experimental.LogisticMF(rank=4, max_iter=2, verbose=false)
         fit!(m_lmf, X_small; rng=MersenneTwister(7))
 
         # FTRL

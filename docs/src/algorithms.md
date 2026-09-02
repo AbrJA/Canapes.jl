@@ -85,21 +85,51 @@ fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 ```
 
-### LogisticMF — Logistic Matrix Factorization
+### LogisticMF — Logistic Matrix Factorization *(experimental)*
+
+Demoted from the core catalog: reference-validated against `implicit`, but it
+ranks at the bottom of implicit Top-N benchmarks and requires fragile tuning.
+Access it via the Experimental namespace — it is not a root export.
 
 ```@docs
-LogisticMF
+Canapes.Experimental.LogisticMF
 ```
 
 #### Example
 
 ```julia
 using Canapes, SparseArrays, Random
+using Canapes.Experimental: LogisticMF
 X = sprand(MersenneTwister(1), 800, 300, 0.03)
 model = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5)
+# optimizer=:adagrad (default) reproduces implicit's lmf.pyx exactly;
+# optimizer=:rmsprop uses an EMA squared-gradient accumulator — recommended
+# when training with small learning rates for longer runs.
+model_rp = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.05, max_iter=50, optimizer=:rmsprop)
 fit!(model, X; rng=MersenneTwister(42))
+fit!(model_rp, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 scores = score(model, X)
+```
+
+### RandomWalk — RP3β Graph Random Walk
+
+```@docs
+RandomWalk
+```
+
+#### Example
+
+```julia
+using Canapes, SparseArrays, Random
+X = sprand(MersenneTwister(1), 2000, 1000, 0.01)
+
+# 3-step bipartite random walk with popularity penalization (RP3β).
+# No training loop; memory O(nnz); β > 0 boosts long-tail items.
+model = RandomWalk(α=1.0, β=0.6, k=200, verbose=false)
+fit!(model, X)
+preds = recommend(model, X; k=10)
+W = model.W   # sparse item×item walk matrix
 ```
 
 ### GloVe — Global Vectors
@@ -137,15 +167,19 @@ PureSVD
 using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 200, 150, 0.3)
 
-# SoftImpute: full imputation correction (better for missing data recovery)
+# SoftImpute: full imputation correction (explicit-ratings / completion only;
+# ranks below the popularity baseline on binarized implicit data)
 model = SoftImpute(rank=10, λ=0.5, max_iter=100)
 fit!(model, X; rng=MersenneTwister(1))
 
 # SoftSVD: power-iteration style (faster per iteration, good for implicit)
+# λ=1.0 is the default Ridge damping; pass λ=0.0 to fall back to pure
+# truncated SVD (equivalent to PureSVD).
 model_svd = SoftSVD(rank=10, λ=0.5, max_iter=100)
 fit!(model_svd, X; rng=MersenneTwister(1))
 
-# PureSVD: truncated SVD (no regularization, just rank reduction)
+# PureSVD: truncated SVD (no regularization, just rank reduction) —
+# a convenience alias for SoftSVD(λ=0, final_svd=false)
 model_pure = PureSVD(rank=10, max_iter=100)
 fit!(model_pure, X; rng=MersenneTwister(1))
 
@@ -206,7 +240,11 @@ using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
 # Same objective as SLIM but 10-100× faster via ADMM
-# ρ controls ADMM convergence speed
+# ρ controls ADMM convergence speed and adapts automatically (primal/dual
+# residual rebalancing, Boyd et al. 2011); convergence requires the primal
+# residual AND the solution drift below tol. The direct dense solve is used
+# deliberately: the Gram matrix of implicit data is ~99.9% dense, where
+# per-column CG/PCG is 5-10× more expensive than the Cholesky substitution.
 # Training memory is O(n_items²) (dense joint solve); prefer SLIM for very
 # large item counts. The fitted W is stored sparse: score returns SparseMatrixCSC.
 model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonnegative=true)

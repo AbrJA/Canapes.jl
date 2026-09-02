@@ -90,7 +90,7 @@ function benchmark_models(X; include_dense=true)
         (name="EALS", model=EALS(rank=64, max_iter=10, verbose=false)),
         (name="BPR", model=BPR(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
             lr=0.05, max_iter=10, verbose=false)),
-        (name="LogisticMF", model=LogisticMF(rank=64, λ=0.6, lr=1.0,
+        (name="LogisticMF", model=Canapes.Experimental.LogisticMF(rank=64, λ=0.6, lr=1.0,
             max_iter=10, n_negative=30, tol=-1.0, verbose=false)),
     ]
     include_dense || return models

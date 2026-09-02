@@ -29,6 +29,13 @@ At each iteration, the residual at observed positions is computed and folded
 into the ALS step (full imputation correction). This is the stronger mode
 that handles missing data properly.
 
+!!! note "Use case"
+    SoftImpute is a model for **explicit ratings and matrix completion** (its
+    loss is reconstruction error over observed entries), not for implicit
+    Top-N ranking. On binarized implicit data it ranks below the popularity
+    baseline in benchmarks — for implicit feedback use the item-similarity or
+    matrix-factorization models (EASE, SLIM, WMF, IALS).
+
 # Constructor
 ```julia
 SoftImpute(; rank=10, λ=0.0, max_iter=100, tol=1e-3,
@@ -101,9 +108,14 @@ Low-rank SVD via alternating least squares with Ridge damping. Power-iteration
 style — no imputation correction at observed entries. Faster per iteration than
 [`SoftImpute`](@ref) but assumes the observed entries are representative.
 
+The Ridge parameter `λ` damps the singular values at every ALS half-step
+(`d/(d+λ)`) and shrinks them in the final SVD (`max(S - λ, 0)`). Pass `λ=0.0`
+to recover plain truncated SVD — [`PureSVD`](@ref) is exactly
+`SoftSVD(λ=0, final_svd=false)`.
+
 # Constructor
 ```julia
-SoftSVD(; rank=10, λ=0.0, max_iter=100, tol=1e-3,
+SoftSVD(; rank=10, λ=1.0, max_iter=100, tol=1e-3,
           final_svd=true, verbose=true)
 ```
 
@@ -141,7 +153,7 @@ end
 
 function SoftSVD(;
     rank::Int = 10,
-    λ::Float64 = 0.0,
+    λ::Float64 = 1.0,
     max_iter::Int = 100,
     tol::Float64 = 1e-3,
     final_svd::Bool = true,
@@ -162,8 +174,9 @@ end
 """
     PureSVD(; rank=10, max_iter=100, tol=1e-3, verbose=true)
 
-Truncated SVD via power iteration. Equivalent to `SoftSVD(λ=0, final_svd=false)`.
-Computes the top-`rank` singular triplets of a sparse matrix.
+Truncated SVD via power iteration (Cremonesi et al. 2010). Equivalent to
+`SoftSVD(λ=0, final_svd=false)`. Computes the top-`rank` singular triplets of
+a sparse matrix.
 
 # Example
 ```julia

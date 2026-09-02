@@ -18,6 +18,13 @@ Links
 Sampling
 ```
 
+## Experimental
+
+```@docs
+Canapes.Experimental
+Canapes.Experimental.LogisticMF
+```
+
 ## Callbacks
 
 ```@autodocs

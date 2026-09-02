@@ -39,7 +39,7 @@ const SCORE_CASES = [
      min_overlap=_env_float("CANAPES_PY_EALS_MIN_OVERLAP", 0.10),
      max_ndcg=_env_float("CANAPES_PY_EALS_MAX_NDCG_DELTA", 0.06),
      max_recall=_env_float("CANAPES_PY_EALS_MAX_RECALL_DELTA", 0.06)),
-    (name="LogisticMF", model=() -> LogisticMF(rank=16, λ=0.6, α=1.0,
+    (name="LogisticMF", model=() -> Canapes.Experimental.LogisticMF(rank=16, λ=0.6, α=1.0,
                                                  lr=1.0, max_iter=30,
                                                  n_negative=30, verbose=false),
      scores_path="py_lmf_scores.csv", required=false, metrics_path="py_lmf_metrics.json",

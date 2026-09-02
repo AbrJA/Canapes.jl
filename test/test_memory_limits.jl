@@ -3,7 +3,6 @@
 # Dense n_items² matrices counted in each model's peak estimate (see fit!)
 const _EASE_MATRICES = 4
 const _SLIM_MATRICES = 2
-const _ADMMSLIM_MATRICES = 6
 
 @testset "Fit-time memory guard" begin
     @testset "estimate helper" begin
@@ -73,7 +72,7 @@ const _ADMMSLIM_MATRICES = 6
         m = ADMMSLIM(max_iter=5, verbose=false)
         @test m.max_memory === nothing
 
-        est = Canapes._fit_memory_estimate(10, _ADMMSLIM_MATRICES, Float32)
+        est = Canapes._fit_memory_estimate(10, Canapes._ADMMSLIM_DENSE_MATRICES, Float32)
         m = ADMMSLIM(max_iter=5, verbose=false, max_memory=est)
         fit!(m, X_small)
         @test m.is_fitted

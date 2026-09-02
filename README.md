@@ -83,25 +83,30 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 | `IALS` | Implicit ALS with Gramian caching | Rendle et al. (2021) |
 | `EALS` | Element-wise ALS with popularity weighting | He et al. (2016) |
 | `BPR` | Bayesian Personalized Ranking (pairwise SGD) | Rendle et al. (2009) |
-| `LogisticMF` | Logistic Matrix Factorization | Johnson (2014) |
 | `GloVe` | Co-occurrence embedding (Hogwild AdaGrad) | Pennington, Socher & Manning (2014) |
 | `EASE` | Embarrassingly Shallow Autoencoders (closed form) | Steck (2019) |
 | `SLIM` | Sparse Linear Methods (elastic net) | Ning & Karypis (2011) |
 | `ADMMSLIM` | ADMM-based SLIM (joint solve, 10–100× faster) | Steck et al. (2020) |
-| `ItemKNN` | Item-based K-Nearest Neighbors (cosine / Jaccard) | Deshpande & Karypis (2004) |
+| `ItemKNN` | Item-based K-Nearest Neighbors (cosine / Jaccard / asymmetric / BM25) | Deshpande & Karypis (2004) |
+| `RandomWalk` | 3-step graph random walk with popularity penalty ("RP3β") | Paolino et al. (2017) |
 | `FTRL` | Follow The Regularized Leader (online GLM) | McMahan et al. (2013) |
 | `FM` | 2nd-order Factorization Machines (AdaGrad SGD) | Rendle (2010) |
-| `SoftImpute` | Low-rank matrix completion (with imputation) | Hastie et al. (2014) |
+| `SoftImpute` | Low-rank matrix completion (explicit ratings only) | Hastie et al. (2014) |
 | `SoftSVD` | Low-rank SVD (power-iteration style) | Hastie et al. (2014) |
 | `PureSVD` | Truncated SVD (SoftSVD with λ = 0) | Cremonesi et al. (2010) |
 
+> `LogisticMF` (Johnson 2014) has been demoted to the experimental namespace
+> (`Canapes.Experimental.LogisticMF`) — it is reference-validated against
+> `implicit` but ranks at the bottom of implicit top-N benchmarks and needs
+> fragile tuning.
+
 **Choosing a model** — the short version:
 
-- **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS` (best accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise ranking, Hogwild; negative sampling via `Sampling.Uniform()` / `Sampling.Popular()` / `Sampling.Dynamic()`), `LogisticMF` (probabilistic, well-calibrated scores).
+- **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS` (best accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise ranking, Hogwild; negative sampling via `Sampling.Uniform()` / `Sampling.Popular()` / `Sampling.Dynamic()`). (Probabilistic LogisticMF lives in `Canapes.Experimental`.)
   Note: in the literature "iALS" usually means Hu et al. (2008) — this package's `WMF`. The `IALS` type here is the improved ALS of Rendle et al. (2021, "IALS++").
-- **Item-item similarity**: `EASE` (state of the art, O(n_items²) memory), `SLIM` (sparse + interpretable), `ADMMSLIM` (same solution as SLIM, 10–100× faster, dense training), `ItemKNN` (lightweight baseline).
+- **Item-item similarity**: `EASE` (state of the art, O(n_items²) memory), `SLIM` (sparse + interpretable), `ADMMSLIM` (same solution as SLIM, dense training), `ItemKNN` (lightweight baseline), `RandomWalk` (RP3β — 3-step graph walk with long-tail bias, O(nnz) memory).
 - **Embeddings / related items**: `GloVe` on co-occurrences.
-- **Explicit ratings or completion**: `SoftImpute` / `SoftSVD` / `PureSVD`, or `WMF` with `feedback=Explicit`.
+- **Explicit ratings or completion**: `SoftImpute` / `SoftSVD` / `PureSVD`, or `WMF` with `feedback=Explicit`. Note: `SoftImpute` is a completion model — on binarized implicit data it ranks below the popularity baseline; use the implicit-feedback models instead.
 - **Sparse regression / CTR**: `FTRL` (online, elastic-net, streaming) and `FM` (second-order feature interactions).
 
 ---
@@ -144,9 +149,11 @@ fit!(slim, X);  fit!(admm, X)
 nnz(admm.W)                      # fitted weights are stored sparse
 score(admm, X)                   # SparseMatrixCSC, not a dense matrix
 
-# ItemKNN: fast baseline via cosine / Jaccard neighbors
+# ItemKNN: fast baseline — :cosine, :jaccard, :asym_cosine, :bm25
 knn = ItemKNN(k=50, similarity=:cosine, verbose=false)
 fit!(knn, X)
+knn_bm25 = ItemKNN(k=200, similarity=:bm25, verbose=false)   # robust to popularity skew
+fit!(knn_bm25, X)
 ```
 
 ### Co-occurrence embeddings — GloVe
@@ -163,14 +170,33 @@ fit!(glove, C; rng=MersenneTwister(2))
 E = embeddings(glove)             # 100 × 5000 — main + context average (standard convention)
 ```
 
-### Logistic Matrix Factorization
+### Graph random walks — RandomWalk (RP3β)
 
 ```julia
 using Canapes, SparseArrays, Random
 
+X = sprand(MersenneTwister(5), 2000, 1000, 0.01)
+
+# 3-step walk, no training loop; β penalizes popular items → long-tail recommendations
+rw = RandomWalk(α=1.0, β=0.6, k=200, verbose=false)
+fit!(rw, X)
+size(rw.W)                                    # sparse item×item walk matrix
+```
+
+### Logistic Matrix Factorization (experimental)
+
+```julia
+using Canapes, SparseArrays, Random
+
+using Canapes.Experimental: LogisticMF
+
 X = sprand(MersenneTwister(3), 800, 300, 0.03)
 lmf = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5)
 fit!(lmf, X; rng=MersenneTwister(3))
+
+# optimizer=:adagrad (default) = implicit's lmf.pyx; :rmsprop for small-lr runs
+lmf_rp = LogisticMF(rank=15, λ=0.1, lr=0.05, max_iter=50, optimizer=:rmsprop)
+fit!(lmf_rp, X; rng=MersenneTwister(3))
 ```
 
 ### Sparse regression — FTRL & FM
@@ -212,7 +238,8 @@ fit!(model, X_observed; rng=MersenneTwister(11))
 recon = model.U * Diagonal(model.d) * model.V'            # rank-10 completion
 size(recon)                                               # (200, 150)
 
-svd_model = SoftSVD(rank=5, max_iter=50)                  # no imputation correction
+svd_model = SoftSVD(rank=5, max_iter=50)                  # λ=1.0 Ridge damping by default
+svd_pure  = PureSVD(rank=5)                               # = SoftSVD(λ=0, final_svd=false)
 fit!(svd_model, X_observed; rng=MersenneTwister(11))
 ```
 

@@ -1,4 +1,33 @@
 # ──────────────────────────────────────────────────────────────────────────────
+# Experimental algorithms
+#
+# Models that are demoted from the core catalog: implemented, tested, and
+# numerically validated against their reference implementations, but known to
+# underperform on implicit Top-N benchmarks vs the core models, or to require
+# fragile hyperparameter settings. They live in `Canapes.Experimental`, NOT in
+# the root exports, so the production API stays clean while the code, tests,
+# and reference-validated behavior remain in the package.
+#
+# Currently: LogisticMF (Johnson 2014) — calibration-oriented logistic matrix
+# factorization; competitively tuned only with effort, fragile under Adagrad.
+# ──────────────────────────────────────────────────────────────────────────────
+
+module Experimental
+
+import ..Canapes   # parent: needed for the internal helpers below
+import ..Canapes: fit!
+using ..Canapes: AbstractMatrixFactorization,
+                 AbstractCallback, CallbackInfo,
+                 run_callbacks, run_callbacks_train_begin, run_callbacks_train_end,
+                 ConvergenceMonitor, record!, elapsed_seconds, log_iteration,
+                 to_csr, _require_finite_input
+
+using SparseArrays
+using LinearAlgebra
+using Random
+using SparseMatricesCSR
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Logistic Matrix Factorization (LogisticMF)
 # ──────────────────────────────────────────────────────────────────────────────
 #
@@ -29,11 +58,21 @@ implicit's `lmf.pyx` layout), so `score = xᵤᵀ yᵢ + β_u + β_i`.
 # Constructor
 ```julia
 LogisticMF(; rank=10, λ=0.6, α=1.0, lr=1.0, max_iter=30,
-    n_negative=30, tol=-1.0, verbose=true)
+    n_negative=30, tol=-1.0, optimizer=:adagrad, verbose=true)
 ```
 
 `α` scales the confidence of positive observations (`c = α·r`, paper eq. 2-3).
 The default `α=1.0` reproduces implicit's logisticmatrixfactorization exactly.
+
+# Optimizer
+`optimizer=:adagrad` is the default and reproduces implicit's `lmf.pyx`
+exactly: per-entity Adagrad with an unbounded squared-gradient accumulator, so
+effective steps shrink as `lr/√Σg²` and low learning rates barely move the
+factors (implicit itself hardcodes `lr=1.0`). `optimizer=:rmsprop` replaces the
+accumulator with an EMA (`v ← 0.9·v + 0.1·g²`, decoupled from iteration count)
+— more robust to small learning rates and warm-start friendly, at the cost of
+no reference parity with implicit. `recommend`/`score` are unaffected by the
+choice.
 
 # Example
 ```julia
@@ -59,6 +98,7 @@ mutable struct LogisticMF{T<:AbstractFloat} <: AbstractMatrixFactorization
     const max_iter::Int
     const n_negative::Int
     const tol::T
+    const optimizer::Symbol
     const verbose::Bool
     user_factors::Matrix{T}
     item_factors::Matrix{T}
@@ -73,6 +113,7 @@ function LogisticMF(;
     max_iter::Int = 30,
     n_negative::Int = 30,
     tol::Float64 = -1.0,
+    optimizer::Symbol = :adagrad,
     verbose::Bool = true,
     T::Type{<:AbstractFloat} = Float32,
 )
@@ -80,9 +121,11 @@ function LogisticMF(;
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     n_negative >= 1 || throw(ArgumentError("n_negative must be ≥ 1, got $n_negative"))
+    optimizer in (:adagrad, :rmsprop) || throw(ArgumentError(
+        "optimizer must be :adagrad or :rmsprop, got $optimizer"))
     Td = T
     LogisticMF{Td}(rank, Td(λ), Td(α), Td(lr), max_iter, n_negative, Td(tol),
-            verbose, Matrix{Td}(undef,0,0), Matrix{Td}(undef,0,0), false)
+            optimizer, verbose, Matrix{Td}(undef,0,0), Matrix{Td}(undef,0,0), false)
 end
 
 """
@@ -167,6 +210,7 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
     λ  = model.λ
     α  = model.α
     n_neg = model.n_negative
+    opt = model.optimizer
     ada_eps = T(1e-6)
 
     # Adagrad accumulators
@@ -196,13 +240,13 @@ function fit!(model::LogisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
 
         # ── Phase 1: Update user factors (items fixed) ──
         _lmf_update_users!(U, V, X_csr, alias_p_items, alias_items, grad2_U,
-                           lr, λ, α, n_neg, ada_eps, kf, n_users, n_items,
+                           lr, λ, α, n_neg, ada_eps, opt, kf, n_users, n_items,
                            thread_rngs, deriv_bufs, col_bufs, idx_bufs, score_bufs)
         U[kf - 1, :] .= one(T)  # re-pin user bias column (implicit parity)
 
         # ── Phase 2: Update item factors (users fixed) ──
         _lmf_update_items!(V, U, Xt_csr, alias_p_users, alias_users, grad2_V,
-                           lr, λ, α, n_neg, ada_eps, kf, n_items, n_users,
+                           lr, λ, α, n_neg, ada_eps, opt, kf, n_items, n_users,
                            thread_rngs, deriv_bufs, col_bufs, idx_bufs, score_bufs)
         V[kf, :] .= one(T)  # re-pin item bias column (implicit parity)
 
@@ -247,7 +291,7 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
                             X_csr::SparseMatricesCSR.SparseMatrixCSR,
                             alias_p::Vector{T}, alias_items::Vector{Int},
                             grad2_U::Matrix{T},
-                            lr::T, λ::T, α::T, n_neg::Int, ada_eps::T,
+                            lr::T, λ::T, α::T, n_neg::Int, ada_eps::T, opt::Symbol,
                             kf::Int, n_users::Int, n_items::Int,
                             thread_rngs::Vector{Random.Xoshiro}, deriv_bufs::Vector{Vector{T}},
                             col_bufs::Vector{Matrix{T}},
@@ -309,11 +353,22 @@ function _lmf_update_users!(U::Matrix{T}, V::Matrix{T},
         end
         BLAS.gemv!('N', one(T), colsubn, @view(zbuf[1:n_neg_samples]), one(T), deriv)
 
-        # Regularization + Adagrad update (fused)
-        @inbounds @simd for f in 1:kf
-            d = deriv[f] - λ * U[f, u]
-            grad2_U[f, u] += d * d
-            U[f, u] += (lr / sqrt(ada_eps + grad2_U[f, u])) * d
+        # Regularization + optimizer update (fused: :adagrad matches implicit,
+        # :rmsprop uses the EMA accumulator v ← 0.9v + 0.1g²)
+        if opt === :rmsprop
+            @inbounds @simd for f in 1:kf
+                d = deriv[f] - λ * U[f, u]
+                g2 = grad2_U[f, u]
+                g2 = T(0.9) * g2 + T(0.1) * d * d
+                grad2_U[f, u] = g2
+                U[f, u] += (lr / sqrt(ada_eps + g2)) * d
+            end
+        else
+            @inbounds @simd for f in 1:kf
+                d = deriv[f] - λ * U[f, u]
+                grad2_U[f, u] += d * d
+                U[f, u] += (lr / sqrt(ada_eps + grad2_U[f, u])) * d
+            end
         end
         end
     end
@@ -327,7 +382,7 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
                             Xt_csr::SparseMatricesCSR.SparseMatrixCSR,
                             alias_p::Vector{T}, alias_users::Vector{Int},
                             grad2_V::Matrix{T},
-                            lr::T, λ::T, α::T, n_neg::Int, ada_eps::T,
+                            lr::T, λ::T, α::T, n_neg::Int, ada_eps::T, opt::Symbol,
                             kf::Int, n_items::Int, n_users::Int,
                             thread_rngs::Vector{Random.Xoshiro}, deriv_bufs::Vector{Vector{T}},
                             col_bufs::Vector{Matrix{T}},
@@ -383,11 +438,22 @@ function _lmf_update_items!(V::Matrix{T}, U::Matrix{T},
         end
         BLAS.gemv!('N', one(T), colsubn, @view(zbuf[1:n_neg_samples]), one(T), deriv)
 
-        # Regularization + Adagrad update (fused)
-        @inbounds @simd for f in 1:kf
-            d = deriv[f] - λ * V[f, j]
-            grad2_V[f, j] += d * d
-            V[f, j] += (lr / sqrt(ada_eps + grad2_V[f, j])) * d
+        # Regularization + optimizer update (fused: :adagrad matches implicit,
+        # :rmsprop uses the EMA accumulator v ← 0.9v + 0.1g²)
+        if opt === :rmsprop
+            @inbounds @simd for f in 1:kf
+                d = deriv[f] - λ * V[f, j]
+                g2 = grad2_V[f, j]
+                g2 = T(0.9) * g2 + T(0.1) * d * d
+                grad2_V[f, j] = g2
+                V[f, j] += (lr / sqrt(ada_eps + g2)) * d
+            end
+        else
+            @inbounds @simd for f in 1:kf
+                d = deriv[f] - λ * V[f, j]
+                grad2_V[f, j] += d * d
+                V[f, j] += (lr / sqrt(ada_eps + grad2_V[f, j])) * d
+            end
         end
         end
     end
@@ -454,3 +520,4 @@ function _lmf_loss_estimate(U::Matrix{T}, V::Matrix{T},
     end
     sum(partial) / max(one(T), T(nnz(X_csr)))
 end
+end # module Experimental

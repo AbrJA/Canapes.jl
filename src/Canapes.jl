@@ -24,13 +24,16 @@ include("algorithms/eals.jl")
 include("algorithms/ftrl.jl")
 include("algorithms/fm.jl")
 include("algorithms/glove.jl")
-include("algorithms/lmf.jl")
 include("algorithms/bpr.jl")
 include("algorithms/ease.jl")
 include("algorithms/slim.jl")
 include("algorithms/admmslim.jl")
 include("algorithms/knn.jl")
+include("algorithms/rp3beta.jl")
 include("algorithms/soft_impute.jl")
+
+# ── Experimental algorithms (namespaced, not in root exports) ──
+include("experimental.jl")
 
 # ── Metrics & evaluation ──
 include("metrics/ranking.jl")
@@ -63,15 +66,18 @@ export
     FTRL,
     FM,
     GloVe,
-    LogisticMF,
     BPR,
     EASE,
     SLIM,
     ADMMSLIM,
     ItemKNN,
+    RandomWalk,
     SoftImpute,
     SoftSVD,
     PureSVD,
+
+    # Namespaced experimental models (Canapes.Experimental.LogisticMF)
+    Experimental,
 
     # Generic API
     fit!,

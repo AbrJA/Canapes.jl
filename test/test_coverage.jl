@@ -377,7 +377,11 @@ catch
     false
 end
 
-if _HAS_CUDA
+# GPU coverage only runs under the full suite (TEST_SUITE=fast skips it, same
+# as test_gpu.jl) — GPU float32 arithmetic is environment-sensitive.
+const _RUN_GPU = _HAS_CUDA && get(ENV, "TEST_SUITE", "full") == "full"
+
+if _RUN_GPU
     @testset "GPU EASE correctness" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 100, 80, 0.05)

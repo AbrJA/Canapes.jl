@@ -31,7 +31,9 @@ include("algorithms/admmslim.jl")
 include("algorithms/knn.jl")
 include("algorithms/rp3beta.jl")
 include("algorithms/soft_impute.jl")
-include("algorithms/explicit_models.jl")
+include("algorithms/baselineonly.jl")
+include("algorithms/slopeone.jl")
+include("algorithms/pearsonknn.jl")
 
 # ── Experimental algorithms (namespaced, not in root exports) ──
 include("experimental.jl")

@@ -11,7 +11,8 @@ A high-performance Julia package for sparse matrix factorization, collaborative 
 - **BPR** — Bayesian Personalized Ranking (pairwise learning)
 
 - **GloVe** — Global Vectors for word/item embeddings
-- **SoftImpute / SoftSVD / PureSVD** — Nuclear-norm regularized matrix completion (explicit ratings)
+- **SoftImpute / SoftSVD / PureSVD** — Nuclear-norm regularized matrix completion
+- **BaselineOnly / SlopeOne / PearsonKNN** — explicit rating prediction (RMSE/MAE)
 
 ### Item Similarity
 - **EASE** — Embarrassingly Shallow Autoencoders (closed-form)

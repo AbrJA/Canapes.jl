@@ -92,6 +92,10 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 | `FTRL` | Follow The Regularized Leader (online GLM) | McMahan et al. (2013) |
 | `FM` | 2nd-order Factorization Machines (AdaGrad SGD) | Rendle (2010) |
 | `SoftImpute` | Low-rank matrix completion (explicit ratings only) | Hastie et al. (2014) |
+| `BaselineOnly` | Rating baseline μ + b_u + b_i (ALS) | Koren (2009) |
+| `SlopeOne` | Rating predictor from item-pair deviations | Lemire & Maclachlan (2005) |
+| `PearsonKNN` | User mean-centered Pearson neighborhood (ratings) | Surprise KNNWithMeans |
+| `PMF` *(experimental)* | Probabilistic Matrix Factorization (SGD) | Mnih & Salakhutdinov (2007) |
 | `SoftSVD` | Low-rank SVD (power-iteration style) | Hastie et al. (2014) |
 | `PureSVD` | Truncated SVD (SoftSVD with λ = 0) | Cremonesi et al. (2010) |
 
@@ -106,7 +110,7 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
   Note: in the literature "iALS" usually means Hu et al. (2008) — this package's `WMF`. The `IALS` type here is the improved ALS of Rendle et al. (2021, "IALS++").
 - **Item-item similarity**: `EASE` (state of the art, O(n_items²) memory), `SLIM` (sparse + interpretable), `ADMMSLIM` (same solution as SLIM, dense training), `ItemKNN` (lightweight baseline), `RandomWalk` (RP3β — 3-step graph walk with long-tail bias, O(nnz) memory).
 - **Embeddings / related items**: `GloVe` on co-occurrences.
-- **Explicit ratings or completion**: `SoftImpute` / `SoftSVD` / `PureSVD`, or `WMF` with `feedback=Explicit`. Note: `SoftImpute` is a completion model — on binarized implicit data it ranks below the popularity baseline; use the implicit-feedback models instead.
+- **Explicit ratings (rating prediction)**: `WMF(feedback=Explicit)` (BiasedMF — μ + b_u + b_i + UᵀV via augmented ALS; best measured accuracy), then `BaselineOnly` (bias-only baseline), `SlopeOne` (pair deviations, Surprise-exact), `PearsonKNN` (user-centered neighborhoods), `SoftImpute`/`SoftSVD`/`PureSVD` (completion). Evaluate with `rmse`/`mae` — the explicit subsystem never uses `recommend`. Note: completion models rank at the bottom of implicit top-N benchmarks; use the implicit-feedback models there.
 - **Sparse regression / CTR**: `FTRL` (online, elastic-net, streaming) and `FM` (second-order feature interactions).
 
 ---
@@ -224,6 +228,33 @@ The GLM loss families live in the `Links` submodule:
 error) and `Links.Poisson()` (counts) — `Links.<TAB>` lists
 exactly these three. Bring them in bare with
 `using Canapes.Links: Binomial`.
+
+### Explicit ratings — BiasedMF, BaselineOnly, SlopeOne, PearsonKNN
+
+```julia
+using Canapes, SparseArrays, Random
+
+rng = MersenneTwister(1)
+X = sprand(rng, 500, 300, 0.1)
+nonzeros(X) .= 1 .+ 4 .* rand(MersenneTwister(2), nnz(X))   # ratings 1-5
+X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(3))
+
+# BiasedMF = WMF with feedback=Explicit: μ + b_u + b_i + x_uᵀ y_i
+model = WMF(rank=16, λ=0.1, max_iter=15, feedback=Explicit, verbose=false)
+fit!(model, X_train; rng=MersenneTwister(4))
+
+# Rating predictors live under AbstractExplicitModel: score/predict + rmse
+preds = predict(model, X_train)                # dense n_users × n_items ratings
+println("Train RMSE = ", round(rmse(preds, X_train), digits=4))
+
+baseline = BaselineOnly(λ=0.1, max_iter=20, verbose=false)   # μ + b_u + b_i
+slope    = SlopeOne(verbose=false)                           # pair deviations
+knn      = PearsonKNN(k=40, verbose=false)                   # user-mean-centered
+for m in (baseline, slope, knn)
+    fit!(m, X_train)
+    println("RMSE = ", round(rmse(predict(m, X_train), X_test), digits=4))
+end
+```
 
 ### Matrix completion — SoftImpute / SoftSVD / PureSVD
 

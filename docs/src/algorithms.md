@@ -112,6 +112,40 @@ preds = recommend(model, X; k=10)
 scores = score(model, X)
 ```
 
+### Explicit rating prediction — BiasedMF, BaselineOnly, SlopeOne, PearsonKNN
+
+```@docs
+BaselineOnly
+SlopeOne
+PearsonKNN
+```
+
+The biased matrix factorization lives in the dual model
+[`WMF`](@ref) with `feedback=Explicit` (BiasedMF: `μ + b_u + b_i + x_uᵀ y_i`,
+learned via augmented ALS), loss `WMF`'s `predict` returns the dense fitted
+ratings. Experimental: [`PMF`](@ref) (`Canapes.Experimental.PMF`) is a MAP-SGD
+Probabilistic Matrix Factorization with no reference-parity target.
+
+#### Example
+
+```julia
+using Canapes, SparseArrays, Random
+X = sprand(MersenneTwister(1), 500, 300, 0.1)
+nonzeros(X) .= 1.0 .+ 4.0 .* rand(MersenneTwister(2), nnz(X))   # ratings 1-5
+X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(3))
+
+model = WMF(rank=16, λ=0.1, max_iter=15, feedback=Explicit, verbose=false)
+fit!(model, X_train; rng=MersenneTwister(4))
+preds = predict(model, X_train)
+rmse(preds, X_train)         # training error; hold out for honest evaluation
+
+for m in (BaselineOnly(verbose=false), SlopeOne(verbose=false),
+          PearsonKNN(k=40, verbose=false))
+    fit!(m, X_train)
+    rmse(predict(m, X_train), X_test)
+end
+```
+
 ### RandomWalk — RP3β Graph Random Walk
 
 ```@docs

@@ -62,28 +62,24 @@ end
 end
 
 @testset "SlopeOne" begin
-    # Hand-checked tiny example
+    # Hand-checked tiny example (Surprise SlopeOne formulation:
+    # ŷ = μ_u + mean over relevant j of dev(i, j))
     X = sparse([1, 1, 2, 2, 3, 3], [1, 2, 1, 3, 2, 3], [1.0, 2.0, 1.0, 4.0, 2.0, 4.0], 3, 3)
     m = SlopeOne(verbose=false)
     fit!(m, X)
-    # dev(1,2) = mean(r_1 - r_2) over users rating both: u1: 1-2=-1; u3: (0-2)=-2 → wait:
-    # users with both: u1 (1,2): dev(1,2) += 1-2 = -1, freq(1,2)=1; u3 has no item 1.
-    # dev(2,1) += 2-1 = 1
-    @test m.dev[1, 2] == -1.0
+    # dev(i, j) = mean(r_i - r_j) over common users
+    @test m.dev[1, 2] == -1.0     # u1: 1 - 2
     @test m.freq[1, 2] == 1
-    @test m.dev[2, 1] == 1.0
-    # dev(1,3): u2: 1-4 = -3, freq=1
-    @test m.dev[1, 3] == -3.0
-    # predict for user1 at item 3: pairs with j ∈ {1,2}:
-    #   j=1: dev(3,1) + r_1 = 3 + 1 = 4, freq=1 → contributes (dev(3,1)+1)·1
-    #   actually i=3: j in {1,2}: (dev(3,1)+1)*1 + (dev(3,2)+2)*1 ... dev(3,2): u3: 4-2=2
-    #   num = (3+1)*1 + (2+2)*1 = 8, den = 2 → 4.0
+    @test m.dev[2, 1] == 1.0      # mirrored with sign flip
+    @test m.dev[1, 3] == -3.0     # u2: 1 - 4
     P = predict(m, X)
+    # fixture rows: u1={1,2}, u2={1,3}, u3={2,3}
+    # user 1 (μ = 1.5) at item 3: relevant j = {1, 2}: dev(3,1)=3, dev(3,2)=2 → 1.5 + 2.5
     @test P[1, 3] ≈ 4.0 atol=1e-5
-    # rated items are predicted too, via their pair deviations:
-    # ŷ_1,1 = dev(1,2) + r_1,2 = -1 + 2 = 1.0
-    @test P[1, 1] ≈ 1.0 atol=1e-5
-    @test P[2, 2] ≈ m.dev[2, 1] + 1.0 atol=1e-5   # dev(2,1) + r_2,1 = 1 + 1
+    # user 1 at item 1: relevant j = {2}: dev(1,2) = -1 → 1.5 - 1
+    @test P[1, 1] ≈ 0.5 atol=1e-5
+    # user 2 (μ = 2.5) at item 2: relevant j = {1, 3}: dev(2,1)=1, dev(2,3)=-2 → 2.5 - 0.5
+    @test P[2, 2] ≈ 2.0 atol=1e-5
     # pairwise score is intentionally unsupported
     @test_throws ArgumentError score(m, [1], [3])
 
@@ -141,4 +137,25 @@ end
         const_rmse = sqrt(sum(((v - μ)^2 for v in nonzeros(X_te))) / nnz(X_te))
         @test r_tr < const_rmse
     end
+end
+@testset "PMF (experimental)" begin
+    using Canapes.Experimental: PMF
+    rng = MersenneTwister(11)
+    X = _rating_matrix(rng, 60, 40, 0.25)
+    m = PMF(rank=6, λ=0.1, lr=0.02, max_iter=15, verbose=false)
+    fit!(m, X; rng=MersenneTwister(2))
+    @test m.is_fitted
+    @test m isa AbstractExplicitModel
+    @test !applicable(recommend, m, X)
+    P = predict(m, X)
+    @test size(P) == size(X)
+    @test all(isfinite, P)
+    @test score(m, X) == P
+    @test rmse(P, X) > 0.0
+    pv = score(m, [1, 2], [3, 4])
+    @test length(pv) == 2
+    @test pv[1] ≈ P[1, 3] atol=1e-4
+    @test_throws DimensionMismatch predict(m, sparse([1], [1], [1.0], 5, 5))
+    @test_throws ArgumentError PMF(rank=0)
+    @test_throws ArgumentError PMF(lr=0.0)
 end

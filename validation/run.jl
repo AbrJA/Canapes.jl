@@ -29,6 +29,7 @@ const PREP    = _has("--prepare") || ALL
 # `--prepare` alone implies both fixture sets; `--r`/`--python` narrow it.
 const RUN_R   = _has("--r") || ALL || (NO_ARGS && !PREP)
 const RUN_PY  = _has("--python") || ALL || (NO_ARGS && !PREP)
+const RUN_SUR = _has("--surprise") || ALL || (NO_ARGS && !PREP)
 const PREP_R  = PREP && (_has("--r") || !(_has("--r") || _has("--python")))
 const PREP_PY = PREP && (_has("--python") || !(_has("--r") || _has("--python")))
 
@@ -37,9 +38,10 @@ if _has("--help")
     Canapes reference validation runner
 
     Flags:
-      --all        Prepare fixtures and run both R and Python comparisons
+      --all        Prepare fixtures and run R, Python and Surprise comparisons
       --r          Run only the R (rsparse) comparison
       --python     Run only the Python (implicit/sklearn/scipy) comparison
+      --surprise   Run only the Surprise (explicit-rating) comparison
       --prepare    Generate fixtures (implies --r --python unless --r/--python given)
       --help       Show this help
 
@@ -109,6 +111,20 @@ end
 
 RUN_R  && run_step(`$JULIA validation/validate_r.jl`,  "R reference comparison")
 RUN_PY && run_step(`$JULIA validation/validate_py.jl`, "Python reference comparison")
+if RUN_SUR
+    py_surprise = get(ENV, "CANAPES_SURPRISE_PYTHON", "python3")
+    py_ok = try
+        success(`$(py_surprise) -c "import surprise"`)
+    catch
+        false
+    end
+    if py_ok
+        run_step(`$JULIA validation/validate_surprise.jl`, "Surprise reference comparison")
+    else
+        skip_step("Surprise reference comparison",
+                  "scikit-surprise not importable with `$py_surprise` (set CANAPES_SURPRISE_PYTHON to a python with it)")
+    end
+end
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

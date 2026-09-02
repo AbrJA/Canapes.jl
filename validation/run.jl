@@ -30,6 +30,7 @@ const PREP    = _has("--prepare") || ALL
 const RUN_R   = _has("--r") || ALL || (NO_ARGS && !PREP)
 const RUN_PY  = _has("--python") || ALL || (NO_ARGS && !PREP)
 const RUN_SUR = _has("--surprise") || ALL || (NO_ARGS && !PREP)
+const RUN_ML1M = _has("--ml1m")   # opt-in: large-scale MovieLens-1M comparison
 const PREP_R  = PREP && (_has("--r") || !(_has("--r") || _has("--python")))
 const PREP_PY = PREP && (_has("--python") || !(_has("--r") || _has("--python")))
 
@@ -42,6 +43,7 @@ if _has("--help")
       --r          Run only the R (rsparse) comparison
       --python     Run only the Python (implicit/sklearn/scipy) comparison
       --surprise   Run only the Surprise (explicit-rating) comparison
+      --ml1m       Run the large-scale MovieLens-1M comparison vs Python implicit
       --prepare    Generate fixtures (implies --r --python unless --r/--python given)
       --help       Show this help
 
@@ -108,6 +110,18 @@ if PREP_PY
 end
 
 # ── Reference comparisons ─────────────────────────────────────────────────────
+
+if RUN_ML1M
+    py_ml1m = get(ENV, "CANAPES_ML1M_PYTHON", "python3")
+    data_ok = isfile(joinpath(@__DIR__, "..", "usage", "ml-1m", "ratings.dat"))
+    py_ok = try; success(`$py_ml1m -c "import implicit"`); catch; false; end
+    if data_ok && py_ok
+        run_step(`$JULIA validation/validate_ml1m.jl`, "MovieLens-1M comparison")
+    else
+        skip_step("MovieLens-1M comparison",
+                  "requires usage/ml-1m/ratings.dat and `$py_ml1m` with implicit")
+    end
+end
 
 RUN_R  && run_step(`$JULIA validation/validate_r.jl`,  "R reference comparison")
 RUN_PY && run_step(`$JULIA validation/validate_py.jl`, "Python reference comparison")

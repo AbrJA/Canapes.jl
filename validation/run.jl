@@ -16,6 +16,7 @@
 # R fixture generation uses `uvr run` (managed R env from uvr.toml) when
 # available, falling back to a system `Rscript`.
 
+using Dates
 const ROOT = normpath(joinpath(@__DIR__, ".."))
 cd(ROOT)
 
@@ -56,6 +57,8 @@ if _has("--help")
     exit(0)
 end
 
+const T_START = time()
+println("Started: ", now())
 println("\nCanapes reference validation runner")
 println("  R comparison:      $RUN_R")
 println("  Python comparison: $RUN_PY")
@@ -158,4 +161,5 @@ println("─"^60)
 
 all_ok = all(r -> r[2], results)
 println(all_ok ? "OVERALL: PASSED" : "OVERALL: FAILED")
+println("Finished: ", now(), " (elapsed ", round(time() - T_START, digits=1), "s)")
 exit(all_ok ? 0 : 1)

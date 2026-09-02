@@ -14,12 +14,15 @@ using Canapes
 using SparseArrays
 using Random
 using Statistics
+using Dates
 using Printf
 
 const DATA = joinpath(@__DIR__, "ml-1m", "ratings.dat")
 const OUT  = joinpath(@__DIR__, "ml1m_explicit_results.csv")
 
 # ── load ─────────────────────────────────────────────────────────────────────
+println("Started: ", now(), " (t=0s)")
+const _T0 = time()
 println("Loading $(DATA) ...")
 users, items, t_last, ratings = Int[], Int[], Float64[], Float64[]
 open(DATA) do io
@@ -98,4 +101,5 @@ open(OUT, "w") do io
                           round(r.rmse, digits=4), round(r.mae, digits=4)), ","))
     end
 end
+println("Finished: ", now(), " (elapsed ", round(time() - _T0, digits=1), "s)")
 println("Saved results to $(OUT)")

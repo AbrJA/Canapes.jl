@@ -25,9 +25,15 @@
 
 Weighted Regularized Matrix Factorization via Alternating Least Squares.
 
-Supports implicit feedback (Hu et al. 2008) and explicit feedback (MSE).
+Supports implicit feedback (Hu et al. 2008) and explicit feedback. With
+`feedback=Explicit` the model is **BiasedMF** (Koren 2009): the prediction is
+`μ + b_u + b_i + x_uᵀ y_i`, where `μ` is the observed global mean and the
+user/item biases are learned jointly with the factors via augmented ALS (each
+entity's bias occupies an extra slot of its ALS solve that is regularized with
+the same `λ`). Score/predict then return ratings; evaluate with [`rmse`](@ref).
 Three solvers available: CholeskySolver (exact), CGSolver (approximate, fast),
-and NonNegativeSolver (non-negative least squares).
+and NonNegativeSolver (non-negative least squares; implicit only — for
+explicit feedback it degrades to the plain augmented ALS solve).
 
 !!! note "Naming"
     Hu et al. (2008) is often called "iALS" (implicit ALS) in the literature
@@ -43,7 +49,8 @@ and NonNegativeSolver (non-negative least squares).
     before fitting when this is expected. As a safety net, the Cholesky path
     detects non-positive pivots and NaN/Inf solve results and retries with
     adaptive regularisation, reverting the affected factor to its previous
-    state if no finite solve is possible — factors never become NaN/Inf.
+    state if no finite solve is possible — factors never become NaN/Inf. The
+    explicit (BiasedMF) path is scale-clean: it only involves `r_ui` residuals.
 
 # Constructor
 ```julia
@@ -62,6 +69,9 @@ WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, tol=0.005,
 - `feedback::FeedbackType` — `Implicit` or `Explicit`
 - `user_factors::Matrix{T}`  — rank × n_users (set after `fit!`)
 - `item_factors::Matrix{T}`  — rank × n_items (set after `fit!`)
+- `global_mean::T`           — observed-ratings mean (explicit only, set after `fit!`)
+- `user_bias::Vector{T}`     — fitted user biases (explicit only)
+- `item_bias::Vector{T}`     — fitted item biases (explicit only)
 
 # Example
 ```julia
@@ -91,6 +101,9 @@ mutable struct WMF{T<:AbstractFloat} <: AbstractMatrixFactorization
     const verbose::Bool
     user_factors::Matrix{T}
     item_factors::Matrix{T}
+    global_mean::T
+    user_bias::Vector{T}
+    item_bias::Vector{T}
     is_fitted::Bool
 end
 
@@ -115,6 +128,7 @@ function WMF(;
         rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, feedback, verbose,
         Matrix{T}(undef, 0, 0),
         Matrix{T}(undef, 0, 0),
+        zero(T), Vector{T}(), Vector{T}(),
         false,
     )
 end
@@ -140,6 +154,9 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
                callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     old_user_factors = model.user_factors
     old_item_factors = model.item_factors
+    old_global_mean = model.global_mean
+    old_user_bias = model.user_bias
+    old_item_bias = model.item_bias
     old_is_fitted = model.is_fitted
     model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
@@ -147,6 +164,17 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     n_users, n_items = size(X)
     _require_finite_input(X, "WMF")
     k = model.rank
+    is_explicit = model.feedback == Explicit
+    # BiasedMF (explicit): prediction = μ + b_u + b_i + x_uᵀ y_i; the global
+    # mean is the observed-ratings mean (fixed), biases are learned together
+    # with the factors via augmented ALS (see _als_sweep_*).
+    if is_explicit
+        model.global_mean = T(sum(nonzeros(X)) / max(nnz(X), 1))
+        model.user_bias = zeros(T, n_users)
+        model.item_bias = zeros(T, n_items)
+    end
+    # Augmented solves use rank+1 dimensions (the extra slot is the bias).
+    kdim = is_explicit ? k + 1 : k
 
     # Initialise factor matrices
     model.user_factors = isnothing(U_init) ? init_factors(rng, k, n_users) : copy(U_init)
@@ -159,7 +187,7 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     # and iterations (avoids re-allocating gram/rhs/Z/CG buffers every sweep).
     max_nnz = max(maximum(length(nzrange(X, u)) for u in 1:n_items; init=0),
                   maximum(length(nzrange(Xt, u)) for u in 1:n_users; init=0))
-    ws = _als_workspace(model, k, Threads.nthreads(), max_nnz)
+    ws = _als_workspace(model, kdim, Threads.nthreads(), max_nnz)
 
     monitor = ConvergenceMonitor{T}(tol=T(model.tol), min_iter=2)
 
@@ -167,9 +195,11 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
         iter_start = time_ns()
 
         # Update user factors (fixing items)
-        _als_sweep!(model, Xt, model.user_factors, model.item_factors, n_users, ws)
+        _als_sweep!(model, Xt, model.user_factors, model.item_factors, n_users, ws,
+                    model.user_bias, model.item_bias)
         # Update item factors (fixing users)
-        _als_sweep!(model, X, model.item_factors, model.user_factors, n_items, ws)
+        _als_sweep!(model, X, model.item_factors, model.user_factors, n_items, ws,
+                    model.item_bias, model.user_bias)
 
         loss = _compute_loss(model, X)
         iter_seconds = (time_ns() - iter_start) / 1e9
@@ -195,6 +225,9 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     catch
         model.user_factors = old_user_factors
         model.item_factors = old_item_factors
+        model.global_mean = old_global_mean
+        model.user_bias = old_user_bias
+        model.item_bias = old_item_bias
         model.is_fitted = old_is_fitted
         rethrow()
     finally
@@ -213,14 +246,16 @@ function _als_sweep!(
     fixed::Matrix{T},
     n_entities::Int,
     ws,
+    bias_out::Vector{T},
+    bias_other::Vector{T},
 ) where {T}
-    _als_sweep!(model.solver, model, A, factors, fixed, n_entities, ws)
+    _als_sweep!(model.solver, model, A, factors, fixed, n_entities, ws, bias_out, bias_other)
 end
 
-_als_sweep!(::CGSolver, model, A, factors, fixed, n_entities, ws) =
-    _als_sweep_cg!(model, A, factors, fixed, n_entities, ws)
-_als_sweep!(::Union{CholeskySolver, NonNegativeSolver}, model, A, factors, fixed, n_entities, ws) =
-    _als_sweep_cholesky!(model, A, factors, fixed, n_entities, ws)
+_als_sweep!(::CGSolver, model, A, factors, fixed, n_entities, ws, bias_out, bias_other) =
+    _als_sweep_cg!(model, A, factors, fixed, n_entities, ws, bias_out, bias_other)
+_als_sweep!(::Union{CholeskySolver, NonNegativeSolver}, model, A, factors, fixed, n_entities, ws, bias_out, bias_other) =
+    _als_sweep_cholesky!(model, A, factors, fixed, n_entities, ws, bias_out, bias_other)
 
 """
     _als_workspace(model::WMF{T}, k, nt, max_nnz)
@@ -235,7 +270,8 @@ function _als_workspace(model::WMF{T}, k::Int, nt::Int, max_nnz::Int) where {T}
            wgt_bufs = _thread_buffers(() -> Vector{T}(undef, max_nnz), nt),
            r_bufs   = _thread_buffers(() -> Vector{T}(undef, k), nt),
            p_bufs   = _thread_buffers(() -> Vector{T}(undef, k), nt),
-           Ap_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt))
+           Ap_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt),
+           xu_bufs  = _thread_buffers(() -> Vector{T}(undef, k), nt))  # CG solution scratch (k or k+1)
     else
         Z_CAP = 4096
         (; gram_bufs = _thread_buffers(() -> Matrix{T}(undef, k, k), nt),
@@ -324,19 +360,40 @@ function _als_sweep_cholesky!(
     fixed::Matrix{T},
     n_entities::Int,
     ws,
+    bias_out::Vector{T},
+    bias_other::Vector{T},
 ) where {T}
     k = model.rank
     λ = model.λ
     α = model.α
     is_implicit = model.feedback == Implicit
+    is_explicit = !is_implicit
     is_nnls     = model.solver isa NonNegativeSolver
+    kdim = is_explicit ? k + 1 : k
+    μ = model.global_mean
+    # Fixed side augmented with a pinned 1 in the bias slot (explicit only):
+    # ỹ_i = [y_i; 1], so a single augmented Gram/RHS solve yields factors AND
+    # the entity bias in one shot (BiasedMF ALS).
+    fixed_a = is_explicit ? _augment_fixed(fixed, kdim) : fixed
 
-    # YᵀY via BLAS syrk (symmetric rank-k: C = α·A·Aᵀ + β·C)
-    YtY = Matrix{T}(undef, k, k)
-    BLAS.syrk!('U', 'N', one(T), fixed, zero(T), YtY)
+    # YᵀY via BLAS syrk (symmetric rank-k: C = α·A·Aᵀ + β·C); for explicit the
+    # augmented Gram's extra row/col is assembled per-entity from the observed
+    # sets (Σ y_i and the count), so the base Gram holds only the k×k block
+    # plus the λ corner for the bias slot.
+    YtY = Matrix{T}(undef, kdim, kdim)
+    BLAS.syrk!('U', 'N', one(T), fixed_a, zero(T), YtY)
     LinearAlgebra.copytri!(YtY, 'U')
-    base_gram = copy(YtY)
-    @inbounds for d in 1:k
+    base_gram = Matrix{T}(undef, kdim, kdim)
+    fill!(base_gram, zero(T))
+    if is_explicit
+        @inbounds for a in 1:k, b in 1:k
+            base_gram[a, b] = YtY[a, b]
+        end
+        base_gram[kdim, kdim] = λ
+    else
+        base_gram .= YtY
+    end
+    @inbounds for d in 1:kdim
         base_gram[d, d] += λ
     end
 
@@ -364,7 +421,7 @@ function _als_sweep_cholesky!(
 
         for u in _thread_chunk_bounds(chunk, n_entities, length(gram_bufs))
 
-        # gram ← YᵀY + λI
+        # gram ← base; rhs ← 0
         copyto!(gram, base_gram)
         fill!(rhs, zero(T))
 
@@ -377,7 +434,7 @@ function _als_sweep_cholesky!(
                 cui = max(one(T), one(T) + α * rui)
                 sq  = sqrt(cui - one(T))
                 @inbounds for f in 1:k
-                    sf = fixed[f, i]
+                    sf = fixed_a[f, i]
                     Z[f, m+1] = sf * sq
                     rhs[f] += cui * sf
                 end
@@ -391,12 +448,25 @@ function _als_sweep_cholesky!(
                 BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), gram)
             end
         else
-            @inbounds for idx in nzrange(A, u)
+            # BiasedMF: gram += Σ ỹᵢỹᵢᵀ, rhs = Σ ỹᵢ (r - μ - b_other_i)
+            # (the pinned 1 fills the bias row/col and the corner = n_obs + λ)
+            m = 0
+            for idx in nzrange(A, u)
                 i   = rv[idx]
-                rui = T(nz[idx])
-                for f in 1:k
-                    rhs[f] += rui * fixed[f, i]
+                resid = T(nz[idx]) - μ - bias_other[i]
+                @inbounds for f in 1:kdim
+                    sf = fixed_a[f, i]
+                    Z[f, m+1] = sf
+                    rhs[f] += resid * sf
                 end
+                m += 1
+                if m == Z_CAP
+                    BLAS.syrk!('U', 'N', one(T), Z, one(T), gram)
+                    m = 0
+                end
+            end
+            if m > 0
+                BLAS.syrk!('U', 'N', one(T), @view(Z[:, 1:m]), one(T), gram)
             end
         end
 
@@ -405,31 +475,49 @@ function _als_sweep_cholesky!(
 
         # Reference scale for adaptive regularisation, plus snapshots so a
         # failed solve can be contained without poisoning the model.
-        scale = _gram_scale!(gram, k, one(T))
-        view_factors = @view factors[:, u]
+        scale = _gram_scale!(gram, kdim, one(T))
+        view_factors = @view factors[1:k, u]
         copyto!(prev, view_factors)
+        prev_bias = is_explicit ? bias_out[u] : zero(T)
         copyto!(save, rhs)
 
-        ok = _guarded_cholesky_solve!(gram, rhs, base_gram, save, scale, k)
+        ok = _guarded_cholesky_solve!(gram, rhs, base_gram, save, scale, kdim)
 
-        if is_nnls
+        if is_nnls && is_implicit
             rhs .= max.(rhs, zero(T))
-            _nnls_cd!(rhs, YtY, fixed, rv, nz, nzrange(A, u), k, α, λ, is_implicit)
+            _nnls_cd!(rhs, YtY, fixed_a, rv, nz, nzrange(A, u), k, α, λ, is_implicit)
             ok &= all(isfinite, rhs)
         end
 
         if ok
-            @inbounds view_factors .= rhs
+            @inbounds view_factors .= rhs[1:k]
+            is_explicit && (bias_out[u] = rhs[kdim])
         elseif isempty(nzrange(A, u))
             # Cold entity with no signal: the exact ALS solution is zero.
             fill!(view_factors, zero(T))
+            is_explicit && (bias_out[u] = zero(T))
         else
             # Scale-mixed inputs can make the Gramian numerically singular;
             # revert rather than let NaN/Inf propagate through the model.
             @inbounds view_factors .= prev
+            is_explicit && (bias_out[u] = prev_bias)
         end
         end
     end
+end
+
+# Augment a (k × n) fixed-side factor matrix with a pinned row of ones:
+# ỹ = [y; 1] in (k+1) dimensions — the BiasedMF bias slot.
+function _augment_fixed(fixed::Matrix{T}, kdim::Int) where {T}
+    k, n = size(fixed)
+    fa = Matrix{T}(undef, kdim, n)
+    @inbounds for j in 1:n, f in 1:k
+        fa[f, j] = fixed[f, j]
+    end
+    @inbounds for j in 1:n
+        fa[kdim, j] = one(T)
+    end
+    fa
 end
 
 """
@@ -482,19 +570,38 @@ function _als_sweep_cg!(
     fixed::Matrix{T},
     n_entities::Int,
     ws,
+    bias_out::Vector{T},
+    bias_other::Vector{T},
 ) where {T}
     k = model.rank
     λ = model.λ
     α = model.α
     cg_steps = model.cg_steps
     is_implicit = model.feedback == Implicit
+    is_explicit = !is_implicit
+    kdim = is_explicit ? k + 1 : k
+    μ = model.global_mean
+    fixed_a = is_explicit ? _augment_fixed(fixed, kdim) : fixed
 
-    # Base gram (shared, read-only)
-    YtY = Matrix{T}(undef, k, k)
-    BLAS.syrk!('U', 'N', one(T), fixed, zero(T), YtY)
+    # Base gram (shared, read-only): for explicit, keep the k×k block of YᵀY
+    # plus a λ corner for the bias slot — the Σ yᵢ cross terms are per-entity.
+    YtY = Matrix{T}(undef, kdim, kdim)
+    BLAS.syrk!('U', 'N', one(T), fixed_a, zero(T), YtY)
     LinearAlgebra.copytri!(YtY, 'U')
-    base_gram = copy(YtY)
-    @inbounds for d in 1:k; base_gram[d,d] += λ; end
+    base_gram = Matrix{T}(undef, kdim, kdim)
+    fill!(base_gram, zero(T))
+    if is_explicit
+        @inbounds for a in 1:k, b in 1:k
+            base_gram[a, b] = YtY[a, b]
+        end
+        base_gram[kdim, kdim] = λ
+    else
+        base_gram .= YtY
+    end
+    @inbounds for d in 1:kdim
+        base_gram[d, d] += λ
+    end
+
 
     rv = rowvals(A)
     nz = nonzeros(A)
@@ -526,18 +633,29 @@ function _als_sweep_cg!(
             if is_implicit
                 cui = max(one(T), one(T) + α * rui)
                 wgts[pos] = cui - one(T)
-                BLAS.axpy!(cui, @view(fixed[:, i]), rhs)
+                BLAS.axpy!(cui, @view(fixed_a[:, i]), rhs)
             else
-                wgts[pos] = zero(T)
-                BLAS.axpy!(rui, @view(fixed[:, i]), rhs)
+                wgts[pos] = one(T)
+                resid = rui - μ - bias_other[i]
+                BLAS.axpy!(resid, @view(fixed_a[:, i]), rhs)
             end
         end
 
-        xu = @view factors[:, u]
-        _cg_solve!(xu, base_gram, fixed,
+        # Warm start: previous factor column (and bias slot) as the CG
+        # initial guess — converges faster and never starts from garbage.
+        xu = ws.xu_bufs[chunk]
+        @inbounds for f in 1:k
+            xu[f] = factors[f, u]
+        end
+        is_explicit && (xu[kdim] = bias_out[u])
+        _cg_solve!(xu, base_gram, fixed_a,
                    view(idxs, 1:n_nz), view(wgts, 1:n_nz),
-                   rhs, k, cg_steps,
+                   rhs, kdim, cg_steps,
                    r_bufs[chunk], p_bufs[chunk], Ap_bufs[chunk])
+        @inbounds for f in 1:k
+            factors[f, u] = xu[f]
+        end
+        is_explicit && (bias_out[u] = xu[kdim])
         end
     end
 end
@@ -632,29 +750,42 @@ function _compute_loss(model::WMF{T}, X::SparseMatrixCSC) where {T}
     λ = model.λ
     α = model.α
     k = model.rank
+    μ = model.global_mean
+    b_u = model.user_bias
+    b_i = model.item_bias
 
     loss = zero(T)
     rv = rowvals(X)
     nz = nonzeros(X)
 
-    for j in axes(X, 2)
-        for idx in nzrange(X, j)
-            i = rv[idx]
-            r = T(nz[idx])
-            pred = zero(T)
-            @inbounds @simd for f in 1:k
-                pred += U[f, i] * V[f, j]
-            end
-            if model.feedback == Implicit
+    if model.feedback == Implicit
+        for j in axes(X, 2)
+            for idx in nzrange(X, j)
+                i = rv[idx]
+                r = T(nz[idx])
+                pred = zero(T)
+                @inbounds @simd for f in 1:k
+                    pred += U[f, i] * V[f, j]
+                end
                 c = max(one(T), one(T) + α * r)
                 loss += c * (one(T) - pred)^2
-            else
+            end
+        end
+        loss += λ * (sum(abs2, U) + sum(abs2, V))
+    else
+        for j in axes(X, 2)
+            for idx in nzrange(X, j)
+                i = rv[idx]
+                r = T(nz[idx])
+                pred = μ + b_u[i] + b_i[j]
+                @inbounds @simd for f in 1:k
+                    pred += U[f, i] * V[f, j]
+                end
                 loss += (r - pred)^2
             end
         end
+        loss += λ * (sum(abs2, U) + sum(abs2, V) + sum(abs2, b_u) + sum(abs2, b_i))
     end
-
-    loss += λ * (sum(abs2, U) + sum(abs2, V))
     loss
 end
 
@@ -670,16 +801,29 @@ Returns a `rank × n_new` factor matrix.
 """
 function transform(model::WMF{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
+    emb, _ = _foldin_embeddings(model, X)
+    emb
+end
+
+# Fold-in embeddings for the rows of X, returning (factors, folded biases).
+# For explicit feedback the augmented ALS solve also produces each folded
+# user's bias (bias dimension of the augmented solution vector); the residuals
+# use the fixed-side biases (item_bias) and the global mean.
+function _foldin_embeddings(model::WMF{T}, X::SparseMatrixCSC) where {T}
     n_users_new = size(X, 1)
     k = model.rank
+    is_explicit = model.feedback == Explicit
+    kdim = is_explicit ? k + 1 : k
     new_user_factors = Matrix{T}(undef, k, n_users_new)
     fill!(new_user_factors, zero(T))
+    folded_bias = is_explicit ? zeros(T, n_users_new) : T[]
 
     Xt = SparseMatrixCSC(X')
     max_nnz = maximum(length(nzrange(Xt, u)) for u in 1:n_users_new; init=0)
-    ws = _als_workspace(model, k, Threads.nthreads(), max_nnz)
-    _als_sweep!(model, Xt, new_user_factors, model.item_factors, n_users_new, ws)
-    new_user_factors
+    ws = _als_workspace(model, kdim, Threads.nthreads(), max_nnz)
+    _als_sweep!(model, Xt, new_user_factors, model.item_factors, n_users_new, ws,
+                folded_bias, model.item_bias)
+    (new_user_factors, folded_bias)
 end
 
 """
@@ -691,11 +835,17 @@ Processes users in batches to avoid allocating the full score matrix.
 function recommend(model::WMF{T}, X::SparseMatrixCSC; k::Int = 10) where {T}
     _require_fitted(model.is_fitted)
 
-    # Fold in users from X so recommendations always match score(model, X),
-    # including when X contains updated interactions for existing users.
-    user_emb = transform(model, X)
-
-    _predict_topk_batched(user_emb, model.item_factors, to_csr(X), k)
+    if model.feedback == Explicit
+        # BiasedMF: scores include μ + b_u + b_i; the dense score path is the
+        # explicit contract (ratings), so top-k is computed from it directly.
+        scores = score(model, X)
+        _predict_dense_topk(scores, X, k)
+    else
+        # Fold in users from X so recommendations always match score(model, X),
+        # including when X contains updated interactions for existing users.
+        user_emb = transform(model, X)
+        _predict_topk_batched(user_emb, model.item_factors, to_csr(X), k)
+    end
 end
 
 """
@@ -703,20 +853,108 @@ end
 
 Return the full score matrix (n_users × n_items) without top-k filtering.
 Uses `transform` to embed users, then computes inner products with item factors.
+
+For `feedback=Explicit` the scores are the predicted ratings
+`x_uᵀ y_i + μ + b_u + b_i`, with the user bias taken from the fold-in of each
+row of `X` (→ matches `recommend`). Use `predict(model, X)` for predictions
+based on the fitted users' biases (the canonical RMSE evaluation path).
 """
 function score(model::WMF{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
-    user_emb = transform(model, X)
-    user_emb' * model.item_factors
+    if model.feedback == Explicit
+        emb, b_fold = _foldin_embeddings(model, X)
+        S = emb' * model.item_factors
+        S .+= model.global_mean
+        @inbounds for j in 1:size(S, 2)
+            bj = model.item_bias[j]
+            for i in 1:size(S, 1)
+                S[i, j] += bj + b_fold[i]
+            end
+        end
+        S
+    else
+        user_emb = transform(model, X)
+        user_emb' * model.item_factors
+    end
 end
 
 """
     score(model::WMF, user_indices, item_indices) -> Vector
 
 Return raw scores for specific (user, item) pairs using pre-fitted factors.
+For `feedback=Explicit` the score is the predicted rating
+`x_uᵀ y_i + μ + b_u + b_i` with the fitted biases.
 """
 function score(model::WMF{T}, user_indices::AbstractVector{<:Integer},
               item_indices::AbstractVector{<:Integer}) where {T}
     _require_fitted(model.is_fitted)
-    _predict_pairwise_scores(model.user_factors, model.item_factors, user_indices, item_indices)
+    if model.feedback == Explicit
+        length(user_indices) == length(item_indices) ||
+            throw(DimensionMismatch("user_indices and item_indices must have the same length"))
+        vals = _predict_pairwise_scores(model.user_factors, model.item_factors,
+                                        user_indices, item_indices)
+        for t in eachindex(vals)
+            vals[t] += model.global_mean + model.user_bias[user_indices[t]] +
+                       model.item_bias[item_indices[t]]
+        end
+        vals
+    else
+        _predict_pairwise_scores(model.user_factors, model.item_factors, user_indices, item_indices)
+    end
+end
+
+"""
+    predict(model::WMF, X) -> Matrix
+
+Predicted ratings for explicit feedback (`feedback=Explicit`): the dense
+`n_users × n_items` matrix `x_uᵀ y_i + μ + b_u + b_i` built from the *fitted*
+user factors and biases (rows of `X` must be the training users). Evaluate with
+`rmse(predict(model, X_train), X_test)`. For implicit feedback this is an alias
+for [`score`](@ref).
+"""
+function predict(model::WMF{T}, X::SparseMatrixCSC) where {T}
+    if model.feedback == Explicit
+        _require_fitted(model.is_fitted)
+        n_users_f, n_items_f = size(model.item_factors)
+        size(X, 1) == size(model.user_factors, 2) || throw(DimensionMismatch(
+            "X has $(size(X, 1)) users but the fitted model has $(size(model.user_factors, 2))"))
+        size(X, 2) == n_items_f || throw(DimensionMismatch(
+            "X has $(size(X, 2)) items but the fitted model has $n_items_f"))
+        S = model.user_factors' * model.item_factors
+        S .+= model.global_mean
+        @inbounds for j in 1:n_items_f
+            bj = model.item_bias[j]
+            for i in 1:size(S, 1)
+                S[i, j] += bj + model.user_bias[i]
+            end
+        end
+        S
+    else
+        score(model, X)
+    end
+end
+
+# Dense top-k for the explicit scoring path: mask each user's seen items in S
+# (S is a fresh dense matrix) and extract the k highest-scoring items per row.
+function _predict_dense_topk(S::Matrix{T}, X::SparseMatrixCSC, k::Int) where {T}
+    n_users, n_items = size(S)
+    k_out = min(k, n_items)
+    k_out >= 1 || throw(ArgumentError("k must be ≥ 1, got $k"))
+    preds = Matrix{Int}(undef, n_users, k_out)
+    X_csr = to_csr(X)
+    nt = Threads.nthreads()
+    topk_bufs = [Vector{Int}(undef, k_out) for _ in 1:nt]
+    Threads.@threads for chunk in 1:nt
+        topk = topk_bufs[chunk]
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            for idx in nzrange(X_csr, u)
+                S[u, Int(X_csr.colval[idx])] = T(-Inf)
+            end
+            _topk_indices!(topk, @view(S[u, :]), k_out)
+            @inbounds for j in 1:k_out
+                preds[u, j] = topk[j]
+            end
+        end
+    end
+    preds
 end

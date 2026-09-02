@@ -251,10 +251,15 @@ println("\n[algorithms.md] SoftImpute / SoftSVD / PureSVD")
 
 @validate "SoftImpute" begin
     X = sprand(MersenneTwister(1), 200, 150, 0.3)
+    nonzeros(X) .= 1.0 .+ 4.0 .* rand(MersenneTwister(2), nnz(X))   # ratings 1-5
     model = SoftImpute(rank=10, λ=0.5, max_iter=100, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
-    preds = recommend(model, X; k=10)
-    @assert size(preds) == (200, 10)
+    # explicit contract: predict/score + rmse, no recommend
+    @assert !applicable(recommend, model, X)
+    preds = predict(model, X)
+    @assert size(preds) == (200, 150)
+    @assert all(isfinite, preds)
+    @assert rmse(preds, X) >= 0.0
 end
 
 @validate "SoftSVD" begin

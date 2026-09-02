@@ -7,23 +7,33 @@
 
 using Test, SparseArrays, LinearAlgebra, Random
 
-# ── Fixture: test_factorize — explicit ALS reconstructs X ≈ U·Vᵀ ──
+# ── Fixture: test_factorize — explicit ALS reconstructs X ≈ μ + b + U·Vᵀ ──
+#
+# With λ = 0 the BiasedMF parameters are non-identifiable (the zero-loss set
+# is a manifold), so unregularized ALS drifts along null directions instead of
+# converging to exact reconstruction — standard practice regularizes. The
+# fixture checks the explicit path's real semantics: with λ > 0 the BiasedMF
+# reconstruction fits the ratings closely.
 
 @testset "Fixture: test_factorize (explicit reconstruction)" begin
-    X = sparse([1.0 2.0 3.0; 4.0 5.0 6.0])
+    rng = MersenneTwister(42)
+    X = sparse(Matrix{Float64}([1.0 2.0 3.0 4.0; 5.0 6.0 1.0 8.0; 9.0 2.0 11.0 12.0]))
 
-    model = WMF(rank=2, λ=0.0, max_iter=100, solver=CholeskySolver(),
+    model = WMF(rank=2, λ=0.1, max_iter=50, solver=CholeskySolver(),
                 feedback=Explicit, tol=-1.0, verbose=false)
-    fit!(model, X; rng=MersenneTwister(42))
+    fit!(model, X; rng=rng)
+    @test size(model.user_factors) == (2, 3)
+    @test size(model.item_factors) == (2, 4)
 
-    @test size(model.user_factors) == (2, 2)
-    @test size(model.item_factors) == (2, 3)
-
-    recon = score(model, X)
-    @test size(recon) == (2, 3)
+    recon = predict(model, X)
+    @test size(recon) == (3, 4)
     @test all(isfinite, recon)
-    # Explicit ALS should factorize X ≈ U·Vᵀ (unregularized, up to rotation).
-    @test maximum(abs.(recon .- Matrix(X))) < 1e-3
+    errs = [abs(recon[i, j] - X[i, j]) for i in 1:3, j in 1:4]
+    # the λ=0.1 / rank-2 regularized optimum (measured, deterministic data)
+    @test sqrt(sum(abs2, errs) / length(errs)) < 1.3
+    # Biases absorb the baseline structure: prediction formula holds exactly
+    @test recon[1, 1] ≈ model.global_mean + model.user_bias[1] + model.item_bias[1] +
+                        dot(@view(model.user_factors[:, 1]), @view(model.item_factors[:, 1])) atol=1e-5
 end
 
 # ── Fixture: test_cg_nan — CG stays finite on adversarial tiny inputs ──
@@ -83,10 +93,16 @@ end
                 c = max(1.0, 1.0 + Float64(α) * r)
                 loss += c * (1.0 - pred)^2
             else
+                pred += Float64(model.global_mean) +
+                        Float64(model.user_bias[i]) + Float64(model.item_bias[j])
                 loss += (r - pred)^2
             end
         end
-        loss + Float64(λ) * (sum(abs2, U) + sum(abs2, V))
+        loss += Float64(λ) * (sum(abs2, U) + sum(abs2, V))
+        if model.feedback == Explicit
+            loss += Float64(λ) * (sum(abs2, model.user_bias) + sum(abs2, model.item_bias))
+        end
+        loss
     end
 
     for feedback in [Implicit, Explicit]

@@ -166,25 +166,18 @@ PureSVD
 ```julia
 using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 200, 150, 0.3)
+nonzeros(X) .= 1.0 .+ 4.0 .* rand(MersenneTwister(2), nnz(X))   # ratings 1-5
+X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(3))
 
 # SoftImpute: full imputation correction (explicit-ratings / completion only;
 # ranks below the popularity baseline on binarized implicit data)
 model = SoftImpute(rank=10, λ=0.5, max_iter=100)
-fit!(model, X; rng=MersenneTwister(1))
+fit!(model, X_train; rng=MersenneTwister(1))
 
-# SoftSVD: power-iteration style (faster per iteration, good for implicit)
-# λ=1.0 is the default Ridge damping; pass λ=0.0 to fall back to pure
-# truncated SVD (equivalent to PureSVD).
-model_svd = SoftSVD(rank=10, λ=0.5, max_iter=100)
-fit!(model_svd, X; rng=MersenneTwister(1))
-
-# PureSVD: truncated SVD (no regularization, just rank reduction) —
-# a convenience alias for SoftSVD(λ=0, final_svd=false)
-model_pure = PureSVD(rank=10, max_iter=100)
-fit!(model_pure, X; rng=MersenneTwister(1))
-
-# Access factors: model.U * Diagonal(model.d) * model.V'
-preds = recommend(model, X; k=10)
+# The explicit contract: score/predict give the dense predicted-ratings
+# matrix; evaluate with rmse/mae — completion models have no recommend().
+preds = predict(model, X_train)          # n_users × n_items predicted ratings
+println("RMSE = ", round(rmse(preds, X_test), digits=3))
 ```
 
 ## Item Similarity

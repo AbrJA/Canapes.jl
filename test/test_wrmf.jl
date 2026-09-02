@@ -147,14 +147,15 @@ end
 @testset "Explicit feedback: MSE < 1" begin
     rng3 = MersenneTwister(5)
     X_ex = sprand(rng3, 40, 30, 0.2)
+    nonzeros(X_ex) .= 1.0 .+ 4.0 .* rand(rng3, nnz(X_ex))   # ratings in [1, 5]
     m_ex = WMF(rank=4, λ=0.1, α=1.0, max_iter=20, solver=CholeskySolver(),
                 feedback=Explicit, verbose=false)
     fit!(m_ex, X_ex; rng=rng3)
+    P = predict(m_ex, X_ex)
     rv = rowvals(X_ex); nz = nonzeros(X_ex); mse = 0.0
     for j in axes(X_ex, 2), idx in nzrange(X_ex, j)
         i = rv[idx]
-        p = dot(@view(m_ex.user_factors[:, i]), @view(m_ex.item_factors[:, j]))
-        mse += (Float64(nz[idx]) - p)^2
+        mse += (Float64(nz[idx]) - P[i, j])^2
     end
     @test mse / nnz(X_ex) < 1.0
 end
@@ -182,4 +183,78 @@ end
         @test all(isfinite, model.user_factors)
         @test all(isfinite, model.item_factors)
     end
+end
+
+@testset "BiasedMF (WMF explicit): formula & quality" begin
+    rng = MersenneTwister(11)
+    n_u, n_i = 80, 60
+    rows, cols = Int[], Int[]
+    for u in 1:n_u, i in 1:n_i
+        rand(rng) < 0.3 && (push!(rows, u); push!(cols, i))
+    end
+    μ0, ub, ib = 3.5, [0.5 * sin(u) for u in 1:n_u], [0.4 * cos(i) for i in 1:n_i]
+    vals = [clamp(μ0 + ub[r] + ib[c] + randn(rng) * 0.3, 1, 5) for (r, c) in zip(rows, cols)]
+    X = sparse(rows, cols, vals, n_u, n_i)
+
+    for solver in (CholeskySolver(), CGSolver())
+        m = WMF(rank=6, λ=0.1, α=1.0, max_iter=15, solver=solver, feedback=Explicit, verbose=false)
+        fit!(m, X; rng=MersenneTwister(1))
+        @test m.is_fitted
+        @test size(m.user_factors) == (6, n_u)
+        @test size(m.item_factors) == (6, n_i)
+        @test length(m.user_bias) == n_u
+        @test length(m.item_bias) == n_i
+        @test all(isfinite, m.user_bias) && all(isfinite, m.item_bias)
+
+        P = predict(m, X)
+        @test size(P) == (n_u, n_i)
+        @test all(isfinite, P)
+
+        # prediction formula: μ + b_u + b_i + x·y
+        @test P[1, 1] ≈ m.global_mean + m.user_bias[1] + m.item_bias[1] +
+                        dot(@view(m.user_factors[:, 1]), @view(m.item_factors[:, 1])) atol=1e-4
+
+        # quality: prediction well below the noise floor injected (σ=0.3)
+        errs = [abs(P[r, c] - v) for (r, c, v) in zip(rows, cols, vals)]
+        @test sqrt(sum(abs2, errs) / length(errs)) < 0.8
+
+        # score (fold-in) ≈ predict (fitted) on the training matrix
+        @test maximum(abs.(score(m, X) .- P)) < 0.1
+
+        # pairwise score matches fitted prediction formula
+        pv = score(m, [7, 13], [21, 5])
+        @test pv[1] ≈ P[7, 21] atol=1e-4
+        @test pv[2] ≈ P[13, 5] atol=1e-4
+
+        # recommend: valid, seen items excluded
+        R = recommend(m, X; k=5)
+        @test size(R) == (n_u, 5)
+        @test all(1 .<= R .<= n_i)
+        for u in 1:n_u
+            seen = Set(findall(!iszero, view(X, u, :)))
+            @test all(item -> !(item in seen), R[u, :])
+        end
+
+        # transform (fold-in) for new users
+        Xnew = sprand(MersenneTwister(9), 10, n_i, 0.2)
+        nonzeros(Xnew) .= 1.0 .+ 4.0 .* rand(MersenneTwister(8), nnz(Xnew))
+        emb = transform(m, Xnew)
+        @test size(emb) == (6, 10)
+        @test all(isfinite, emb)
+    end
+
+    # predict dimension guards on the explicit path
+    m = WMF(rank=4, feedback=Explicit, max_iter=3, verbose=false)
+    fit!(m, X; rng=MersenneTwister(1))
+    @test_throws DimensionMismatch predict(m, sprand(MersenneTwister(2), 5, n_i, 0.3))
+    @test_throws DimensionMismatch predict(m, sprand(MersenneTwister(2), n_u, 7, 0.3))
+
+    # NonNegativeSolver degrades to plain augmented ALS on explicit (finite)
+    m_nn = WMF(rank=4, λ=0.1, max_iter=3, solver=NonNegativeSolver(), feedback=Explicit, verbose=false)
+    fit!(m_nn, X; rng=MersenneTwister(1))
+    @test all(isfinite, predict(m_nn, X))
+    # ... and keeps non-negativity on implicit
+    m_nn2 = WMF(rank=4, λ=0.1, max_iter=3, solver=NonNegativeSolver(), feedback=Implicit, verbose=false)
+    fit!(m_nn2, X; rng=MersenneTwister(1))
+    @test all(m_nn2.user_factors .>= -1e-12)
 end

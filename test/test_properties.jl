@@ -48,17 +48,17 @@ function _assert_valid_predictions(preds::Matrix{Int}, X::SparseMatrixCSC,
 end
 
 const _PROPERTY_MODELS = [
-    (name="WMF",         model=() -> WMF(rank=3, max_iter=3, verbose=false), square=false),
-    (name="IALS",        model=() -> IALS(rank=3, max_iter=2, verbose=false), square=false),
-    (name="EALS",        model=() -> EALS(rank=3, max_iter=2, verbose=false), square=false),
-    (name="LogisticMF",  model=() -> LogisticMF(rank=3, max_iter=2, verbose=false), square=false),
-    (name="BPR",         model=() -> BPR(rank=3, max_iter=2, verbose=false), square=false),
-    (name="EASE",        model=() -> EASE(λ=100.0, verbose=false), square=false),
-    (name="SLIM",        model=() -> SLIM(λ_l1=0.01, max_iter=3, verbose=false), square=false),
-    (name="ADMMSLIM",    model=() -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false), square=false),
-    (name="ItemKNN",     model=() -> ItemKNN(k=3, verbose=false), square=false),
-    (name="SoftImpute",  model=() -> SoftImpute(rank=3, max_iter=2, verbose=false), square=false),
-    (name="GloVe",       model=() -> GloVe(rank=3, max_iter=2, verbose=false), square=true, hogwild=true),
+    (name="WMF",         model=() -> WMF(rank=3, max_iter=3, verbose=false), explicit=false, square=false),
+    (name="IALS",        model=() -> IALS(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
+    (name="EALS",        model=() -> EALS(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
+    (name="LogisticMF",  model=() -> LogisticMF(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
+    (name="BPR",         model=() -> BPR(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
+    (name="EASE",        model=() -> EASE(λ=100.0, verbose=false), explicit=false, square=false),
+    (name="SLIM",        model=() -> SLIM(λ_l1=0.01, max_iter=3, verbose=false), explicit=false, square=false),
+    (name="ADMMSLIM",    model=() -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false), explicit=false, square=false),
+    (name="ItemKNN",     model=() -> ItemKNN(k=3, verbose=false), explicit=false, square=false),
+    (name="SoftImpute",  model=() -> SoftImpute(rank=3, max_iter=2, verbose=false), square=false, explicit=true),
+    (name="GloVe",       model=() -> GloVe(rank=3, max_iter=2, verbose=false), explicit=false, square=true, hogwild=true),
 ]
 
 @testset "Randomized round-trip properties" begin
@@ -96,8 +96,18 @@ const _PROPERTY_MODELS = [
                     fit!(m, Xm; rng=MersenneTwister(seed))
                     @test m.is_fitted
 
-                    preds = recommend(m, Xm; k=k)
-                    _assert_valid_predictions(preds, Xm, k, size(Xm, 2))
+                    preds = nothing
+                    if spec.explicit
+                        # Explicit contract: dense rating predictions (score),
+                        # finite and shape-consistent; no recommend.
+                        S = score(m, Xm)
+                        @test size(S) == size(Xm)
+                        @test all(isfinite, Matrix(S))
+                        @test !applicable(recommend, m, Xm)
+                    else
+                        preds = recommend(m, Xm; k=k)
+                        _assert_valid_predictions(preds, Xm, k, size(Xm, 2))
+                    end
 
                     # Score matrix is finite and consistent in shape
                     S = score(m, Xm)
@@ -105,23 +115,34 @@ const _PROPERTY_MODELS = [
                     @test all(isfinite, Matrix(S))
 
                     # Deterministic re-fit reproduces recommendations
-                    # (BPR and GloVe are Hogwild by design and are excluded)
+                    # (BPR and GloVe are Hogwild by design and are excluded;
+                    # explicit models compare score instead)
                     if !(name in ("BPR", "GloVe"))
                         m2 = spec.model()
                         fit!(m2, Xm; rng=MersenneTwister(seed))
-                        @test recommend(m2, Xm; k=k) == preds
+                        if spec.explicit
+                            @test score(m2, Xm) == S
+                        else
+                            @test recommend(m2, Xm; k=k) == preds
+                        end
                     end
 
-                    # k saturation: k > n_items clamps to n_items
-                    @test size(recommend(m, Xm; k=n_items + 10), 2) == n_items
+                    if !spec.explicit
+                        # k saturation: k > n_items clamps to n_items
+                        @test size(recommend(m, Xm; k=n_items + 10), 2) == n_items
+                    end
 
-                    # Persistence round-trip reproduces recommendations
+                    # Persistence round-trip reproduces predictions
                     tmpfile = tempname() * ".jls"
                     try
                         save_model(m, tmpfile)
                         loaded = load_model(tmpfile)
                         @test loaded.is_fitted
-                        @test recommend(loaded, Xm; k=k) == preds
+                        if spec.explicit
+                            @test score(loaded, Xm) == S
+                        else
+                            @test recommend(loaded, Xm; k=k) == preds
+                        end
                     finally
                         rm(tmpfile; force=true)
                     end
@@ -155,8 +176,11 @@ end
                 @testset "model $i" begin
                     m = factory()
                     fit!(m, X; rng=MersenneTwister(3))
-                    @test all(isfinite, Matrix(score(m, X)))
-                    _assert_valid_predictions(recommend(m, X; k=3), X, 3, items)
+                    S = score(m, X)
+                    @test all(isfinite, S isa SparseMatrixCSC ? Matrix(S) : S)
+                    if applicable(recommend, m, X)
+                        _assert_valid_predictions(recommend(m, X; k=3), X, 3, items)
+                    end
                 end
             end
         end
@@ -197,9 +221,12 @@ end
                 m = factory()
                 @testset "model $j" begin
                     fit!(m, X; rng=MersenneTwister(3))
-                    @test all(isfinite, Matrix(score(m, X)))
-                    preds = recommend(m, X; k=3)
-                    _assert_valid_predictions(preds, X, 3, items)
+                    S = score(m, X)
+                    @test all(isfinite, S isa SparseMatrixCSC ? Matrix(S) : S)
+                    if applicable(recommend, m, X)
+                        preds = recommend(m, X; k=3)
+                        _assert_valid_predictions(preds, X, 3, items)
+                    end
                 end
             end
         end

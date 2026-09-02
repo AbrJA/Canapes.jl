@@ -40,6 +40,20 @@ These implement `predict` (regression output), not `recommend`.
 """
 abstract type AbstractSparseRegression <: AbstractSparseModel end
 
+"""
+    AbstractExplicitModel <: AbstractSparseModel
+
+Abstract type for explicit-feedback models that predict continuous values
+(ratings), not top-k lists. Concrete examples: [`SoftImpute`](@ref),
+[`SoftSVD`](@ref), [`PureSVD`](@ref) (matrix completion), and the rating
+predictors in the explicit subsystem.
+
+These models implement `score` / `predict` (predicted values) and are
+evaluated with the error metrics [`rmse`](@ref) and [`mae`](@ref) — never
+with ranking metrics or `recommend`.
+"""
+abstract type AbstractExplicitModel <: AbstractSparseModel end
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Solver types
 # ──────────────────────────────────────────────────────────────────────────────

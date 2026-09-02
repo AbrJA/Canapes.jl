@@ -37,6 +37,7 @@ include("experimental.jl")
 
 # ── Metrics & evaluation ──
 include("metrics/ranking.jl")
+include("metrics/error.jl")
 include("crossval.jl")
 
 # ── Tables.jl integration ──
@@ -53,6 +54,7 @@ export
     AbstractMatrixFactorization,
     AbstractItemSimilarity,
     AbstractSparseRegression,
+    AbstractExplicitModel,
     AbstractSoftALS,
     ALSSolver, CholeskySolver, CGSolver, NonNegativeSolver,
     FeedbackType, Implicit, Explicit,
@@ -100,6 +102,10 @@ export
     ndcg_at_k,
     precision_at_k,
     recall_at_k,
+    rmse,
+    mae,
+    mean_rmse,
+    mean_mae,
 
     # Cross-validation & search
     random_holdout,

@@ -7,12 +7,17 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    AbstractSoftALS{T} <: AbstractMatrixFactorization
+    AbstractSoftALS{T} <: AbstractExplicitModel{T}
 
-Abstract parent for ALS-based nuclear-norm matrix completion.
-Concrete subtypes: [`SoftImpute`](@ref), [`SoftSVD`](@ref).
+Abstract parent for ALS-based nuclear-norm matrix completion (explicit
+feedback). Concrete subtypes: [`SoftImpute`](@ref), [`SoftSVD`](@ref).
+
+Completion models belong to the *explicit* subsystem: they predict values
+(ratings) via a dense reconstruction `U * Diagonal(d) * V'`, not top-k lists.
+They implement [`score`](@ref)/[`predict`](@ref) and are evaluated with
+[`rmse`](@ref)/[`mae`](@ref).
 """
-abstract type AbstractSoftALS{T<:AbstractFloat} <: AbstractMatrixFactorization end
+abstract type AbstractSoftALS{T<:AbstractFloat} <: AbstractExplicitModel end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SoftImpute
@@ -390,3 +395,51 @@ function _sparse_approx_values(X::SparseMatrixCSC{Tv,Ti}, A::Matrix{T}, B::Matri
     end
     result
 end
+
+# ──────────────────────────────────────────────────────────────────────────────
+# score / predict — explicit (completion) contract
+# ──────────────────────────────────────────────────────────────────────────────
+
+"""
+    score(model::AbstractSoftALS, X) -> Matrix
+
+Return the dense completion `U * Diagonal(d) * V'` of the fitted model:
+predicted ratings for every user-item pair. `X` only validates dimensions.
+
+This is the *explicit* contract — completion models predict values, not
+top-k lists, and are evaluated with `rmse`/`mae`.
+"""
+function score(model::AbstractSoftALS{T}, X::SparseMatrixCSC) where {T}
+    _require_fitted(model.is_fitted)
+    size(X, 2) == size(model.V, 1) || throw(DimensionMismatch(
+        "X has $(size(X, 2)) items but the fitted model has $(size(model.V, 1))"))
+    model.U * Diagonal(model.d) * model.V'
+end
+
+function score(model::AbstractSoftALS{T},
+               user_indices::AbstractVector{<:Integer},
+               item_indices::AbstractVector{<:Integer}) where {T}
+    _require_fitted(model.is_fitted)
+    length(user_indices) == length(item_indices) ||
+        throw(ArgumentError("user_indices and item_indices must have the same length"))
+    # A[row, k] D[k] B[col, k] summed over k
+    recon = model.U .* transpose(model.d)
+    vals = Vector{T}(undef, length(user_indices))
+    @inbounds for t in eachindex(user_indices)
+        u, i = user_indices[t], item_indices[t]
+        s = zero(T)
+        for f in axes(recon, 2)
+            s += recon[u, f] * model.V[i, f]
+        end
+        vals[t] = s
+    end
+    vals
+end
+
+"""
+    predict(model::AbstractSoftALS, X) -> Matrix
+
+Predicted ratings for all (user, item) pairs, identical to [`score`](@ref)
+for completion models: the dense reconstruction `U * Diagonal(d) * V'`.
+"""
+predict(model::AbstractSoftALS{T}, X::SparseMatrixCSC) where {T} = score(model, X)

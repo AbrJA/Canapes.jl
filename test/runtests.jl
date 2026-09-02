@@ -66,6 +66,9 @@ using Pkg
     @testset "Metrics" begin
         include("test_metrics.jl")
     end
+    @testset "Explicit subsystem" begin
+        include("test_explicit.jl")
+    end
     @testset "Infrastructure" begin
         include("test_infrastructure.jl")
     end

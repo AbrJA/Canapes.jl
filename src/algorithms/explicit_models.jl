@@ -170,8 +170,10 @@ where `R_i(u)` is the set of items j rated by `u` that share at least one user
 with `i`, and `μ_u` is the user's mean rating. This is Surprise's simplified
 (unweighted) variant — not the classic weighted `dev(i,j) + r_uj` form — and
 matches the reference implementation exactly. Memory is O(n_items²) for
-`dev` + `freq`. Users without any relevant item fall back to their own mean
-rating, then the global mean.
+`dev` + `freq`, plus the `mask` scoring cache (also O(n_items²), stored as `T`)
+that makes `predict` a contiguous, cache-friendly column accumulation. Users
+without any relevant item fall back to their own mean rating, then the global
+mean.
 
 # Constructor
 ```julia
@@ -196,13 +198,14 @@ mutable struct SlopeOne{T<:AbstractFloat} <: AbstractExplicitModel
     const verbose::Bool
     dev::Matrix{T}          # mean rating difference dev(i, j) = mean(r_ui - r_uj)
     freq::Matrix{Int}       # number of users who rated both items
+    mask::Matrix{T}         # scoring cache: mask[i, j] = freq[i,j] > 0 ? 1 : 0
     user_mean::Vector{T}
     is_fitted::Bool
 end
 
 function SlopeOne(; verbose::Bool=true, T::Type{<:AbstractFloat}=Float32)
     SlopeOne{T}(verbose, Matrix{T}(undef, 0, 0), Matrix{Int}(undef, 0, 0),
-                T[], false)
+                Matrix{T}(undef, 0, 0), T[], false)
 end
 
 function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
@@ -267,13 +270,24 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
         end
     end
 
+    # Scoring cache: dev[i,j] is already 0 wherever freq[i,j] == 0 (no
+    # co-occurrence), so the numerator can accumulate over contiguous columns
+    # of `dev` directly; only the relevant-count mask is materialized.
+    # Column-major iteration (j outer, i inner) keeps freq/mask access contiguous.
+    mask = zeros(T, n_items, n_items)
+    @inbounds for j in 1:n_items, i in 1:n_items
+        freq[i, j] > 0 && (mask[i, j] = one(T))
+    end
+
     model.dev = dev
     model.freq = freq
+    model.mask = mask
     model.user_mean = user_mean
     model.is_fitted = true
     model
     catch
         model.dev, model.freq = old_dev, old_freq
+        model.mask = Matrix{T}(undef, 0, 0)
         model.user_mean = old_um
         model.is_fitted = false
         rethrow()
@@ -282,25 +296,10 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     end
 end
 
-# Prediction for user u (with rated items `items`) at target item `i` —
-# Surprise's SlopeOne estimate: user mean + average deviation over the
-# relevant items j (j rated by u with at least one common user with i).
-@inline function _slopeone_value(model::SlopeOne{T}, u::Int, items::Vector{Int},
-                                 glm::T, c::Int, i::Int) where {T}
-    num = zero(T)
-    cnt = 0
-    @inbounds for a in 1:c
-        j = items[a]
-        model.freq[i, j] > 0 || continue
-        num += model.dev[i, j]
-        cnt += 1
-    end
-    μu = model.user_mean[u]
-    cnt > 0 && return μu + num / cnt
-    # no relevant items: the user's own mean, else the global mean
-    c > 0 ? μu : glm
-end
-
+# Prediction via contiguous column accumulation (cache-friendly):
+#   num[i] = Σ_{j ∈ I_u} dev[i, j]      (dev is zero where freq == 0)
+#   cnt[i] = Σ_{j ∈ I_u} mask[i, j]     (relevant-item count)
+#   ŷ_ui = cnt[i] > 0 ? μ_u + num[i]/cnt[i] : μ_u
 function predict(model::SlopeOne{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
     n_u, n_i = size(X)
@@ -322,18 +321,33 @@ function predict(model::SlopeOne{T}, X::SparseMatrixCSC) where {T}
     glm = cnt > 0 ? glm / cnt : zero(T)
 
     nt = Threads.nthreads()
+    num_bufs = _thread_buffers(() -> Vector{T}(undef, n_i), nt)
+    cnt_bufs = _thread_buffers(() -> Vector{T}(undef, n_i), nt)
+    dev = model.dev
+    mask = model.mask
+
     Threads.@threads for chunk in 1:nt
+        num = num_bufs[chunk]
+        cbuf = cnt_bufs[chunk]
         for u in _thread_chunk_bounds(chunk, n_u, nt)
             rng_u = nzrange(X_csr, u)
             c = length(rng_u)
-            items = Vector{Int}(undef, c)
-            p = 1
-            @inbounds for idx in rng_u
-                items[p] = Int(X_csr.colval[idx])
-                p += 1
+            if c == 0
+                fill!(view(S, u, :), glm)
+                continue
             end
+            fill!(num, zero(T))
+            fill!(cbuf, zero(T))
+            @inbounds for idx in rng_u
+                j = Int(X_csr.colval[idx])
+                @simd for i in 1:n_i
+                    num[i] += dev[i, j]
+                    cbuf[i] += mask[i, j]
+                end
+            end
+            μu = model.user_mean[u]
             @inbounds for i in 1:n_i
-                S[u, i] = _slopeone_value(model, u, items, glm, c, i)
+                S[u, i] = cbuf[i] > zero(T) ? μu + num[i] / cbuf[i] : μu
             end
         end
     end

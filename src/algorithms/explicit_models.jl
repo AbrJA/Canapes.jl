@@ -160,16 +160,18 @@ end
 """
     SlopeOne{T} <: AbstractExplicitModel
 
-Slope One rating predictor (Lemire & Maclachlan 2005): learns the mean rating
-*difference* between every item pair `dev(i, j)` over users who rated both,
-then predicts
+Slope One rating predictor — the Surprise formulation (Lemire & Maclachlan
+2005): learns the mean rating *difference* between every item pair
+`dev(i, j) = mean(r_ui - r_uj)` over users who rated both, then predicts
 
-    ŷ_ui = ( Σ_{j ∈ I_u \\ {i}} (dev(i,j) + r_uj) · freq(i,j) ) / Σ freq(i,j)
+    ŷ_ui = μ_u + (1/|R_i(u)|) · Σ_{j ∈ R_i(u)} dev(i, j)
 
-A simple, parameter-free, non-matrix baseline that is surprisingly strong for
-explicit ratings (the classic Surprise `SlopeOne`). Memory is O(n_items²) for
-`dev` + `freq`. Users (or items) with no pairwise signal fall back to their
-own mean rating, then the global mean.
+where `R_i(u)` is the set of items j rated by `u` that share at least one user
+with `i`, and `μ_u` is the user's mean rating. This is Surprise's simplified
+(unweighted) variant — not the classic weighted `dev(i,j) + r_uj` form — and
+matches the reference implementation exactly. Memory is O(n_items²) for
+`dev` + `freq`. Users without any relevant item fall back to their own mean
+rating, then the global mean.
 
 # Constructor
 ```julia
@@ -195,13 +197,12 @@ mutable struct SlopeOne{T<:AbstractFloat} <: AbstractExplicitModel
     dev::Matrix{T}          # mean rating difference dev(i, j) = mean(r_ui - r_uj)
     freq::Matrix{Int}       # number of users who rated both items
     user_mean::Vector{T}
-    item_mean::Vector{T}
     is_fitted::Bool
 end
 
 function SlopeOne(; verbose::Bool=true, T::Type{<:AbstractFloat}=Float32)
     SlopeOne{T}(verbose, Matrix{T}(undef, 0, 0), Matrix{Int}(undef, 0, 0),
-                T[], T[], false)
+                T[], false)
 end
 
 function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
@@ -211,7 +212,7 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     _require_nonempty_dimensions(X, "SlopeOne")
     _require_finite_input(X, "SlopeOne")
     old_dev, old_freq = model.dev, model.freq
-    old_um, old_im = model.user_mean, model.item_mean
+    old_um = model.user_mean
     model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
     try
@@ -219,7 +220,6 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     freq = zeros(Int, n_items, n_items)
 
     user_mean = zeros(T, n_users)
-    item_sum = zeros(T, n_items)
     item_cnt = zeros(Int, n_items)
     X_csr = to_csr(X)
 
@@ -234,7 +234,6 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
             i = Int(X_csr.colval[idx])
             r = T(X_csr.nzval[idx])
             s += r
-            item_sum[i] += r
             item_cnt[i] += 1
             m += 1
         end
@@ -255,27 +254,27 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
         end
     end
 
-    # normalize into means (rows: observed-b side); count-symmetric so the
-    # same freq read applies to both dev(i,j) and dev(j,i)
-    @inbounds for i in 1:n_items, j in 1:n_items
-        f = freq[i, j]
-        f > 0 && (dev[i, j] /= f)
-    end
-
-    item_mean = zeros(T, n_items)
-    @inbounds for j in 1:n_items
-        item_cnt[j] > 0 && (item_mean[j] = item_sum[j] / item_cnt[j])
+    # normalize into means (Surprise semantics): divide the upper triangle by
+    # the count and mirror with a sign flip; diagonal stays 0
+    @inbounds for i in 1:n_items
+        dev[i, i] = zero(T)
+        for j in (i + 1):n_items
+            f = freq[i, j]
+            if f > 0
+                dev[i, j] /= f
+                dev[j, i] = -dev[i, j]
+            end
+        end
     end
 
     model.dev = dev
     model.freq = freq
     model.user_mean = user_mean
-    model.item_mean = item_mean
     model.is_fitted = true
     model
     catch
         model.dev, model.freq = old_dev, old_freq
-        model.user_mean, model.item_mean = old_um, old_im
+        model.user_mean = old_um
         model.is_fitted = false
         rethrow()
     finally
@@ -283,24 +282,23 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     end
 end
 
-# Prediction for user u (with rated items `items`/`rat`) at target item `i`.
-@inline function _slopeone_value(model::SlopeOne{T}, items::Vector{Int},
-                                 rat::Vector{T}, glm::T, c::Int, i::Int) where {T}
+# Prediction for user u (with rated items `items`) at target item `i` —
+# Surprise's SlopeOne estimate: user mean + average deviation over the
+# relevant items j (j rated by u with at least one common user with i).
+@inline function _slopeone_value(model::SlopeOne{T}, u::Int, items::Vector{Int},
+                                 glm::T, c::Int, i::Int) where {T}
     num = zero(T)
-    den = zero(T)
+    cnt = 0
     @inbounds for a in 1:c
         j = items[a]
-        j == i && continue
-        f = model.freq[i, j]
-        f == 0 && continue
-        num += (model.dev[i, j] + rat[a]) * f
-        den += f
+        model.freq[i, j] > 0 || continue
+        num += model.dev[i, j]
+        cnt += 1
     end
-    den > zero(T) && return num / den
-    # no pairwise signal: fall back to user mean, then item mean, then global
-    c > 0 && return glm
-    model.item_mean[i] != zero(T) && return model.item_mean[i]
-    glm
+    μu = model.user_mean[u]
+    cnt > 0 && return μu + num / cnt
+    # no relevant items: the user's own mean, else the global mean
+    c > 0 ? μu : glm
 end
 
 function predict(model::SlopeOne{T}, X::SparseMatrixCSC) where {T}
@@ -308,18 +306,17 @@ function predict(model::SlopeOne{T}, X::SparseMatrixCSC) where {T}
     n_u, n_i = size(X)
     n_u == length(model.user_mean) || throw(DimensionMismatch(
         "X has $n_u users but the fitted model has $(length(model.user_mean))"))
-    n_i == length(model.item_mean) || throw(DimensionMismatch(
-        "X has $n_i items but the fitted model has $(length(model.item_mean))"))
+    n_i == size(model.dev, 1) || throw(DimensionMismatch(
+        "X has $n_i items but the fitted model has $(size(model.dev, 1))"))
 
     S = Matrix{T}(undef, n_u, n_i)
     X_csr = to_csr(X)
-    # global mean for the cold-path fallback (mean of item means ≈ μ)
+    # global mean for the cold-user fallback
     glm = zero(T)
     cnt = 0
-    @inbounds for j in 1:n_i
-        m = model.item_mean[j]
-        if m != zero(T)
-            glm += m; cnt += 1
+    @inbounds for u in 1:n_u
+        if model.user_mean[u] != zero(T)
+            glm += model.user_mean[u]; cnt += 1
         end
     end
     glm = cnt > 0 ? glm / cnt : zero(T)
@@ -330,15 +327,13 @@ function predict(model::SlopeOne{T}, X::SparseMatrixCSC) where {T}
             rng_u = nzrange(X_csr, u)
             c = length(rng_u)
             items = Vector{Int}(undef, c)
-            rat = Vector{T}(undef, c)
             p = 1
             @inbounds for idx in rng_u
                 items[p] = Int(X_csr.colval[idx])
-                rat[p] = T(X_csr.nzval[idx])
                 p += 1
             end
             @inbounds for i in 1:n_i
-                S[u, i] = _slopeone_value(model, items, rat, glm, c, i)
+                S[u, i] = _slopeone_value(model, u, items, glm, c, i)
             end
         end
     end

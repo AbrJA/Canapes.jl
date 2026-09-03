@@ -52,7 +52,9 @@ end
              [j for i in 11:20 for j in i+1:20])
     V = fill(5.0, length(I))
     A = sparse(vcat(I,J), vcat(J,I), vcat(V,V), 20, 20)
-    model = GloVe(rank=4, x_max=10.0, lr=0.15, max_iter=50, verbose=false)
+    # lr/duration tuned for Hogwild robustness: more, smaller steps make the
+    # separation robust to thread-scheduling order (20/20 over trials)
+    model = GloVe(rank=4, x_max=10.0, lr=0.1, max_iter=100, verbose=false)
     fit!(model, A; rng=MersenneTwister(1))
     emb = embeddings(model)
     vcos(a, b) = dot(a, b) / (norm(a)*norm(b) + 1e-8)

@@ -5,9 +5,7 @@ A high-performance Julia package for sparse matrix factorization, collaborative 
 All algorithms are independent Julia implementations of the papers cited in
 their docstrings. R's [rsparse](https://github.com/rexyai/rsparse) and Python's
 `implicit`/`scikit-surprise`/`scikit-learn`/`scipy` are used **only as numerical
-references for validation** — no source code is derived from them, so Canapes
-is distributed under the MIT license while those references remain under their
-own (more restrictive) licenses.
+references for validation** — no source code is derived from them.
 
 ## Features
 
@@ -43,7 +41,7 @@ own (more restrictive) licenses.
 ## Quick Start
 
 ```julia
-using Canapes, SparseArrays, Random
+using Canapes, SparseArrays, Random, Statistics
 
 # Create a sparse user-item interaction matrix (1000 users, 500 items)
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
@@ -60,7 +58,7 @@ recommendations = recommend(model, X_train; k=10)
 
 # Evaluate
 map_score  = mean_ap_at_k(recommendations, X_test; k=10)
-ndcg_score = ndcg_at_k(recommendations, X_test; k=10)
+ndcg_score = mean(ndcg_at_k(recommendations, X_test; k=10))   # mean over users → scalar
 println("MAP@10: $(round(map_score, digits=4))")
 println("NDCG@10: $(round(ndcg_score, digits=4))")
 
@@ -78,7 +76,7 @@ ids, sims = similar_items(model, 42; k=5)
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
+Pkg.add("Canapes")   # once registered; before that: Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
 ```
 
 ## API Design

@@ -13,3 +13,7 @@ usage/*
 
 # Generated benchmark artifacts
 /benchmark/trends.html
+
+# Test artifacts (never commit)
+*.jls
+/checkpoints/

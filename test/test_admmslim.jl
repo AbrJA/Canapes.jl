@@ -85,13 +85,13 @@ end
     m_sparse.is_fitted = true
     @test Canapes._use_sparse_score_path(m_sparse.W, X)
     @test recommend(m_sparse, X; k=5) ==
-          Canapes._predict_sparse_score_topk(X * m_sparse.W, X, 5)
+          Canapes._predict_sparse_score_topk(X, m_sparse.W, 5)
 
     # Whatever sparsity fit! produced, recommend must agree with the chosen
     # path and with the dense score product up to FP accumulation order
     for m in (m_dense, m_sparse)
         ref = Canapes._use_sparse_score_path(m.W, X) ?
-              Canapes._predict_sparse_score_topk(X * m.W, X, 5) :
+              Canapes._predict_sparse_score_topk(X, m.W, 5) :
               Canapes._predict_batched_gemm_topk(X, Matrix(m.W), 5)
         @test recommend(m, X; k=5) == ref
         @test Matrix(score(m, X)) ≈ Matrix(X * Matrix(m.W))

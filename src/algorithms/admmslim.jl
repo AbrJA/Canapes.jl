@@ -294,7 +294,7 @@ floating-point accumulation order.
 function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
     if _use_sparse_score_path(model.W, X)
-        _predict_sparse_score_topk(X * model.W, X, k)
+        _predict_sparse_score_topk(X, model.W, k)
     else
         _predict_batched_gemm_topk(X, Matrix(model.W), k)
     end

@@ -424,7 +424,7 @@ Return top-k item indices per user. Scores = X * W, excluding seen items.
 """
 function recommend(model::ItemKNN{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
-    _predict_sparse_score_topk(X * model.W, X, k)
+    _predict_sparse_score_topk(X, model.W, k)
 end
 
 """

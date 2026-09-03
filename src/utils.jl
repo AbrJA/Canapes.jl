@@ -206,8 +206,10 @@ function _predict_topk_batched(user_factors::Matrix{T}, item_factors::Matrix{T},
 
     predictions = Matrix{Int}(undef, n_users, k_actual)
 
-    # Batch sizing: target ≤ 2 GB for score buffer
-    max_batch_mem = 2 * 1024^3
+    # Batch sizing: cap the per-batch score buffer at 256 MB (measured: batch
+    # size has negligible impact on GEMM throughput, so a 2 GB cap only
+    # inflated peak memory — 2.1 GB at 100K×50K instead of 256 MB).
+    max_batch_mem = 256 * 1024^2
     batch_size = max(1, min(n_users, Int(floor(max_batch_mem / (n_items * sizeof(T))))))
 
     # Per-thread top-k buffers
@@ -298,23 +300,26 @@ function _use_sparse_score_path(W::SparseMatrixCSC, X::SparseMatrixCSC)
 end
 
 """
-    _predict_sparse_score_topk(S, X, k) -> Matrix{Int}
+    _predict_sparse_score_topk(X, W, k) -> Matrix{Int}
 
 Shared top-k recommendation for sparse-score item-similarity models
-(SLIM, ItemKNN). Scores `S` (typically `X * W`) are scattered per user into a
-dense buffer, seen items from `X` are masked, and the top-k is extracted with
-a threaded partial sort. Returns an `n_users × k` matrix of item indices.
+(SLIM, ItemKNN, ADMMSLIM, RandomWalk). Per user the score row `X[u,:]·W` is
+computed on the fly by scattering each rated item's `W` row into a dense
+buffer (no `X * W` materialization), seen items are masked, and the top-k is
+extracted with a threaded partial sort. Returns an `n_users × k` matrix of
+item indices.
 """
-function _predict_sparse_score_topk(S::SparseMatrixCSC{Tv,Ti},
-                                    X::SparseMatrixCSC,
-                                    k::Int) where {Tv,Ti}
-    T = eltype(S)
-    n_users = size(X, 1)
-    n_items = size(S, 2)
+function _predict_sparse_score_topk(X::SparseMatrixCSC{Tx,Ti},
+                                    W::SparseMatrixCSC{Tw,Ti},
+                                    k::Int) where {Tx,Ti,Tw}
+    T = promote_type(Tx, Tw)
+    n_users, n_items = size(X)
+    size(W, 1) == n_items || throw(DimensionMismatch(
+        "W has $(size(W, 1)) items but X has $n_items"))
     k_out = _validate_recommend_input(X, n_items, k)
 
-    S_csr = to_csr(S)
     X_csr = to_csr(X)
+    W_csr = to_csr(W)
     preds = Matrix{Int}(undef, n_users, k_out)
 
     nt = Threads.nthreads()
@@ -326,13 +331,17 @@ function _predict_sparse_score_topk(S::SparseMatrixCSC{Tv,Ti},
         topk = topk_bufs[chunk]
 
         for u in _thread_chunk_bounds(chunk, n_users, nt)
+            # Score row: scores[j] = Σ_{i rated by u} X[u,i] · W[i,j]
             @inbounds @simd for i in 1:n_items
                 scores[i] = zero(T)
             end
-
-            @inbounds for idx in nzrange(S_csr, u)
-                j = Int(S_csr.colval[idx])
-                scores[j] = S_csr.nzval[idx]
+            @inbounds for idx in nzrange(X_csr, u)
+                i = Int(X_csr.colval[idx])
+                x = T(X_csr.nzval[idx])
+                for w2 in nzrange(W_csr, i)
+                    j = Int(W_csr.colval[w2])
+                    scores[j] += x * T(W_csr.nzval[w2])
+                end
             end
 
             # Mask seen items
@@ -355,7 +364,7 @@ end
 
 Shared memory-bounded GEMM top-k recommendation for dense item-similarity
 models (EASE, ADMMSLIM). The sparse user-item matrix is densified in batches
-(target ≤ 2 GB for the dense chunk + score buffer), scored via BLAS GEMM,
+(target ≤ 256 MB for the dense chunk + score buffer), scored via BLAS GEMM,
 seen items masked, and the top-k per user extracted with a threaded partial
 sort. Keeps the full-score and top-k paths separate so huge matrices never
 materialize a full dense score matrix.
@@ -370,8 +379,10 @@ function _predict_batched_gemm_topk(X::SparseMatrixCSC{Tv,Ti},
     preds = Matrix{Int}(undef, n_users, k_out)
     X_csr = to_csr(X)
 
-    # Batch sizing: target ≤ 2 GB for the dense X chunk + score buffer
-    max_batch_mem = 2 * 1024^3
+    # Batch sizing: cap the per-batch score + dense-X buffers at 256 MB total
+    # (measured: batch size has negligible impact on GEMM throughput, so a
+    # 2 GB cap only inflated peak memory).
+    max_batch_mem = 256 * 1024^2
     batch_size = max(1, min(n_users, Int(floor(max_batch_mem / (2 * n_items * sizeof(T))))))
 
     nt = Threads.nthreads()

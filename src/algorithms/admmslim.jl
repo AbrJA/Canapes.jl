@@ -81,7 +81,7 @@ julia> size(preds)
 mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     const λ_l1::T
     const λ_l2::T
-    ρ::T
+    const ρ::T
     const max_iter::Int
     const tol::T
     const nonnegative::Bool
@@ -130,11 +130,12 @@ Computes the Gram matrix once, pre-factors `(G + (λ_l2+ρ)I)`, then iterates AD
 - U-update: dual variable accumulation
 
 Convergence is monitored on the primal residual (`‖B-Z‖`) and on the solution
-drift (`‖Z-Z_prev‖/‖Z‖`; the ADMM dual residual `ρ‖Z-Z_prev‖` is used for the
-ρ-adaptation instead, since it grows with ρ and would never satisfy a fixed
-tolerance). The penalty `ρ` adapts per Boyd et al. (2011): doubled when the
-primal residual dominates, halved when the dual dominates, with the Cholesky
-factor re-computed whenever `ρ` changes.
+drift (`‖Z-Z_prev‖/‖Z‖`); the drift criterion makes early stopping actually fire
+(the raw ADMM dual residual `ρ‖Z-Z_prev‖` grows with ρ and never meets a fixed
+tolerance, so it is not used as a stopping metric). The penalty `ρ` is fixed —
+the converged ADMM solution is independent of it, so adapting it mid-run would
+only move the iterate away from the reference fixed point without changing the
+answer.
 
 The B-update solves the dense positive-definite system `(G + (λ₂+ρ)I) B = rhs`
 directly via the pre-factored Cholesky. This is intentional: the Gram matrix
@@ -151,7 +152,6 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     λ_l1 = model.λ_l1
     λ_l2 = model.λ_l2
     ρ = model.ρ
-    old_ρ = model.ρ
     old_W = model.W
     old_is_fitted = model.is_fitted
     model.is_fitted = false
@@ -233,9 +233,9 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
         # ── U-update: dual variable ──
         U .+= B .- Z
 
-        # ── Residuals: primal ‖B-Z‖; drift ‖Z-Z_prev‖ (the true dual residual
-        # ρ‖Z-Z_prev‖ drives the ρ adaptation below, but as a stopping metric
-        # it grows with ρ and never meets a fixed tol — use drift instead) ──
+        # ── Residuals: primal ‖B-Z‖; drift ‖Z-Z_prev‖ (the raw dual residual
+        # ρ‖Z-Z_prev‖ grows with ρ and never meets a fixed tol, so the drift —
+        # without the ρ factor — is used as the stopping metric) ──
         primal_resid = zero(T)
         dual_resid = zero(T)
         norm_B = zero(T)
@@ -251,33 +251,6 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
         primal_rel = sqrt(primal_resid) / (sqrt(norm_B) + T(1e-12))
         drift_rel = sqrt(dual_resid) / (sqrt(norm_Z) + T(1e-12))
 
-        # ── Adaptive ρ (Boyd et al. 2011): rebalance primal/dual residuals ──
-        # The Cholesky operator (G + (λ₂+ρ)I) depends on ρ, so a change
-        # refactorizes the dense system (≈ 1/6 the cost of one B-update).
-        if 10 * sqrt(primal_resid) > sqrt(dual_resid)
-            ρ_new = min(ρ * T(2.0), T(1e4))
-            if ρ_new != ρ
-                ρ_old = ρ
-                ρ = ρ_new
-                U .*= ρ_old / ρ
-                @inbounds for j in 1:n_items
-                    lhs[j, j] = G[j, j] + λ_l2 + ρ
-                end
-                C = cholesky(Symmetric(lhs))
-            end
-        elseif 10 * sqrt(dual_resid) > sqrt(primal_resid)
-            ρ_new = max(ρ * T(0.5), T(1e-3))
-            if ρ_new != ρ
-                ρ_old = ρ
-                ρ = ρ_new
-                U .*= ρ_old / ρ
-                @inbounds for j in 1:n_items
-                    lhs[j, j] = G[j, j] + λ_l2 + ρ
-                end
-                C = cholesky(Symmetric(lhs))
-            end
-        end
-
         if model.verbose && (iter <= 5 || iter % 10 == 0 || iter == model.max_iter)
             nnz_iter = count(>(T(1e-10)), Z)
             @info "[ADMM-SLIM] iter=$iter  primal=$(round(primal_rel; sigdigits=4))  drift=$(round(drift_rel; sigdigits=4))  ρ=$(round(ρ; sigdigits=3))  nnz=$(nnz_iter)"
@@ -290,7 +263,6 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     end
 
     model.W = dropzeros!(sparse(Z))
-    model.ρ = ρ
     model.is_fitted = true
 
     nnz_w = nnz(model.W)
@@ -299,7 +271,6 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     model
     catch
         model.W = old_W
-        model.ρ = old_ρ
         model.is_fitted = old_is_fitted
         rethrow()
     end

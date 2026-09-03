@@ -78,7 +78,7 @@ end
           Canapes._predict_batched_gemm_topk(X, Matrix(m_dense.W), 5)
 
     # Path selection is a pure function of (W, X): hand-crafted sparse W must
-    # take the sparse path regardless of how fit!'s adaptive ρ shaped W.
+    # take the sparse path regardless of how fit! shaped W.
     m_sparse = ADMMSLIM(λ_l1=0.5, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_sparse, X)
     m_sparse.W = sparse([1.0f0], [2], [1], 20, 20)
@@ -172,7 +172,7 @@ end
     @test_throws ArgumentError ADMMSLIM(ρ=0.0)
 end
 
-@testset "Adaptive penalty" begin
+@testset "Fixed penalty determinism" begin
     rng = MersenneTwister(7)
     X = sprand(rng, 60, 25, 0.15)
     m1 = ADMMSLIM(λ_l1=0.01, λ_l2=50.0, ρ=1.0, max_iter=30, verbose=false)
@@ -181,8 +181,8 @@ end
     fit!(m2, X)
     # identical inputs (no rng dependence) → identical fits
     @test m1.W ≈ m2.W
-    # ρ is recorded within the adaptive-ρ bounds
-    @test 1e-3 <= m1.ρ <= 1e4
+    # ρ is fixed at the constructor value (no mid-run adaptation)
+    @test m1.ρ == 1.0
     @test all(isfinite, nonzeros(m1.W))
     @test recommend(m1, X; k=5) == recommend(m2, X; k=5)
 end

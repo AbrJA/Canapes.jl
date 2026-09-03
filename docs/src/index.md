@@ -1,6 +1,13 @@
 # Canapes.jl
 
-A high-performance Julia package for sparse matrix factorization, collaborative filtering, and recommendation systems. Julia port and enhancement of R's [rsparse](https://github.com/rexyai/rsparse).
+A high-performance Julia package for sparse matrix factorization, collaborative filtering, and recommendation systems.
+
+All algorithms are independent Julia implementations of the papers cited in
+their docstrings. R's [rsparse](https://github.com/rexyai/rsparse) and Python's
+`implicit`/`scikit-surprise`/`scikit-learn`/`scipy` are used **only as numerical
+references for validation** — no source code is derived from them, so Canapes
+is distributed under the MIT license while those references remain under their
+own (more restrictive) licenses.
 
 ## Features
 

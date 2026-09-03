@@ -5,14 +5,15 @@
 # Reference: Pennington, Socher, Manning (2014)
 #   "GloVe: Global Vectors for Word Representation"
 #
-# Loss (½ convention, matching the Stanford C implementation, Python ports,
-# and rsparse's GloVe.cpp):
+# Loss (½ convention, following the paper's formulation):
 #   L = ½ Σ_{i,j} f(X_{ij}) (wᵢᵀ w̃ⱼ + bᵢ + b̃ⱼ - log X_{ij})²
 #
 # where f(x) = (x/x_max)^α if x < x_max, else 1.
 # The ½ makes the gradient of each squared term equal to the residual itself
-# (no floating factor of 2), so `lr` has the same semantics as the
-# reference implementations and loss curves are directly comparable.
+# (no floating factor of 2), so `lr` is directly comparable across
+# implementations. This is an independent implementation of the cited paper;
+# the numerical parity with reference implementations is checked in
+# validation/, not derived from their source.
 # ──────────────────────────────────────────────────────────────────────────────
 
 """

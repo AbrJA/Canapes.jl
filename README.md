@@ -6,6 +6,8 @@
 
 [![Build Status](https://github.com/AbrJA/Canapes.jl/workflows/CI/badge.svg)](https://github.com/AbrJA/Canapes.jl/actions)
 [![codecov](https://codecov.io/gh/AbrJA/Canapes.jl/graph/badge.svg)](https://codecov.io/gh/AbrJA/Canapes.jl)
+[![Stable docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://AbrJA.github.io/Canapes.jl/stable/)
+[![Dev docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://AbrJA.github.io/Canapes.jl/dev/)
 [![Julia 1.10+](https://img.shields.io/badge/Julia-1.10%2B-blue?logo=julia)](https://julialang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -41,10 +43,12 @@ scipy)** references.
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
+Pkg.add("Canapes")   # once registered; before that: Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
 ```
 
-Requires Julia ≥ 1.10. Full API reference lives in [`docs/src/`](docs/src) (build with `julia --project=docs docs/make.jl`).
+Requires Julia ≥ 1.10. The full API reference is at
+<https://AbrJA.github.io/Canapes.jl/> (also buildable locally with
+`julia --project=docs docs/make.jl`).
 
 ---
 
@@ -53,10 +57,10 @@ Requires Julia ≥ 1.10. Full API reference lives in [`docs/src/`](docs/src) (bu
 End-to-end in one flow: tabular interactions → sparse matrix → train → recommend → evaluate.
 
 ```julia
-using Canapes, DataFrames, SparseArrays, Random, Statistics
+using Canapes, SparseArrays, Random, Statistics
 
-# 1. Interactions as a table (any Tables.jl source: DataFrames, CSV, Arrow, …)
-df = DataFrame(user=[1,1,2,3,3,4], item=[2,5,3,1,4,2], rating=[1.0,1.0,1.0,1.0,1.0,1.0])
+# 1. Interactions as a table (any Tables.jl source: NamedTuples, DataFrames, CSV, Arrow, …)
+df = (user=[1,1,2,3,3,4], item=[2,5,3,1,4,2], rating=[1.0,1.0,1.0,1.0,1.0,1.0])
 X = triplets_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating)   # 4×5
 
 # 2. Train (seen items are masked at recommend time)
@@ -344,7 +348,7 @@ rows = [(user=1, item=3, value=1.0), (user=2, item=1, value=2.0)]
 X = triplets_to_sparse(rows)
 
 # Binary interactions (implicit 1.0) and custom element type
-X = triplets_to_sparse(clicks; value_col=nothing, T=Float32)
+X = triplets_to_sparse(data; value_col=nothing, T=Float32)
 
 # Back to triplets
 triplets = sparse_to_triplets(X)                 # (user=…, item=…, value=…)
@@ -358,7 +362,7 @@ Models are saved atomically (temp file + rename, so a crash never leaves a parti
 with a versioned header:
 
 ```julia
-using Canapes, SparseArrays
+using Canapes, SparseArrays, Random
 
 model = EASE(λ=100.0, verbose=false)
 fit!(model, sprand(MersenneTwister(1), 200, 100, 0.05))

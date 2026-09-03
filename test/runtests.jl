@@ -121,4 +121,7 @@ const TEST_FULL = get(ENV, "TEST_SUITE", "full") == "full"
     @testset "Fixtures" begin
         include("test_fixtures.jl")
     end
+    @testset "README examples" begin
+        include("test_readme.jl")
+    end
 end

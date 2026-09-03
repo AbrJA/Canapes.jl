@@ -245,7 +245,7 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
     run_callbacks_train_begin(callbacks, model)
     try
 
-    # Initialize with random orthonormal bases (rsparse style)
+    # Initialize with random orthonormal bases
     U_cur = Matrix{T}(qr(randn(rng, T, m, k)).Q)[:, 1:k]::Matrix{T}
     d_cur = ones(T, k)::Vector{T}
     V_cur = zeros(T, n, k)::Matrix{T}

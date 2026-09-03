@@ -149,7 +149,7 @@ function update!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVector;
             j = rv[idx]
             xval = T(nzv[idx])
             gj = err * xval
-            # Gradient clipping (matches R rsparse)
+            # Gradient clipping (validated against the R reference)
             gj = clamp(gj, -clip, clip)
             σj = (sqrt(n_acc[j] + gj^2) - sqrt(n_acc[j])) / lr
             z[j] += gj - σj * _ftrl_weight(z[j], n_acc[j], lr, β, λ1, λ2)

@@ -25,6 +25,10 @@ const LOG_DIR = joinpath(@__DIR__, "logs")
 const LOG_FILE = joinpath(LOG_DIR, "results.jsonl")
 const K = 10
 
+# Optional scale filter: BENCH_SCALE=hundreds|thousands|millions runs a single
+# scale (useful to smoke-test the smallest scale before the long ones).
+const SCALE_FILTER = get(ENV, "BENCH_SCALE", "")
+
 const SCALES = [
     (name="hundreds",  n_users=500,     n_items=300,      density=0.10),  # ~15K nnz
     (name="thousands", n_users=5_000,   n_items=3_000,    density=0.02),  # ~300K nnz
@@ -80,33 +84,97 @@ end
 # Benchmark definitions
 # ──────────────────────────────────────────────────────────────────────────────
 
-function benchmark_models(X; include_dense=true)
-    models = [
-        (name="WMF-Cholesky", model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10,
-            solver=CholeskySolver(), verbose=false)),
-        (name="WMF-CG", model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10,
-            solver=CGSolver(), cg_steps=3, verbose=false)),
-        (name="IALS", model=IALS(rank=64, max_iter=10, verbose=false)),
-        (name="EALS", model=EALS(rank=64, max_iter=10, verbose=false)),
-        (name="BPR", model=BPR(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
-            lr=0.05, max_iter=10, verbose=false)),
-        (name="LogisticMF", model=Canapes.Experimental.LogisticMF(rank=64, λ=0.6, lr=1.0,
-            max_iter=10, n_negative=30, tol=-1.0, verbose=false)),
+# Each spec is (name, model, fit!, infer, dense).
+#   fit!(model, X, rng) → nothing
+#   infer(model, X)      → output (recommendations, predictions or scores)
+#   dense::Bool          — output is a dense n_users × n_items matrix (skip
+#                          at the "millions" scale, where it would be 100K×50K)
+function benchmark_specs(X)
+    y = rand(MersenneTwister(3), size(X, 1))
+    [
+        # ── implicit ranking (recommend) ──
+        (name="WMF-Cholesky", dense=false,
+         model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10, solver=CholeskySolver(), verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
+        (name="WMF-CG", dense=false,
+         model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10, solver=CGSolver(), cg_steps=3, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
+        (name="IALS", dense=false,
+         model=IALS(rank=64, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
+        (name="EALS", dense=false,
+         model=EALS(rank=64, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
+        (name="BPR", dense=false,
+         model=BPR(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
+        (name="LogisticMF", dense=false,
+         model=Canapes.Experimental.LogisticMF(rank=64, λ=0.6, lr=1.0, max_iter=10, n_negative=30, tol=-1.0, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
+
+        # ── item similarity (recommend) ──
+        (name="EASE", dense=true,  # O(n_items²)
+         model=EASE(λ=200.0, verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
+        (name="SLIM", dense=true,  # O(n_items²)
+         model=SLIM(max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
+        (name="ADMMSLIM", dense=true,  # O(n_items²)
+         model=ADMMSLIM(max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
+        (name="ItemKNN", dense=true,  # O(n_items²)
+         model=ItemKNN(k=50, verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
+        (name="RandomWalk", dense=true,   # item-item W can reach O(n_items²) at scale
+         model=RandomWalk(β=0.0, k=50, verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
+
+        # ── explicit rating prediction (predict — dense output) ──
+        (name="BiasedMF", dense=true,
+         model=WMF(rank=64, λ=0.1, max_iter=10, solver=CholeskySolver(), feedback=Explicit, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X)),
+        (name="BaselineOnly", dense=true,
+         model=BaselineOnly(λ=0.02, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->predict(m, X)),
+        (name="SlopeOne", dense=true,
+         model=SlopeOne(verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->predict(m, X)),
+        (name="PearsonKNN", dense=true,
+         model=PearsonKNN(k=50, verbose=false),
+         fit=(m,r)->fit!(m, X), infer=m->predict(m, X)),
+
+        # ── completion (score — dense output) ──
+        (name="SoftImpute", dense=true,
+         model=SoftImpute(rank=32, λ=0.5, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X)),
+        (name="SoftSVD", dense=true,
+         model=SoftSVD(rank=32, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X)),
+        (name="PureSVD", dense=true,
+         model=PureSVD(rank=32, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X)),
+
+        # ── sparse regression (predict — vector output) ──
+        (name="FTRL", dense=false,
+         model=FTRL(lr=0.1, max_iter=1, verbose=false),
+         fit=(m,r)->update!(m, X, y; rng=r), infer=m->predict(m, X)),
+        (name="FM", dense=false,
+         model=FM(rank=8, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X, y; rng=r), infer=m->predict(m, X)),
+
+        # ── experimental ──
+        (name="PMF", dense=true,
+         model=Canapes.Experimental.PMF(rank=64, λ=0.1, lr=0.05, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X)),
     ]
-    include_dense || return models
-    vcat(models, [
-        (name="EASE", model=EASE(λ=200.0, verbose=false)),
-        (name="SLIM", model=SLIM(max_iter=10, verbose=false)),
-        (name="ADMMSLIM", model=ADMMSLIM(max_iter=10, verbose=false)),
-        (name="ItemKNN", model=ItemKNN(k=50, verbose=false)),
-    ])
 end
 
 function compile_warmup()
-    X = sparse([1, 2], [1, 2], [1.0, 1.0], 50, 40)
-    for spec in benchmark_models(X)
-        fit!(spec.model, X; rng=MersenneTwister(1))
-        recommend(spec.model, X; k=K)
+    X = sparse([1, 2, 3], [1, 2, 1], [1.0, 1.0, 1.0], 50, 40)
+    y = rand(MersenneTwister(3), size(X, 1))
+    for spec in benchmark_specs(X)
+        spec.fit(spec.model, MersenneTwister(1))
+        spec.infer(spec.model)
     end
     C = sprand(40, 40, 0.2)
     C = C + C'
@@ -152,6 +220,7 @@ function print_record(record)
         record["algorithm"], record["scale"],
         record["fit_seconds"], record["fit_bytes"] / 2^20,
         record["recommend_seconds"], record["recommend_bytes"] / 2^20)
+    flush(stdout)
 end
 
 function env_record()
@@ -185,21 +254,23 @@ function main()
     reps = Dict("hundreds" => 3, "thousands" => 2, "millions" => 1)
 
     for scale in SCALES
-        println("-" ^ 78)
+        isempty(SCALE_FILTER) || scale.name == SCALE_FILTER || continue
         println("Scale: $(scale.name)  ($(scale.n_users) users × $(scale.n_items) items, " *
                 "density $(scale.density))")
+        flush(stdout)
         X = generate_matrix(scale.n_users, scale.n_items, scale.density)
         @printf("  X nnz: %d\n\n", nnz(X))
 
-        # Dense item-similarity models are O(n_items²) in memory and time;
-        # they are only benchmarked at the two smaller scales.
+        # Dense-output models (explicit predict / completion score) build a full
+        # n_users × n_items matrix — skipped at millions scale.
         include_dense = scale.name != "millions"
-        for spec in benchmark_models(X; include_dense=include_dense)
+        for spec in benchmark_specs(X)
+            spec.dense && !include_dense && continue
             model = spec.model
             cfg = config_string(model)
 
-            fit_m = best_of(() -> fit!(model, X; rng=MersenneTwister(1)), reps[scale.name])
-            rec_m = best_of(() -> recommend(model, X; k=K), reps[scale.name])
+            fit_m = best_of(() -> spec.fit(model, MersenneTwister(1)), reps[scale.name])
+            rec_m = best_of(() -> spec.infer(model), reps[scale.name])
 
             record = log_record(merge(env_record(), Dict(
                 "algorithm" => spec.name,

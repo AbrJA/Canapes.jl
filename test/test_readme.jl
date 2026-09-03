@@ -4,6 +4,9 @@
 
 @testset "README examples" begin
     readme = read(joinpath(dirname(@__DIR__), "README.md"), String)
+    # Windows checkouts may convert LF → CRLF; normalize so the fence regex
+    # matches regardless of the checkout's line endings.
+    readme = replace(readme, "\r\n" => "\n")
 
     # Extract ```julia ... ``` fenced blocks
     blocks = String[]

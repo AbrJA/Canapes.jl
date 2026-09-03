@@ -1,0 +1,11 @@
+# Keep text files line-ending stable across checkouts/editors
+*.md text eol=lf
+*.jl text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.R text eol=lf
+*.py text eol=lf
+*.csv text

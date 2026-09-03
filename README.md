@@ -6,8 +6,7 @@
 
 [![Build Status](https://github.com/AbrJA/Canapes.jl/workflows/CI/badge.svg)](https://github.com/AbrJA/Canapes.jl/actions)
 [![codecov](https://codecov.io/gh/AbrJA/Canapes.jl/graph/badge.svg)](https://codecov.io/gh/AbrJA/Canapes.jl)
-[![Stable docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://AbrJA.github.io/Canapes.jl/stable/)
-[![Dev docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://AbrJA.github.io/Canapes.jl/dev/)
+[![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://AbrJA.github.io/Canapes.jl/)
 [![Julia 1.10+](https://img.shields.io/badge/Julia-1.10%2B-blue?logo=julia)](https://julialang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 

@@ -448,23 +448,30 @@ is reproducible for a given seed and environment (GloVe and BPR excepted — Hog
 ## Correctness & Reference Validation
 
 Numerical correctness is validated against independent reference implementations, not
-just unit tests:
+just unit tests (every algorithm is an independent Julia implementation of its paper;
+the references below are used for numerical comparison only):
 
 - **R (rsparse)** — parity on WMF, FTRL, GloVe (½-loss convention), SoftImpute/SVD, ranking
   metrics, and FM (correlation ≥ 0.95, gated with margin because rsparse's init uses
   `std::random_device`).
 - **Python (implicit, sklearn, scipy)** — parity on ALS, BPR, IALS, EALS, LMF, EASE, SLIM,
   PureSVD, ItemKNN, and ADMMSLIM.
-- One command runs both suites (R via the project-managed `uvr` environment, Python via a
-  venv):
+- **Python (scikit-surprise)** — explicit-rating parity: SlopeOne and BaselineOnly match
+  exactly (cor=1.0), PearsonKNN↔KNNWithMeans, and BiasedMF↔Surprise SVD (diagnostic).
+- **MovieLens-1M** — large-scale comparison of time / precision / memory against
+  `implicit` (ALS matches ΔMAP 0.0004).
+
+One command runs all suites (R via the project-managed `uvr` environment, Python via a
+venv):
 
 ```bash
-julia --project=. validation/run.jl --all
-PYTHON=.venv/bin/python julia --project=. validation/run.jl --all   # venv python
+julia --project=. validation/run.jl --all          # R + Python + Surprise
+PYTHON=.venv/bin/python julia --project=. validation/run.jl --all
+julia --project=. validation/run.jl --ml1m         # MovieLens-1M vs implicit
 ```
 
-The test suite itself includes 451 pure-Julia fixtures ported from `implicit`, 227
-reference-style contract tests, and 15k randomized property tests.
+The test suite itself includes 451 pure-Julia fixtures (MIT, ported from `implicit`),
+227 reference-style contract tests, and 15k randomized property tests.
 
 ---
 

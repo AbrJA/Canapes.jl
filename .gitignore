@@ -10,3 +10,6 @@ Manifest.toml
 /test/fixtures/*
 usage/*
 /.uvr/library/
+
+# Generated benchmark artifacts
+/benchmark/trends.html

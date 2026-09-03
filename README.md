@@ -133,7 +133,7 @@ the docs for examples.
 
 - **Thread-safe and reproducible**: shared chunked-buffer helpers for
   `Threads.@threads` loops, `@simd` reductions without `@fastmath`, per-chunk
-  work buffers. See AGENTS.md for the conventions.
+  work buffers.
 - **Reference parity** is enforced by `validation/run.jl` (R, Python, Surprise,
   MovieLens-1M), and a tracked harness in `benchmark/` records `fit!` /
   `recommend` time and allocations at three fixed scales across commits.
@@ -160,8 +160,7 @@ With CUDA.jl installed, a package extension adds `fit_gpu!`, `score_gpu`, and
 
 Issues and PRs are welcome. Run the full suite (`--threads=8`) before opening a
 PR, validate performance changes with `benchmark/run.jl`, and keep training
-kernels SIMD-vectorized but `@fastmath`-free. See [AGENTS.md](AGENTS.md) for
-threading and determinism conventions.
+kernels SIMD-vectorized but `@fastmath`-free.
 
 ---
 

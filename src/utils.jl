@@ -102,7 +102,7 @@ pass: the `nzind`/`nzval` buffers of each column are copied straight into the
 final CSC buffers, so there are no intermediate matrices. Structurally
 identical to `hcat(cols...)`, but ~10x fewer allocations at thousands of
 columns and it never triggers the variadic-splat inference notice that
-`hcat(cols...)` does on Julia 1.12 (used by SLIM's W assembly — see AGENTS.md).
+`hcat(cols...)` does on Julia 1.12 (used by SLIM's W assembly).
 """
 function _sparse_hcat_vectors(cols::Vector{SparseVector{T,Ti}}) where {T,Ti}
     m = isempty(cols) ? 0 : length(cols[1])

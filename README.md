@@ -87,7 +87,7 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 | `SoftSVD` / `PureSVD` | Low-rank SVD (ALS style) | Hastie et al. (2014) / Cremonesi et al. (2010) |
 | `BaselineOnly` | Rating baseline μ + b_u + b_i | Koren (2009) |
 | `SlopeOne` | Rating predictor from pair deviations | Lemire & Maclachlan (2005) |
-| `PearsonKNN` | User-centered Pearson neighborhood | Surprise `KNNWithMeans` |
+| `PearsonKNN` | User-centered Pearson neighborhood | Resnick et al. (1994) |
 
 `PMF` and `LogisticMF` live in the `Canapes.Experimental` namespace; the latter
 is reference-validated against `implicit` but ranks at the bottom of implicit

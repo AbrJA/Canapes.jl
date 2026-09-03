@@ -153,6 +153,36 @@ end
 # Cosine similarity with top-k truncation
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Min-heap of size k over (value, index) pairs: the root holds the smallest
+# kept value, so any candidate that is not better than the root is discarded
+# in O(1). "Better" is lexicographic (larger value, then smaller item index),
+# matching the stable top-k the old partialsort path produced — ties between
+# equal similarity values must keep the same members.
+@inline function _heap_better(v_a::T, i_a::Int, v_b::T, i_b::Int) where {T}
+    v_a > v_b || (v_a == v_b && i_a < i_b)
+end
+
+@inline function _heap_insert_topk!(heap_v::Vector{T}, heap_i::Vector{Int},
+                                    s::T, item::Int, k::Int) where {T}
+    _heap_better(s, item, heap_v[1], heap_i[1]) || return
+    heap_v[1] = s
+    heap_i[1] = item
+    # Sift the new root down to restore the min-heap invariant: while the
+    # parent is better than its worse child, swap with that child.
+    c = 1
+    @inbounds while true
+        l = 2c
+        l > k && break
+        r = l + 1
+        m = (r > k || _heap_better(heap_v[r], heap_i[r], heap_v[l], heap_i[l])) ? l : r
+        _heap_better(heap_v[c], heap_i[c], heap_v[m], heap_i[m]) || break
+        heap_v[c], heap_v[m] = heap_v[m], heap_v[c]
+        heap_i[c], heap_i[m] = heap_i[m], heap_i[c]
+        c = m
+    end
+    nothing
+end
+
 function _cosine_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv,Ti,T}
     n_items = size(X, 2)
 
@@ -166,45 +196,65 @@ function _cosine_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T) where {Tv,
         col_norms[j] = sqrt(s)
     end
 
-    # Gram matrix XᵀX
-    G = X' * X  # SparseMatrixCSC
+    # Column-by-column top-k with a size-k min-heap per thread. The full Gram
+    # XᵀX is never materialized: for each column j its dot products with all
+    # other items are accumulated in a dense per-thread buffer by scattering
+    # each user u ∈ N(j) with their full row (X in CSR), normalized, and the
+    # top-k kept directly. Memory is O(n_items + nnz), not O(nnz(XᵀX)).
+    X_csr = to_csr(X)
 
-    # Build sparse W by keeping top-k per column (excluding self-similarity)
-    # Use COO for construction
     nt = Threads.nthreads()
-    # Thread-local storage
+    dot_bufs = _thread_buffers(() -> zeros(T, n_items), nt)
+    heap_bufs = _thread_buffers(() -> fill(T(-Inf), max(k, 1)), nt)
+    heap_idx_bufs = _thread_buffers(() -> zeros(Int, max(k, 1)), nt)
     local_rows = _thread_buffers(() -> Int[], nt)
     local_cols = _thread_buffers(() -> Int[], nt)
     local_vals = _thread_buffers(() -> T[], nt)
 
+    rv = rowvals(X)
+    nz = nonzeros(X)
+
     Threads.@threads for chunk in 1:nt
-        for j in _thread_chunk_bounds(chunk, n_items, nt)
-        norm_j = col_norms[j]
-        norm_j == zero(T) && continue
+        dot = dot_bufs[chunk]
+        hv = heap_bufs[chunk]
+        hi = heap_idx_bufs[chunk]
+        @inbounds for j in _thread_chunk_bounds(chunk, n_items, nt)
+            norm_j = col_norms[j]
+            norm_j == zero(T) && continue
 
-        # Collect similarities for column j from sparse Gram row
-        sims = Vector{Pair{Int,T}}()
-        for idx in nzrange(G, j)
-            i = rowvals(G)[idx]
-            i == j && continue
-            norm_i = col_norms[i]
-            norm_i == zero(T) && continue
-            dot_ij = T(nonzeros(G)[idx])
-            sim = dot_ij / (norm_i * norm_j + shrinkage)
-            sim > zero(T) && push!(sims, i => sim)
-        end
+            # Reset the dot-product buffer and the heap
+            for i in 1:n_items
+                dot[i] = zero(T)
+            end
+            for e in 1:k
+                hv[e] = T(-Inf)
+            end
 
-        # Keep top-k (partialsort is O(n) average vs O(n log n) for full sort)
-        if length(sims) > k
-            partialsort!(sims, 1:k; by=last, rev=true)
-            resize!(sims, k)
-        end
+            # dot[i] += X[u,j] · X[u,i] over users u that rated item j
+            for idx in nzrange(X, j)
+                u = Int(rv[idx])
+                xj = T(nz[idx])
+                for r in nzrange(X_csr, u)
+                    i = Int(X_csr.colval[r])
+                    i == j && continue
+                    dot[i] += xj * T(X_csr.nzval[r])
+                end
+            end
 
-        for (i, s) in sims
-            push!(local_rows[chunk], i)
-            push!(local_cols[chunk], j)
-            push!(local_vals[chunk], s)
-        end
+            # Normalize and keep the top-k similarities in the heap
+            for i in 1:n_items
+                i == j && continue
+                ni = col_norms[i]
+                (ni == zero(T) || dot[i] <= zero(T)) && continue
+                _heap_insert_topk!(hv, hi, dot[i] / (ni * norm_j + shrinkage), i, k)
+            end
+
+            for e in 1:k
+                hv[e] > T(-Inf) || continue
+                push!(local_rows[chunk], hi[e])
+                push!(local_cols[chunk], j)
+                push!(local_vals[chunk], hv[e])
+            end
         end
     end
 

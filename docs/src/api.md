@@ -22,7 +22,7 @@ Sampling
 
 ```@docs
 Canapes.Experimental
-Canapes.Experimental.LogisticMF
+Canapes.Experimental.PMF
 ```
 
 ## Callbacks

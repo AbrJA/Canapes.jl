@@ -123,7 +123,7 @@ PearsonKNN
 The biased matrix factorization lives in the dual model
 [`WMF`](@ref) with `feedback=Explicit` (BiasedMF: `μ + b_u + b_i + x_uᵀ y_i`,
 learned via augmented ALS), loss `WMF`'s `predict` returns the dense fitted
-ratings. Experimental: [`PMF`](@ref) (`Canapes.Experimental.PMF`) is a MAP-SGD
+ratings. Experimental: [`Canapes.Experimental.PMF`](@ref) is a MAP-SGD
 Probabilistic Matrix Factorization with no reference-parity target.
 
 #### Example

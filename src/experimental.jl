@@ -7,12 +7,23 @@
 # fragile hyperparameter settings. They live in `Canapes.Experimental`, NOT in
 # the root exports, so the production API stays clean while the code, tests,
 # and reference-validated behavior remain in the package.
-#
-# Currently: LogisticMF (Johnson 2014) — calibration-oriented logistic matrix
-# factorization (fragile under Adagrad) — and PMF (Mnih & Salakhutdinov 2007)
-# — probabilistic MF via MAP-SGD with no reference-parity target.
 # ──────────────────────────────────────────────────────────────────────────────
 
+"""
+    Canapes.Experimental
+
+Namespaced experimental algorithms, kept out of the root exports so the
+production API stays clean. Currently:
+
+- [`LogisticMF`](@ref) (Johnson 2014) — logistic matrix factorization,
+  reference-validated against `implicit`, but fragile under Adagrad and weak
+  on implicit Top-N benchmarks.
+- [`PMF`](@ref) (Mnih & Salakhutdinov 2007) — probabilistic matrix
+  factorization via MAP-SGD (no reference-parity target).
+
+Both are implemented, tested, and numerically validated like the core model
+catalog; they are namespaced here only because of their benchmark standing.
+"""
 module Experimental
 
 import ..Canapes   # parent: needed for the internal helpers below

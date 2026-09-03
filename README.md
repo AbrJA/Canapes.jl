@@ -36,8 +36,7 @@ using Pkg
 Pkg.add("Canapes")   # once registered; before that: Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
 ```
 
-Requires Julia ≥ 1.10. The full API reference is at
-<https://AbrJA.github.io/Canapes.jl/>.
+Requires Julia ≥ 1.10. The full API reference is at [docs](https://AbrJA.github.io/Canapes.jl/).
 
 ---
 

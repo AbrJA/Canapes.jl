@@ -8,6 +8,15 @@ precision_at_k
 recall_at_k
 ```
 
+## Error Metrics (explicit ratings)
+
+```@docs
+rmse
+mae
+mean_rmse
+mean_mae
+```
+
 ## Example
 
 ```julia

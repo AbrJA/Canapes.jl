@@ -71,14 +71,14 @@ function main()
     println("  train $(nnz(X_tr)) / test $(nnz(X_te)) → $FDIR")
 
     # ── Canapes models (matching hyperparameters from usage/ml1m_compare.jl) ──
-    canapes = Dict{String,Tuple{Any,Float64,Float64}}()
     function run_jl(name, m)
+        fit_alloc = @allocated fit!(m, X_tr; rng=MersenneTwister(1))
         t0 = time(); fit!(m, X_tr; rng=MersenneTwister(1)); fit_s = time() - t0
         preds = recommend(m, X_tr; k=10)
+        rec_alloc = @allocated recommend(m, X_tr; k=10)
         map_ = mean_ap_at_k(preds, X_te; k=10)
         ndcg = mean(ndcg_at_k(preds, X_te; k=10))
-        canapes[name] = (m, fit_s, 0.0)
-        (name, fit_s, map_, ndcg)
+        (name, fit_s, fit_alloc, rec_alloc, map_, ndcg)
     end
     jl = []
     push!(jl, run_jl("als", WMF(rank=32, α=40.0, λ=0.1, max_iter=10,
@@ -100,10 +100,10 @@ function main()
 
     n_users = size(X_tr, 1)
     println("\n" * "─"^88)
-    println("Model      │ Canapes MAP  NDCG  fit(s) │ Python  MAP  NDCG  fit(s) │  ΔMAP   ΔNDCG")
-    println("─"^88)
+    println("Model      │ Canapes MAP  NDCG  fit(s)  fit(MB) rec(MB) │ Python  MAP  NDCG  fit(s) │  ΔMAP   ΔNDCG")
+    println("─"^100)
     all_ok = true
-    for (name, fit_s, jmap, jndcg) in jl
+    for (name, fit_s, fit_alloc, rec_alloc, jmap, jndcg) in jl
         precs = load_recs(joinpath(FDIR, "py_$(name).txt"), n_users)
         pmap = mean_ap_at_k(precs, X_te; k=10)
         pndcg = mean(ndcg_at_k(precs, X_te; k=10))
@@ -114,9 +114,9 @@ function main()
         diagnostic = name == "bpr"
         ok = diagnostic || (dmap <= MAX_MAP && dndcg <= MAX_NDCG)
         all_ok &= ok
-        @printf "%-10s |  %.4f  %.4f  %5.1f |  %.4f  %.4f  %5.1f |  %.4f  %.4f  %s\n" name jmap jndcg fit_s pmap pndcg pfit dmap dndcg (diagnostic ? "·" : (ok ? "✓" : "✗"))
+        @printf "%-10s |  %.4f  %.4f  %5.1f  %7.1f  %7.1f |  %.4f  %.4f  %5.1f |  %.4f  %.4f  %s\n" name jmap jndcg fit_s (fit_alloc / 2^20) (rec_alloc / 2^20) pmap pndcg pfit dmap dndcg (diagnostic ? "·" : (ok ? "✓" : "✗"))
     end
-    println("─"^88)
+    println("─"^100)
 
     println(all_ok ? "\nML1M: PASSED" : "\nML1M: FAILED")
     exit(all_ok ? 0 : 1)

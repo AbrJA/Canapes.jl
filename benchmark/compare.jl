@@ -30,7 +30,7 @@ struct Run
     recommend_bytes::Float64
 end
 
-function parse_run(record::Dict)
+function parse_run(record::AbstractDict)
     Run(
         record["git_sha"],
         DateTime(record["date"]),

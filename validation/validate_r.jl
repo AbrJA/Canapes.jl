@@ -10,8 +10,8 @@ include(joinpath(@__DIR__, "common.jl"))
 
 const RANK = 5; const λ_r = 0.1; const α_r = 1.0
 
-"""Observed-entry implicit WMF loss (independent recomputation)."""
-function _wrmf_loss_ref(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
+"""Observed-entry implicit WeightedMF loss (independent recomputation)."""
+function _weightedmf_loss_ref(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
                         X::SparseMatrixCSC, λ::Float64, α::Float64)
     rv = rowvals(X); nz = nonzeros(X); loss = 0.0
     for j in axes(X, 2), idx in nzrange(X, j)
@@ -22,10 +22,10 @@ function _wrmf_loss_ref(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
     loss + λ * (sum(abs2, U) + sum(abs2, V))
 end
 
-"""Independent dense reference of the FM forward pass (Gaussian, with intercept):
+"""Independent dense reference of the FactorizationMachine forward pass (Gaussian, with intercept):
     ŷ = w0 + Σ_j w_j·x_j + ½·Σ_f [(Σ_j v_fj·x_j)² − Σ_j v_fj²·x_j²]
 """
-function _fm_dense_reference(model::FM, X::SparseMatrixCSC)
+function _fm_dense_reference(model::FactorizationMachine, X::SparseMatrixCSC)
     w0 = Float64(model.w0)
     w  = Float64.(model.w)
     V  = Float64.(model.V)
@@ -61,42 +61,42 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
 
 @testset "R Reference Comparison" begin
 
-    @testset "WMF CholeskySolver: loss ≤ R × 1.05" begin
+    @testset "WeightedMF CholeskySolver: loss ≤ R × 1.05" begin
         r_loss = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_chol_loss.txt"))
-        m = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=50,
+        m = WeightedMF(rank=RANK, λ=λ_r, α=α_r, max_iter=50,
                 solver=CholeskySolver(), feedback=Implicit, tol=1e-6, verbose=false)
         fit!(m, X_ref; rng=MersenneTwister(42))
-        jl_loss = _wrmf_loss_ref(m.user_factors, m.item_factors, X_ref, λ_r, α_r)
+        jl_loss = _weightedmf_loss_ref(m.user_factors, m.item_factors, X_ref, λ_r, α_r)
         @test isfinite(jl_loss)
         @test jl_loss <= r_loss * 1.05
-        println("  WMF CholeskySolver: Julia=$jl_loss, R=$r_loss, ratio=$(jl_loss/r_loss)")
+        println("  WeightedMF CholeskySolver: Julia=$jl_loss, R=$r_loss, ratio=$(jl_loss/r_loss)")
     end
 
-    @testset "WMF CholeskySolver: warm-start does not increase loss" begin
+    @testset "WeightedMF CholeskySolver: warm-start does not increase loss" begin
         U_raw = _read_matrix(joinpath(R_FIXTURE_DIR, "wrmf_chol_user.csv"))
         V_raw = _read_matrix(joinpath(R_FIXTURE_DIR, "wrmf_chol_item.csv"))
         U_r = Matrix{Float32}(U_raw')
         V_r = Matrix{Float32}(V_raw)
         r_loss = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_chol_loss.txt"))
 
-        m_ws = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=1,
+        m_ws = WeightedMF(rank=RANK, λ=λ_r, α=α_r, max_iter=1,
                    solver=CholeskySolver(), feedback=Implicit, tol=-1.0, verbose=false)
         fit!(m_ws, X_ref; rng=MersenneTwister(1), U_init=U_r, V_init=V_r)
-        jl_loss_ws = _wrmf_loss_ref(m_ws.user_factors, m_ws.item_factors, X_ref, λ_r, α_r)
+        jl_loss_ws = _weightedmf_loss_ref(m_ws.user_factors, m_ws.item_factors, X_ref, λ_r, α_r)
         @test jl_loss_ws <= r_loss * 1.05
-        println("  WMF warm-start: Julia=$jl_loss_ws, R=$r_loss, ratio=$(jl_loss_ws/r_loss)")
+        println("  WeightedMF warm-start: Julia=$jl_loss_ws, R=$r_loss, ratio=$(jl_loss_ws/r_loss)")
     end
 
-    @testset "WMF CG: loss ≤ R × 1.05" begin
+    @testset "WeightedMF CG: loss ≤ R × 1.05" begin
         r_loss_cg = _read_scalar(joinpath(R_FIXTURE_DIR, "wrmf_cg_loss.txt"))
-        m_cg = WMF(rank=RANK, λ=λ_r, α=α_r, max_iter=50,
+        m_cg = WeightedMF(rank=RANK, λ=λ_r, α=α_r, max_iter=50,
                    solver=CGSolver(), cg_steps=10,
                    tol=1e-6, verbose=false)
         fit!(m_cg, X_ref; rng=MersenneTwister(42))
-        jl_loss_cg = _wrmf_loss_ref(m_cg.user_factors, m_cg.item_factors, X_ref, λ_r, α_r)
+        jl_loss_cg = _weightedmf_loss_ref(m_cg.user_factors, m_cg.item_factors, X_ref, λ_r, α_r)
         @test isfinite(jl_loss_cg)
         @test jl_loss_cg <= r_loss_cg * 1.05
-        println("  WMF CG: Julia=$jl_loss_cg, R=$r_loss_cg, ratio=$(jl_loss_cg/r_loss_cg)")
+        println("  WeightedMF CG: Julia=$jl_loss_cg, R=$r_loss_cg, ratio=$(jl_loss_cg/r_loss_cg)")
     end
 
     @testset "FTRL: weights and predictions match R (tight)" begin
@@ -129,10 +129,10 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
         end
     end
 
-    @testset "FM XOR: Julia matches R (optional)" begin
+    @testset "FactorizationMachine XOR: Julia matches R (optional)" begin
         fm_path = joinpath(R_FIXTURE_DIR, "fm_xor_preds.csv")
         if !isfile(fm_path)
-            @info "Skipping FM XOR comparison: fixture missing (rsparse::FM may be unavailable)"
+            @info "Skipping FactorizationMachine XOR comparison: fixture missing (rsparse::FactorizationMachine may be unavailable)"
         else
             r_preds_fm = _read_col(fm_path, "p")
             x_xor = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
@@ -141,7 +141,7 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             r_correct = r_preds_fm[1] < 0.3 && r_preds_fm[4] < 0.3 &&
                         r_preds_fm[2] > 0.7 && r_preds_fm[3] > 0.7
             for seed in 1:5
-                m = FM(
+                m = FactorizationMachine(
                     lr_w=10.0, rank=2, max_iter=200,
                     λ_w=0.0, λ_v=0.0, family=Binomial(), intercept=true, verbose=false)
                 fit!(m, x_xor, y_xor; rng=MersenneTwister(seed))
@@ -150,18 +150,18 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
                 agreements += (j_correct && r_correct) || (!j_correct && !r_correct)
             end
             @test agreements >= 4
-            println("  FM XOR: $agreements/5 seeds agree with R")
+            println("  FactorizationMachine XOR: $agreements/5 seeds agree with R")
         end
     end
 
-    @testset "GloVe: Julia cost ≤ R × 1.15 (same objective convention)" begin
+    @testset "GlobalVectors: Julia cost ≤ R × 1.15 (same objective convention)" begin
         glove_files = [joinpath(R_FIXTURE_DIR, f) for f in [
             "glove_final_cost.txt", "glove_X.csv", "glove_dims.csv",
         ]]
         if !_all_files_exist(glove_files)
-            @info "Skipping GloVe comparison: one or more fixture files are missing"
+            @info "Skipping GlobalVectors comparison: one or more fixture files are missing"
         else
-            # Both implementations minimize ½ Σ f(x) diff² (rsparse GloVe.cpp
+            # Both implementations minimize ½ Σ f(x) diff² (rsparse GlobalVectors.cpp
             # records 0.5 * cost / nnz; Canapes uses the same ½ convention), with
             # matching init (U(-0.5, 0.5)), AdaGrad ones-init, weighting, and
             # bias terms. rsparse is in-place SGD (converges in ~30 epochs here);
@@ -169,21 +169,21 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             # with 60 epochs and keeps decreasing below it — a robust gate.
             r_cost = _read_scalar(glove_files[1])
             X_glove = _load_sparse(glove_files[2], glove_files[3])
-            m_glove = GloVe(rank=5, x_max=10.0, lr=0.15, max_iter=60, verbose=false)
+            m_glove = GlobalVectors(rank=5, x_max=10.0, lr=0.15, max_iter=60, verbose=false)
             fit!(m_glove, X_glove; rng=MersenneTwister(42))
             jl_cost = last(m_glove.loss_history)
             @test isfinite(jl_cost)
             @test jl_cost <= r_cost * 1.15
-            println("  GloVe cost: Julia=$jl_cost, R=$r_cost, ratio=$(jl_cost/r_cost)")
+            println("  GlobalVectors cost: Julia=$jl_cost, R=$r_cost, ratio=$(jl_cost/r_cost)")
         end
     end
 
-    @testset "FM sparse high-dim: dense-reference + ground-truth recovery" begin
+    @testset "FactorizationMachine sparse high-dim: dense-reference + ground-truth recovery" begin
         fm_files = [joinpath(R_FIXTURE_DIR, f) for f in [
             "fm_sparse_X.csv", "fm_sparse_dims.csv", "fm_sparse_y.csv", "fm_sparse_preds.csv",
         ]]
         if !_all_files_exist(fm_files)
-            @info "Skipping FM sparse comparison: fixture files missing"
+            @info "Skipping FactorizationMachine sparse comparison: fixture files missing"
         else
             X_fm = _load_sparse(fm_files[1], fm_files[2])
             y_fm = _read_col(fm_files[3], "y")
@@ -198,27 +198,27 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             X_tr = X_fm[tr, :]; y_tr = y_fm[tr]
             X_te = X_fm[te, :]; y_te = y_fm[te]
 
-            m_fm = FM(lr_w=0.2, rank=4, λ_w=0.0, λ_v=0.0,
+            m_fm = FactorizationMachine(lr_w=0.2, rank=4, λ_w=0.0, λ_v=0.0,
                       family=Gaussian(), intercept=true, max_iter=50, verbose=false)
             fit!(m_fm, X_tr, y_tr; rng)
             jl_preds = predict(m_fm, X_te)
 
             # 1) Forward-pass math: compare against an independent dense
-            #    implementation of the FM equation
+            #    implementation of the FactorizationMachine equation
             #    ŷ = w0 + Σ_j w_j x_j + ½ Σ_f [(Σ_j v_fj x_j)² − Σ_j v_fj² x_j²]
             ref = _fm_dense_reference(m_fm, X_te)
             rel_err = norm(jl_preds .- ref) / (norm(ref) + 1e-12)
             @test rel_err < 1e-3
-            println("  FM dense-reference relative error: $rel_err")
+            println("  FactorizationMachine dense-reference relative error: $rel_err")
 
             # 2) Ground-truth recovery on held-out rows (y generated from a
             #    known rank-2 latent interaction; oracle cor ≈ 1.0, SoftSVD
-            #    reaches ~0.95 on this data). A correct FM must generalize.
+            #    reaches ~0.95 on this data). A correct FactorizationMachine must generalize.
             heldout_cor = _cor(jl_preds, y_te)
             @test heldout_cor >= 0.95
-            println("  FM held-out cor(preds, y): $heldout_cor")
+            println("  FactorizationMachine held-out cor(preds, y): $heldout_cor")
 
-            # 3) Training parity vs rsparse: rsparse's FM init uses Armadillo's
+            # 3) Training parity vs rsparse: rsparse's FactorizationMachine init uses Armadillo's
             #    nondeterministic randn() (std::random_device), so its solution
             #    lands in a slightly different local optimum each run; both
             #    implementations recover the structure (cor(preds, y) ≈ 0.999).
@@ -232,10 +232,10 @@ X_ref = _load_sparse(joinpath(R_FIXTURE_DIR, "X_small.csv"),
             if cor_r >= 0.95
                 @test cor_preds >= 0.95
             else
-                @info "rsparse FM did not converge on this fixture (cor_r=$cor_r); skipping the agreement gate"
+                @info "rsparse FactorizationMachine did not converge on this fixture (cor_r=$cor_r); skipping the agreement gate"
             end
-            println("  FM held-out cor(jl, R) = $cor_preds")
-            println("  FM cor(preds, y): Julia=$(round(_cor(jl_preds, y_te); sigdigits=4)), R=$(round(cor_r; sigdigits=4))")
+            println("  FactorizationMachine held-out cor(jl, R) = $cor_preds")
+            println("  FactorizationMachine cor(preds, y): Julia=$(round(_cor(jl_preds, y_te); sigdigits=4)), R=$(round(cor_r; sigdigits=4))")
         end
     end
 

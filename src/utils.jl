@@ -77,7 +77,7 @@ end
 
 """
 Binary search in a sorted Int32 vector. O(log n) and cache-friendly.
-Used by BPR and LogisticMF for negative sampling.
+Used by PairwiseRanking and LogisticMF for negative sampling.
 """
 @inline function _insorted(sorted::Vector{Int32}, val::Int32)
     lo, hi = 1, length(sorted)
@@ -102,7 +102,7 @@ pass: the `nzind`/`nzval` buffers of each column are copied straight into the
 final CSC buffers, so there are no intermediate matrices. Structurally
 identical to `hcat(cols...)`, but ~10x fewer allocations at thousands of
 columns and it never triggers the variadic-splat inference notice that
-`hcat(cols...)` does on Julia 1.12 (used by SLIM's W assembly).
+`hcat(cols...)` does on Julia 1.12 (used by SparseLinearModel's W assembly).
 """
 function _sparse_hcat_vectors(cols::Vector{SparseVector{T,Ti}}) where {T,Ti}
     m = isempty(cols) ? 0 : length(cols[1])
@@ -277,7 +277,7 @@ end
     _use_sparse_score_path(W, X) -> Bool
 
 Choose between the sparse-score and the dense batched-GEMM top-k paths for
-item-similarity models whose fitted weights `W` are stored sparse (ADMMSLIM).
+item-similarity models whose fitted weights `W` are stored sparse (SparseLinearADMM).
 Both paths compute the same scores up to floating-point accumulation order;
 the choice minimizes work.
 
@@ -303,7 +303,7 @@ end
     _predict_sparse_score_topk(X, W, k) -> Matrix{Int}
 
 Shared top-k recommendation for sparse-score item-similarity models
-(SLIM, ItemKNN, ADMMSLIM, RandomWalk). Per user the score row `X[u,:]·W` is
+(SparseLinearModel, ItemKNN, SparseLinearADMM, GraphRandomWalk). Per user the score row `X[u,:]·W` is
 computed on the fly by scattering each rated item's `W` row into a dense
 buffer (no `X * W` materialization), seen items are masked, and the top-k is
 extracted with a threaded partial sort. Returns an `n_users × k` matrix of
@@ -363,7 +363,7 @@ end
     _predict_batched_gemm_topk(X, W, k) -> Matrix{Int}
 
 Shared memory-bounded GEMM top-k recommendation for dense item-similarity
-models (EASE, ADMMSLIM). The sparse user-item matrix is densified in batches
+models (ShallowAutoencoder, SparseLinearADMM). The sparse user-item matrix is densified in batches
 (target ≤ 256 MB for the dense chunk + score buffer), scored via BLAS GEMM,
 seen items masked, and the top-k per user extracted with a threaded partial
 sort. Keeps the full-score and top-k paths separate so huge matrices never
@@ -435,7 +435,7 @@ end
 # Default recommend/score for AbstractMatrixFactorization
 # ──────────────────────────────────────────────────────────────────────────────
 # Models with user_factors/item_factors get these for free.
-# Override only when special logic is needed (e.g. WMF transform, GloVe embeddings).
+# Override only when special logic is needed (e.g. WeightedMF transform, GlobalVectors embeddings).
 
 @inline function _validate_recommend_input(X::SparseMatrixCSC, n_items::Int, k::Int)
     k >= 1 || throw(ArgumentError("k must be ≥ 1, got $k"))

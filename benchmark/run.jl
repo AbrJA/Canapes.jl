@@ -93,45 +93,45 @@ function benchmark_specs(X)
     y = rand(MersenneTwister(3), size(X, 1))
     [
         # ── implicit ranking (recommend) ──
-        (name="WMF-Cholesky", dense=false,
-         model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10, solver=CholeskySolver(), verbose=false),
+        (name="WeightedMF-Cholesky", dense=false,
+         model=WeightedMF(rank=64, λ=0.1, α=40.0, max_iter=10, solver=CholeskySolver(), verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
-        (name="WMF-CG", dense=false,
-         model=WMF(rank=64, λ=0.1, α=40.0, max_iter=10, solver=CGSolver(), cg_steps=3, verbose=false),
+        (name="WeightedMF-CG", dense=false,
+         model=WeightedMF(rank=64, λ=0.1, α=40.0, max_iter=10, solver=CGSolver(), cg_steps=3, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
-        (name="IALS", dense=false,
-         model=IALS(rank=64, max_iter=10, verbose=false),
+        (name="CachedALS", dense=false,
+         model=CachedALS(rank=64, max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
-        (name="EALS", dense=false,
-         model=EALS(rank=64, max_iter=10, verbose=false),
+        (name="ElementwiseALS", dense=false,
+         model=ElementwiseALS(rank=64, max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
-        (name="BPR", dense=false,
-         model=BPR(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=10, verbose=false),
+        (name="PairwiseRanking", dense=false,
+         model=PairwiseRanking(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
         (name="LogisticMF", dense=false,
          model=Canapes.Experimental.LogisticMF(rank=64, λ=0.6, lr=1.0, max_iter=10, n_negative=30, tol=-1.0, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
 
         # ── item similarity (recommend) ──
-        (name="EASE", dense=true,  # O(n_items²)
-         model=EASE(λ=200.0, verbose=false),
+        (name="ShallowAutoencoder", dense=true,  # O(n_items²)
+         model=ShallowAutoencoder(λ=200.0, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
-        (name="SLIM", dense=true,  # O(n_items²)
-         model=SLIM(max_iter=10, verbose=false),
+        (name="SparseLinearModel", dense=true,  # O(n_items²)
+         model=SparseLinearModel(max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
-        (name="ADMMSLIM", dense=true,  # O(n_items²)
-         model=ADMMSLIM(max_iter=10, verbose=false),
+        (name="SparseLinearADMM", dense=true,  # O(n_items²)
+         model=SparseLinearADMM(max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
         (name="ItemKNN", dense=true,  # O(n_items²)
          model=ItemKNN(k=50, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
-        (name="RandomWalk", dense=true,   # item-item W can reach O(n_items²) at scale
-         model=RandomWalk(β=0.0, k=50, verbose=false),
+        (name="GraphRandomWalk", dense=true,   # item-item W can reach O(n_items²) at scale
+         model=GraphRandomWalk(β=0.0, k=50, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
 
         # ── explicit rating prediction (predict — dense output) ──
         (name="BiasedMF", dense=true,
-         model=WMF(rank=64, λ=0.1, max_iter=10, solver=CholeskySolver(), feedback=Explicit, verbose=false),
+         model=WeightedMF(rank=64, λ=0.1, max_iter=10, solver=CholeskySolver(), feedback=Explicit, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X)),
         (name="BaselineOnly", dense=true,
          model=BaselineOnly(λ=0.02, max_iter=10, verbose=false),
@@ -158,13 +158,13 @@ function benchmark_specs(X)
         (name="FTRL", dense=false,
          model=FTRL(lr=0.1, max_iter=1, verbose=false),
          fit=(m,r)->update!(m, X, y; rng=r), infer=m->predict(m, X)),
-        (name="FM", dense=false,
-         model=FM(rank=8, max_iter=10, verbose=false),
+        (name="FactorizationMachine", dense=false,
+         model=FactorizationMachine(rank=8, max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X, y; rng=r), infer=m->predict(m, X)),
 
         # ── experimental ──
-        (name="PMF", dense=true,
-         model=Canapes.Experimental.PMF(rank=64, λ=0.1, lr=0.05, max_iter=10, verbose=false),
+        (name="ProbabilisticMF", dense=true,
+         model=Canapes.Experimental.ProbabilisticMF(rank=64, λ=0.1, lr=0.05, max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X)),
     ]
 end
@@ -179,7 +179,7 @@ function compile_warmup()
     C = sprand(40, 40, 0.2)
     C = C + C'
     nonzeros(C) .= abs.(nonzeros(C)) .+ 0.1
-    g = GloVe(rank=8, max_iter=2, verbose=false)
+    g = GlobalVectors(rank=8, max_iter=2, verbose=false)
     fit!(g, C; rng=MersenneTwister(1))
     recommend(g, C; k=K)
 end
@@ -289,15 +289,15 @@ function main()
             print_record(record)
         end
 
-        # GloVe runs on a square co-occurrence matrix sized to match the scale.
+        # GlobalVectors runs on a square co-occurrence matrix sized to match the scale.
         n = scale.n_users
         d = scale.density * scale.n_items / n
         C = generate_cooccurrence(n, d)
-        glove = GloVe(rank=64, lr=0.05, max_iter=10, verbose=false)
+        glove = GlobalVectors(rank=64, lr=0.05, max_iter=10, verbose=false)
         fit_m = best_of(() -> fit!(glove, C; rng=MersenneTwister(1)), reps[scale.name])
         rec_m = best_of(() -> recommend(glove, C; k=K), reps[scale.name])
         record = log_record(merge(env_record(), Dict(
-            "algorithm" => "GloVe",
+            "algorithm" => "GlobalVectors",
             "config" => "rank=64,lr=0.05,max_iter=10",
             "scale" => scale.name,
             "n_users" => n,

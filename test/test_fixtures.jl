@@ -19,7 +19,7 @@ using Test, SparseArrays, LinearAlgebra, Random
     rng = MersenneTwister(42)
     X = sparse(Matrix{Float64}([1.0 2.0 3.0 4.0; 5.0 6.0 1.0 8.0; 9.0 2.0 11.0 12.0]))
 
-    model = WMF(rank=2, λ=0.1, max_iter=50, solver=CholeskySolver(),
+    model = WeightedMF(rank=2, λ=0.1, max_iter=50, solver=CholeskySolver(),
                 feedback=Explicit, tol=-1.0, verbose=false)
     fit!(model, X; rng=rng)
     @test size(model.user_factors) == (2, 3)
@@ -41,7 +41,7 @@ end
 
 @testset "Fixture: test_cg_nan" begin
     X = sparse([0.0 1.0; 1.0 0.0])
-    model = WMF(rank=10, λ=0.01, max_iter=10, solver=CGSolver(),
+    model = WeightedMF(rank=10, λ=0.01, max_iter=10, solver=CGSolver(),
                 cg_steps=3, feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     @test all(isfinite, model.user_factors)
@@ -49,7 +49,7 @@ end
 
     # Single-rating rows/columns must not poison the CG solve either.
     X2 = sparse([1.0 0 0 0 0; 0 1.0 0 0 0])
-    model2 = WMF(rank=3, λ=0.01, max_iter=5, solver=CGSolver(),
+    model2 = WeightedMF(rank=3, λ=0.01, max_iter=5, solver=CGSolver(),
                  cg_steps=3, feedback=Implicit, verbose=false)
     fit!(model2, X2; rng=MersenneTwister(7))
     @test all(isfinite, model2.user_factors)
@@ -62,11 +62,11 @@ end
     X = sparse([1.0 0 0 0 0; 0 1.0 0 0 0])
 
     for (name, factory) in [
-        ("WMF", () -> WMF(rank=3, λ=0.0, max_iter=2, solver=CholeskySolver(), verbose=false)),
-        ("WMF-CG", () -> WMF(rank=3, λ=0.0, max_iter=2, solver=CGSolver(), cg_steps=3, verbose=false)),
-        ("IALS", () -> IALS(rank=3, λ=0.0, max_iter=2, verbose=false)),
-        ("IALS-CG", () -> IALS(rank=3, λ=0.0, max_iter=2, solver=CGSolver(), verbose=false)),
-        ("EALS", () -> EALS(rank=3, λ=0.0, max_iter=2, verbose=false)),
+        ("WeightedMF", () -> WeightedMF(rank=3, λ=0.0, max_iter=2, solver=CholeskySolver(), verbose=false)),
+        ("WeightedMF-CG", () -> WeightedMF(rank=3, λ=0.0, max_iter=2, solver=CGSolver(), cg_steps=3, verbose=false)),
+        ("CachedALS", () -> CachedALS(rank=3, λ=0.0, max_iter=2, verbose=false)),
+        ("CachedALS-CG", () -> CachedALS(rank=3, λ=0.0, max_iter=2, solver=CGSolver(), verbose=false)),
+        ("ElementwiseALS", () -> ElementwiseALS(rank=3, λ=0.0, max_iter=2, verbose=false)),
         ("LogisticMF", () -> LogisticMF(rank=3, λ=0.0, max_iter=2, n_negative=5, verbose=false)),
     ]
         model = factory()
@@ -106,7 +106,7 @@ end
     end
 
     for feedback in [Implicit, Explicit]
-        model = WMF(rank=5, λ=0.1, α=1.0, max_iter=8, solver=CholeskySolver(),
+        model = WeightedMF(rank=5, λ=0.1, α=1.0, max_iter=8, solver=CholeskySolver(),
                     feedback=feedback, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         reported = Canapes._compute_loss(model, X)
@@ -114,7 +114,7 @@ end
         @test isapprox(reported, manual; rtol=1e-5)
 
         # More iterations strictly lower the loss (calculate_loss semantics).
-        early = WMF(rank=5, λ=0.1, α=1.0, max_iter=2, solver=CholeskySolver(),
+        early = WeightedMF(rank=5, λ=0.1, α=1.0, max_iter=2, solver=CholeskySolver(),
                     feedback=feedback, tol=-1.0, verbose=false)
         fit!(early, X; rng=MersenneTwister(1))
         @test manual_wmf_loss(model, X) < manual_wmf_loss(early, X)
@@ -126,16 +126,16 @@ end
 @testset "Fixture: similar_items/users batch + self-filter" begin
     X = sprand(MersenneTwister(11), 60, 50, 0.1)
     specs = [
-        (name="WMF", factory=() -> WMF(rank=4, max_iter=5, verbose=false)),
-        (name="IALS", factory=() -> IALS(rank=4, max_iter=5, verbose=false)),
-        (name="EALS", factory=() -> EALS(rank=4, max_iter=5, verbose=false)),
-        (name="BPR", factory=() -> BPR(rank=4, max_iter=5, verbose=false)),
+        (name="WeightedMF", factory=() -> WeightedMF(rank=4, max_iter=5, verbose=false)),
+        (name="CachedALS", factory=() -> CachedALS(rank=4, max_iter=5, verbose=false)),
+        (name="ElementwiseALS", factory=() -> ElementwiseALS(rank=4, max_iter=5, verbose=false)),
+        (name="PairwiseRanking", factory=() -> PairwiseRanking(rank=4, max_iter=5, verbose=false)),
         (name="LogisticMF", factory=() -> LogisticMF(rank=4, max_iter=5, n_negative=10, verbose=false)),
-        (name="GloVe", factory=() -> GloVe(rank=4, max_iter=5, verbose=false)),
+        (name="GlobalVectors", factory=() -> GlobalVectors(rank=4, max_iter=5, verbose=false)),
     ]
     for spec in specs
         model = spec.factory()
-        if spec.name == "GloVe"
+        if spec.name == "GlobalVectors"
             C = sprand(MersenneTwister(5), 50, 50, 0.1)
             C = C + C'
             nonzeros(C) .= abs.(nonzeros(C)) .+ 0.1
@@ -164,12 +164,12 @@ end
 @testset "Fixture: rank/filter item behaviors" begin
     X = sprand(MersenneTwister(21), 40, 30, 0.15)
     specs = [
-        (name="WMF", factory=() -> WMF(rank=4, max_iter=5, verbose=false)),
-        (name="IALS", factory=() -> IALS(rank=4, max_iter=5, verbose=false)),
-        (name="BPR", factory=() -> BPR(rank=4, max_iter=5, verbose=false)),
-        (name="SLIM", factory=() -> SLIM(max_iter=2, verbose=false)),
+        (name="WeightedMF", factory=() -> WeightedMF(rank=4, max_iter=5, verbose=false)),
+        (name="CachedALS", factory=() -> CachedALS(rank=4, max_iter=5, verbose=false)),
+        (name="PairwiseRanking", factory=() -> PairwiseRanking(rank=4, max_iter=5, verbose=false)),
+        (name="SparseLinearModel", factory=() -> SparseLinearModel(max_iter=2, verbose=false)),
         (name="ItemKNN", factory=() -> ItemKNN(k=5, verbose=false)),
-        (name="EASE", factory=() -> EASE(λ=10.0, verbose=false)),
+        (name="ShallowAutoencoder", factory=() -> ShallowAutoencoder(λ=10.0, verbose=false)),
     ]
     for spec in specs
         model = spec.factory()
@@ -204,20 +204,20 @@ end
 @testset "Fixture: T preservation" begin
     X = sprand(MersenneTwister(31), 40, 30, 0.1)
     specs = [
-        ("WMF", () -> WMF(rank=4, max_iter=3, verbose=false),
-                () -> WMF(rank=4, max_iter=3, T=Float64, verbose=false)),
-        ("IALS", () -> IALS(rank=4, max_iter=3, verbose=false),
-                 () -> IALS(rank=4, max_iter=3, T=Float64, verbose=false)),
-        ("EALS", () -> EALS(rank=4, max_iter=3, verbose=false),
-                 () -> EALS(rank=4, max_iter=3, T=Float64, verbose=false)),
-        ("BPR", () -> BPR(rank=4, max_iter=3, verbose=false),
-                () -> BPR(rank=4, max_iter=3, T=Float64, verbose=false)),
+        ("WeightedMF", () -> WeightedMF(rank=4, max_iter=3, verbose=false),
+                () -> WeightedMF(rank=4, max_iter=3, T=Float64, verbose=false)),
+        ("CachedALS", () -> CachedALS(rank=4, max_iter=3, verbose=false),
+                 () -> CachedALS(rank=4, max_iter=3, T=Float64, verbose=false)),
+        ("ElementwiseALS", () -> ElementwiseALS(rank=4, max_iter=3, verbose=false),
+                 () -> ElementwiseALS(rank=4, max_iter=3, T=Float64, verbose=false)),
+        ("PairwiseRanking", () -> PairwiseRanking(rank=4, max_iter=3, verbose=false),
+                () -> PairwiseRanking(rank=4, max_iter=3, T=Float64, verbose=false)),
         ("LogisticMF", () -> LogisticMF(rank=4, max_iter=3, verbose=false),
                        () -> LogisticMF(rank=4, max_iter=3, T=Float64, verbose=false)),
-        ("EASE", () -> EASE(λ=10.0, verbose=false),
-                 () -> EASE(λ=10.0, T=Float64, verbose=false)),
-        ("SLIM", () -> SLIM(max_iter=2, verbose=false),
-                 () -> SLIM(max_iter=2, T=Float64, verbose=false)),
+        ("ShallowAutoencoder", () -> ShallowAutoencoder(λ=10.0, verbose=false),
+                 () -> ShallowAutoencoder(λ=10.0, T=Float64, verbose=false)),
+        ("SparseLinearModel", () -> SparseLinearModel(max_iter=2, verbose=false),
+                 () -> SparseLinearModel(max_iter=2, T=Float64, verbose=false)),
         ("ItemKNN", () -> ItemKNN(k=5, verbose=false),
                     () -> ItemKNN(k=5, T=Float64, verbose=false)),
     ]
@@ -239,7 +239,7 @@ end
 
 @testset "Fixture: transform parity (fold-in)" begin
     X = sprand(MersenneTwister(41), 60, 40, 0.1)
-    model = WMF(rank=4, λ=0.1, α=1.0, max_iter=150, solver=CholeskySolver(),
+    model = WeightedMF(rank=4, λ=0.1, α=1.0, max_iter=150, solver=CholeskySolver(),
                 feedback=Implicit, tol=-1.0, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
 

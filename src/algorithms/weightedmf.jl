@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# WMF — Weighted Regularized Matrix Factorization (Implicit ALS)
+# WeightedMF — Weighted Regularized Matrix Factorization (Implicit ALS)
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # Reference: Hu, Koren, Volinsky (2008)
@@ -21,7 +21,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    WMF{T} <: AbstractMatrixFactorization
+    WeightedMF{T} <: AbstractMatrixFactorization
 
 Weighted Regularized Matrix Factorization via Alternating Least Squares.
 
@@ -37,7 +37,7 @@ explicit feedback it degrades to the plain augmented ALS solve).
 
 !!! note "Naming"
     Hu et al. (2008) is often called "iALS" (implicit ALS) in the literature
-    and in other libraries. It is not the [`IALS`](@ref) type of this package,
+    and in other libraries. It is not the [`CachedALS`](@ref) type of this package,
     which implements the improved ALS of Rendle et al. (2021, "IALS++").
 
 !!! note "Mixed input scales"
@@ -54,7 +54,7 @@ explicit feedback it degrades to the plain augmented ALS solve).
 
 # Constructor
 ```julia
-WMF(; rank=10, λ=0.1, α=1.0, max_iter=10, tol=0.005,
+WeightedMF(; rank=10, λ=0.1, α=1.0, max_iter=10, tol=0.005,
        solver=CGSolver(), cg_steps=3, feedback=Implicit, verbose=true)
 ```
 
@@ -79,7 +79,7 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
-julia> model = WMF(rank=8, λ=0.1, α=40.0, max_iter=2, solver=CGSolver(), verbose=false);
+julia> model = WeightedMF(rank=8, λ=0.1, α=40.0, max_iter=2, solver=CGSolver(), verbose=false);
 
 julia> fit!(model, X; rng=MersenneTwister(2));
 
@@ -89,7 +89,7 @@ julia> size(recommendations)
 (200, 10)
 ```
 """
-mutable struct WMF{T<:AbstractFloat} <: AbstractMatrixFactorization
+mutable struct WeightedMF{T<:AbstractFloat} <: AbstractMatrixFactorization
     const rank::Int
     const λ::T
     const α::T
@@ -107,7 +107,7 @@ mutable struct WMF{T<:AbstractFloat} <: AbstractMatrixFactorization
     is_fitted::Bool
 end
 
-function WMF(;
+function WeightedMF(;
     rank::Int = 10,
     λ::Float64 = 0.1,
     α::Float64 = 1.0,
@@ -124,7 +124,7 @@ function WMF(;
     α >= 0.0 || throw(ArgumentError("α must be non-negative, got $α"))
     max_iter >= 1 || throw(ArgumentError("max_iter must be ≥ 1, got $max_iter"))
     cg_steps >= 1 || throw(ArgumentError("cg_steps must be ≥ 1, got $cg_steps"))
-    WMF{T}(
+    WeightedMF{T}(
         rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, feedback, verbose,
         Matrix{T}(undef, 0, 0),
         Matrix{T}(undef, 0, 0),
@@ -138,16 +138,16 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    fit!(model::WMF, X::SparseMatrixCSC; rng, U_init, V_init) -> model
+    fit!(model::WeightedMF, X::SparseMatrixCSC; rng, U_init, V_init) -> model
 
-Fit the WMF model on user-item sparse matrix `X` (n_users × n_items).
+Fit the WeightedMF model on user-item sparse matrix `X` (n_users × n_items).
 
 # Keyword Arguments
 - `rng::AbstractRNG = Random.default_rng()` — random number generator
 - `U_init::Union{Nothing, Matrix}` — warm-start user factors (rank × n_users)
 - `V_init::Union{Nothing, Matrix}` — warm-start item factors (rank × n_items)
 """
-function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
+function fit!(model::WeightedMF{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               U_init::Union{Nothing, Matrix{T}} = nothing,
                V_init::Union{Nothing, Matrix{T}} = nothing,
@@ -162,7 +162,7 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
     run_callbacks_train_begin(callbacks, model)
     try
     n_users, n_items = size(X)
-    _require_finite_input(X, "WMF")
+    _require_finite_input(X, "WeightedMF")
     k = model.rank
     is_explicit = model.feedback == Explicit
     # BiasedMF (explicit): prediction = μ + b_u + b_i + x_uᵀ y_i; the global
@@ -206,12 +206,12 @@ function fit!(model::WMF{T}, X::SparseMatrixCSC{Tv,Ti};
         total_seconds = elapsed_seconds(monitor)
 
         if model.verbose
-            log_iteration("WMF", iter, model.max_iter, Float64(loss),
+            log_iteration("WeightedMF", iter, model.max_iter, Float64(loss),
                          iter_seconds, total_seconds)
         end
 
         if record!(monitor, loss)
-            model.verbose && @info "[WMF] converged at iteration $iter"
+            model.verbose && @info "[WeightedMF] converged at iteration $iter"
             break
         end
 
@@ -240,7 +240,7 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 function _als_sweep!(
-    model::WMF{T},
+    model::WeightedMF{T},
     A::SparseMatrixCSC,
     factors::Matrix{T},
     fixed::Matrix{T},
@@ -258,12 +258,12 @@ _als_sweep!(::Union{CholeskySolver, NonNegativeSolver}, model, A, factors, fixed
     _als_sweep_cholesky!(model, A, factors, fixed, n_entities, ws, bias_out, bias_other)
 
 """
-    _als_workspace(model::WMF{T}, k, nt, max_nnz)
+    _als_workspace(model::WeightedMF{T}, k, nt, max_nnz)
 
 Per-thread work buffers for one ALS sweep, allocated once per `fit!` and reused
 across every sweep/iteration to avoid repeated buffer allocation.
 """
-function _als_workspace(model::WMF{T}, k::Int, nt::Int, max_nnz::Int) where {T}
+function _als_workspace(model::WeightedMF{T}, k::Int, nt::Int, max_nnz::Int) where {T}
     if model.solver isa CGSolver
         (; rhs_bufs = _thread_buffers(() -> Vector{T}(undef, k), nt),
            idx_bufs = _thread_buffers(() -> Vector{Int}(undef, max_nnz), nt),
@@ -409,7 +409,7 @@ end
 end
 
 function _als_sweep_cholesky!(
-    model::WMF{T},
+    model::WeightedMF{T},
     A::SparseMatrixCSC{Tv,Ti},
     factors::Matrix{T},
     fixed::Matrix{T},
@@ -603,7 +603,7 @@ end
 end
 
 function _als_sweep_cg!(
-    model::WMF{T},
+    model::WeightedMF{T},
     A::SparseMatrixCSC{Tv,Ti},
     factors::Matrix{T},
     fixed::Matrix{T},
@@ -771,7 +771,7 @@ end
 # Loss computation
 # ──────────────────────────────────────────────────────────────────────────────
 
-function _compute_loss(model::WMF{T}, X::SparseMatrixCSC) where {T}
+function _compute_loss(model::WeightedMF{T}, X::SparseMatrixCSC) where {T}
     U = model.user_factors
     V = model.item_factors
     λ = model.λ
@@ -821,12 +821,12 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    transform(model::WMF, X::SparseMatrixCSC) -> Matrix
+    transform(model::WeightedMF, X::SparseMatrixCSC) -> Matrix
 
 Compute user embeddings for new users given their interaction matrix `X` (n_new × n_items).
 Returns a `rank × n_new` factor matrix.
 """
-function transform(model::WMF{T}, X::SparseMatrixCSC) where {T}
+function transform(model::WeightedMF{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
     emb, _ = _foldin_embeddings(model, X)
     emb
@@ -836,7 +836,7 @@ end
 # For explicit feedback the augmented ALS solve also produces each folded
 # user's bias (bias dimension of the augmented solution vector); the residuals
 # use the fixed-side biases (item_bias) and the global mean.
-function _foldin_embeddings(model::WMF{T}, X::SparseMatrixCSC) where {T}
+function _foldin_embeddings(model::WeightedMF{T}, X::SparseMatrixCSC) where {T}
     n_users_new = size(X, 1)
     k = model.rank
     is_explicit = model.feedback == Explicit
@@ -854,12 +854,12 @@ function _foldin_embeddings(model::WMF{T}, X::SparseMatrixCSC) where {T}
 end
 
 """
-    recommend(model::WMF, X::SparseMatrixCSC; k=10) -> Matrix{Int}
+    recommend(model::WeightedMF, X::SparseMatrixCSC; k=10) -> Matrix{Int}
 
 Return top-k item indices for each user. Returns `n_users × k` matrix.
 Processes users in batches to avoid allocating the full score matrix.
 """
-function recommend(model::WMF{T}, X::SparseMatrixCSC; k::Int = 10) where {T}
+function recommend(model::WeightedMF{T}, X::SparseMatrixCSC; k::Int = 10) where {T}
     _require_fitted(model.is_fitted)
 
     if model.feedback == Explicit
@@ -876,7 +876,7 @@ function recommend(model::WMF{T}, X::SparseMatrixCSC; k::Int = 10) where {T}
 end
 
 """
-    score(model::WMF, X) -> Matrix
+    score(model::WeightedMF, X) -> Matrix
 
 Return the full score matrix (n_users × n_items) without top-k filtering.
 Uses `transform` to embed users, then computes inner products with item factors.
@@ -886,7 +886,7 @@ For `feedback=Explicit` the scores are the predicted ratings
 row of `X` (→ matches `recommend`). Use `predict(model, X)` for predictions
 based on the fitted users' biases (the canonical RMSE evaluation path).
 """
-function score(model::WMF{T}, X::SparseMatrixCSC) where {T}
+function score(model::WeightedMF{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
     if model.feedback == Explicit
         emb, b_fold = _foldin_embeddings(model, X)
@@ -906,13 +906,13 @@ function score(model::WMF{T}, X::SparseMatrixCSC) where {T}
 end
 
 """
-    score(model::WMF, user_indices, item_indices) -> Vector
+    score(model::WeightedMF, user_indices, item_indices) -> Vector
 
 Return raw scores for specific (user, item) pairs using pre-fitted factors.
 For `feedback=Explicit` the score is the predicted rating
 `x_uᵀ y_i + μ + b_u + b_i` with the fitted biases.
 """
-function score(model::WMF{T}, user_indices::AbstractVector{<:Integer},
+function score(model::WeightedMF{T}, user_indices::AbstractVector{<:Integer},
               item_indices::AbstractVector{<:Integer}) where {T}
     _require_fitted(model.is_fitted)
     if model.feedback == Explicit
@@ -931,7 +931,7 @@ function score(model::WMF{T}, user_indices::AbstractVector{<:Integer},
 end
 
 """
-    predict(model::WMF, X) -> Matrix
+    predict(model::WeightedMF, X) -> Matrix
 
 Predicted ratings for explicit feedback (`feedback=Explicit`): the dense
 `n_users × n_items` matrix `x_uᵀ y_i + μ + b_u + b_i` built from the *fitted*
@@ -939,7 +939,7 @@ user factors and biases (rows of `X` must be the training users). Evaluate with
 `rmse(predict(model, X_train), X_test)`. For implicit feedback this is an alias
 for [`score`](@ref).
 """
-function predict(model::WMF{T}, X::SparseMatrixCSC) where {T}
+function predict(model::WeightedMF{T}, X::SparseMatrixCSC) where {T}
     if model.feedback == Explicit
         _require_fitted(model.is_fitted)
         n_users_f, n_items_f = size(model.item_factors)

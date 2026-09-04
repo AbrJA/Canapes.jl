@@ -1,24 +1,24 @@
 
 # ──────────────────────────────────────────────────────────────────────────────
-# PMF — Probabilistic Matrix Factorization (SGD, Gaussian prior)
+# ProbabilisticMF — Probabilistic Matrix Factorization (SGD, Gaussian prior)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 """
-    PMF{T} <: Canapes.AbstractExplicitModel
+    ProbabilisticMF{T} <: Canapes.AbstractExplicitModel
 
 Probabilistic Matrix Factorization (Mnih & Salakhutdinov 2007, NIPS):
 Gaussian-observation model `r_ui ~ N(x_uᵀ y_i, σ²)` with Gaussian priors on the
 factors, solved by MAP SGD (L2-regularized) over the observed ratings.
 
 Experimental status: no reference-parity target (neither Surprise nor rsparse
-implements PMF), it is not an accuracy leader — BiasedMF (`WMF(feedback=Explicit)`)
+implements ProbabilisticMF), it is not an accuracy leader — BiasedMF (`WeightedMF(feedback=Explicit)`)
 dominates it on rating prediction — and it is sensitive to the learning rate.
 Use the experimental namespace consciously.
 
 # Constructor
 ```julia
-PMF(; rank=10, λ=0.1, lr=0.01, max_iter=30, verbose=true)
+ProbabilisticMF(; rank=10, λ=0.1, lr=0.01, max_iter=30, verbose=true)
 ```
 
 # Example
@@ -27,7 +27,7 @@ julia> using SparseArrays, Random
 
 julia> X = sprand(MersenneTwister(1), 100, 50, 0.2); nonzeros(X) .= 1 .+ 4 .* rand(MersenneTwister(2), nnz(X));
 
-julia> m = PMF(rank=8, max_iter=5, verbose=false);
+julia> m = ProbabilisticMF(rank=8, max_iter=5, verbose=false);
 
 julia> fit!(m, X; rng=MersenneTwister(3));
 
@@ -35,7 +35,7 @@ julia> size(predict(m, X))
 (100, 50)
 ```
 """
-mutable struct PMF{T<:AbstractFloat} <: AbstractExplicitModel
+mutable struct ProbabilisticMF{T<:AbstractFloat} <: AbstractExplicitModel
     const rank::Int
     const λ::T
     const lr::T
@@ -46,7 +46,7 @@ mutable struct PMF{T<:AbstractFloat} <: AbstractExplicitModel
     is_fitted::Bool
 end
 
-function PMF(;
+function ProbabilisticMF(;
     rank::Int = 10,
     λ::Float64 = 0.1,
     lr::Float64 = 0.01,
@@ -58,16 +58,16 @@ function PMF(;
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     max_iter >= 1 || throw(ArgumentError("max_iter must be ≥ 1, got $max_iter"))
-    PMF{T}(rank, T(λ), T(lr), max_iter, verbose,
+    ProbabilisticMF{T}(rank, T(λ), T(lr), max_iter, verbose,
            Matrix{T}(undef, 0, 0), Matrix{T}(undef, 0, 0), false)
 end
 
-function fit!(model::PMF{T}, X::SparseMatrixCSC{Tv,Ti};
+function fit!(model::ProbabilisticMF{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
               callbacks::Vector{<:AbstractCallback}=AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    _require_nonempty_dimensions(X, "PMF")
-    _require_finite_input(X, "PMF")
+    _require_nonempty_dimensions(X, "ProbabilisticMF")
+    _require_finite_input(X, "ProbabilisticMF")
     k = model.rank
     λ, lr, T_ = model.λ, model.lr, T
     old_U, old_V = model.user_factors, model.item_factors
@@ -110,7 +110,7 @@ function fit!(model::PMF{T}, X::SparseMatrixCSC{Tv,Ti};
                 end
             end
         end
-        model.verbose && log_iteration("PMF", epoch, model.max_iter,
+        model.verbose && log_iteration("ProbabilisticMF", epoch, model.max_iter,
                                        Float64(loss / max(nnz(X), 1)), NaN, NaN)
     end
     model.is_fitted = true
@@ -124,7 +124,7 @@ function fit!(model::PMF{T}, X::SparseMatrixCSC{Tv,Ti};
     end
 end
 
-function predict(model::PMF{T}, X::SparseMatrixCSC) where {T}
+function predict(model::ProbabilisticMF{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
     size(X, 1) == size(model.user_factors, 2) || throw(DimensionMismatch(
         "X has $(size(X, 1)) users but the fitted model has $(size(model.user_factors, 2))"))
@@ -133,9 +133,9 @@ function predict(model::PMF{T}, X::SparseMatrixCSC) where {T}
     model.user_factors' * model.item_factors
 end
 
-score(model::PMF{T}, X::SparseMatrixCSC) where {T} = predict(model, X)
+score(model::ProbabilisticMF{T}, X::SparseMatrixCSC) where {T} = predict(model, X)
 
-function score(model::PMF{T}, user_indices::AbstractVector{<:Integer},
+function score(model::ProbabilisticMF{T}, user_indices::AbstractVector{<:Integer},
                item_indices::AbstractVector{<:Integer}) where {T}
     _require_fitted(model.is_fitted)
     length(user_indices) == length(item_indices) ||

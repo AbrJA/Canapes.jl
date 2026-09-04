@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# SLIM — Sparse Linear Methods for Top-N Recommendations
+# SparseLinearModel — Sparse Linear Methods for Top-N Recommendations
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # Reference: Ning & Karypis (2011)
@@ -13,9 +13,9 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    SLIM{T} <: AbstractSparseModel
+    SparseLinearModel{T} <: AbstractSparseModel
 
-Sparse Linear Methods (SLIM) for item-based collaborative filtering.
+Sparse Linear Methods (SparseLinearModel) for item-based collaborative filtering.
 
 Learns a sparse, non-negative item-item weight matrix using elastic net
 regularization (L1 + L2). The sparsity of W makes predictions efficient
@@ -23,7 +23,7 @@ and interpretable.
 
 # Constructor
 ```julia
-SLIM(; λ_l1=0.01, λ_l2=0.1, max_iter=50, tol=1e-4, verbose=true,
+SparseLinearModel(; λ_l1=0.01, λ_l2=0.1, max_iter=50, tol=1e-4, verbose=true,
         max_memory=nothing)
 ```
 
@@ -37,7 +37,7 @@ SLIM(; λ_l1=0.01, λ_l2=0.1, max_iter=50, tol=1e-4, verbose=true,
   (`nothing` = unlimited); a fit whose estimated peak exceeds it throws
   `ArgumentError` before any large allocation
 """
-mutable struct SLIM{T<:AbstractFloat} <: AbstractItemSimilarity
+mutable struct SparseLinearModel{T<:AbstractFloat} <: AbstractItemSimilarity
     const λ_l1::T
     const λ_l2::T
     const max_iter::Int
@@ -49,7 +49,7 @@ mutable struct SLIM{T<:AbstractFloat} <: AbstractItemSimilarity
     is_fitted::Bool
 end
 
-function SLIM(;
+function SparseLinearModel(;
     λ_l1::Float64 = 0.01,
     λ_l2::Float64 = 0.1,
     max_iter::Int = 50,
@@ -63,7 +63,7 @@ function SLIM(;
     λ_l2 >= 0.0 || throw(ArgumentError("λ_l2 must be non-negative, got $λ_l2"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
-    SLIM{T}(T(λ_l1), T(λ_l2), max_iter, T(tol), nonnegative, verbose, max_memory,
+    SparseLinearModel{T}(T(λ_l1), T(λ_l2), max_iter, T(tol), nonnegative, verbose, max_memory,
             spzeros(T, 0, 0), false)
 end
 
@@ -72,30 +72,30 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    fit!(model::SLIM, X) -> model
+    fit!(model::SparseLinearModel, X) -> model
 
-Fit SLIM on interaction matrix `X` (users × items).
+Fit SparseLinearModel on interaction matrix `X` (users × items).
 Solves n_items independent elastic net problems via coordinate descent.
 """
-function fit!(model::SLIM{T}, X::SparseMatrixCSC{Tv,Ti};
+function fit!(model::SparseLinearModel{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng()) where {T,Tv,Ti}
     old_W = model.W
     old_is_fitted = model.is_fitted
     model.is_fitted = false
     try
     n_users, n_items = size(X)
-    _require_nonempty_dimensions(X, "SLIM")
-    _require_finite_input(X, "SLIM")
+    _require_nonempty_dimensions(X, "SparseLinearModel")
+    _require_finite_input(X, "SparseLinearModel")
 
     # Peak fit memory: G plus the assembled W — at most two dense n_items²
     # equivalents (W is stored sparse, so this is an upper bound).
-    _require_fit_memory(_fit_memory_estimate(n_items, 2, T), model.max_memory, "SLIM")
+    _require_fit_memory(_fit_memory_estimate(n_items, 2, T), model.max_memory, "SparseLinearModel")
 
     # Precompute XᵀX (Gram matrix) and column norms
     G = Matrix{T}(X' * X)   # n_items × n_items
     diag_G = [G[j, j] for j in 1:n_items]
 
-    model.verbose && @info "[SLIM] Fitting $(n_items) items via coordinate descent..."
+    model.verbose && @info "[SparseLinearModel] Fitting $(n_items) items via coordinate descent..."
 
     # Solve per-column elastic net problems in parallel
     W_cols = Vector{SparseVector{T,Int}}(undef, n_items)
@@ -110,7 +110,7 @@ function fit!(model::SLIM{T}, X::SparseMatrixCSC{Tv,Ti};
 
     nnz_w = nnz(model.W)
     density = nnz_w / (n_items * n_items) * 100
-    model.verbose && @info "[SLIM] Done. W: $(n_items)×$(n_items), nnz=$(nnz_w) ($(round(density, digits=3))%)"
+    model.verbose && @info "[SparseLinearModel] Done. W: $(n_items)×$(n_items), nnz=$(nnz_w) ($(round(density, digits=3))%)"
     model
     catch
         model.W = old_W
@@ -123,7 +123,7 @@ end
 Fit one column of W using coordinate descent for elastic net.
 """
 function _slim_fit_column(G::Matrix{T}, diag_G::Vector{T},
-                          j::Int, n_items::Int, model::SLIM{T}) where {T}
+                          j::Int, n_items::Int, model::SparseLinearModel{T}) where {T}
     λ_l1 = model.λ_l1
     λ_l2 = model.λ_l2
     max_iter = model.max_iter
@@ -194,21 +194,21 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    recommend(model::SLIM, X; k=10) -> Matrix{Int}
+    recommend(model::SparseLinearModel, X; k=10) -> Matrix{Int}
 
 Return top-k item indices per user. Scores = X * W, excluding seen items.
 """
-function recommend(model::SLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
+function recommend(model::SparseLinearModel{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
     _predict_sparse_score_topk(X, model.W, k)
 end
 
 """
-    score(model::SLIM, X) -> SparseMatrixCSC
+    score(model::SparseLinearModel, X) -> SparseMatrixCSC
 
 Return sparse score matrix S = X * W.
 """
-function score(model::SLIM{T}, X::SparseMatrixCSC) where {T}
+function score(model::SparseLinearModel{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
     size(X, 2) == size(model.W, 1) || throw(DimensionMismatch(
         "X has $(size(X, 2)) items but the fitted model has $(size(model.W, 1))"))

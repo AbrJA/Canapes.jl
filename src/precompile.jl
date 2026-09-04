@@ -17,24 +17,24 @@ import PrecompileTools: @setup_workload, @compile_workload
         y = rand(rng, size(X, 1))
 
         # ── Implicit matrix factorization ──
-        fit!(WMF(rank=4, max_iter=2, verbose=false), X)                        # WMF (CG default)
-        fit!(WMF(rank=4, max_iter=2, solver=CholeskySolver(), verbose=false), X)
-        m_w = WMF(rank=4, max_iter=2, feedback=Explicit, verbose=false)       # BiasedMF
+        fit!(WeightedMF(rank=4, max_iter=2, verbose=false), X)                        # WeightedMF (CG default)
+        fit!(WeightedMF(rank=4, max_iter=2, solver=CholeskySolver(), verbose=false), X)
+        m_w = WeightedMF(rank=4, max_iter=2, feedback=Explicit, verbose=false)       # BiasedMF
         fit!(m_w, X); predict(m_w, X)
-        m_i = IALS(rank=4, max_iter=2, verbose=false); fit!(m_i, X); recommend(m_i, X; k=3)
-        fit!(EALS(rank=4, max_iter=2, verbose=false), X)
-        m_b = BPR(rank=4, max_iter=2, verbose=false); fit!(m_b, X); recommend(m_b, X; k=3)
+        m_i = CachedALS(rank=4, max_iter=2, verbose=false); fit!(m_i, X); recommend(m_i, X; k=3)
+        fit!(ElementwiseALS(rank=4, max_iter=2, verbose=false), X)
+        m_b = PairwiseRanking(rank=4, max_iter=2, verbose=false); fit!(m_b, X); recommend(m_b, X; k=3)
 
         # ── Item similarity / neighbors ──
-        m_e = EASE(λ=100.0, verbose=false); fit!(m_e, X); recommend(m_e, X; k=3)
-        m_s = SLIM(λ_l1=0.1, λ_l2=0.5, max_iter=3, verbose=false); fit!(m_s, X); recommend(m_s, X; k=3)
-        m_a = ADMMSLIM(λ_l1=0.1, λ_l2=100.0, max_iter=3, verbose=false); fit!(m_a, X); recommend(m_a, X; k=3)
+        m_e = ShallowAutoencoder(λ=100.0, verbose=false); fit!(m_e, X); recommend(m_e, X; k=3)
+        m_s = SparseLinearModel(λ_l1=0.1, λ_l2=0.5, max_iter=3, verbose=false); fit!(m_s, X); recommend(m_s, X; k=3)
+        m_a = SparseLinearADMM(λ_l1=0.1, λ_l2=100.0, max_iter=3, verbose=false); fit!(m_a, X); recommend(m_a, X; k=3)
         m_k = ItemKNN(k=3, similarity=:cosine, verbose=false); fit!(m_k, X); recommend(m_k, X; k=3)
-        m_r = RandomWalk(k=3, verbose=false); fit!(m_r, X); recommend(m_r, X; k=3)
+        m_r = GraphRandomWalk(k=3, verbose=false); fit!(m_r, X); recommend(m_r, X; k=3)
 
         # ── Embeddings ──
         C = sprand(rng, 6, 6, 0.5); C = C + C'
-        fit!(GloVe(rank=4, max_iter=2, verbose=false), C)
+        fit!(GlobalVectors(rank=4, max_iter=2, verbose=false), C)
 
         # ── Completion ──
         fit!(SoftImpute(rank=3, max_iter=3, verbose=false), X)
@@ -47,11 +47,11 @@ import PrecompileTools: @setup_workload, @compile_workload
 
         # ── Sparse regression ──
         m_f = FTRL(lr=0.1, max_iter=1, verbose=false); update!(m_f, X, y); predict(m_f, X)
-        m_fm = FM(rank=2, max_iter=2, verbose=false); fit!(m_fm, X, y); predict(m_fm, X)
+        m_fm = FactorizationMachine(rank=2, max_iter=2, verbose=false); fit!(m_fm, X, y); predict(m_fm, X)
 
         # ── Experimental ──
         fit!(Experimental.LogisticMF(rank=4, max_iter=2, verbose=false), X)
-        fit!(Experimental.PMF(rank=4, max_iter=2, verbose=false), X)
+        fit!(Experimental.ProbabilisticMF(rank=4, max_iter=2, verbose=false), X)
 
         # ── Metrics / cross-validation / Tables ──
         p = Matrix{Int}(hcat([randperm(rng, 6)[1:3] for _ in 1:8]...)')

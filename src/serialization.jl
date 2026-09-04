@@ -21,7 +21,7 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 50, 20, 0.1);
 
-julia> model = EASE(λ=100.0, verbose=false);
+julia> model = ShallowAutoencoder(λ=100.0, verbose=false);
 
 julia> fit!(model, X);
 
@@ -72,7 +72,7 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 50, 20, 0.1);
 
-julia> model = EASE(λ=100.0, verbose=false);
+julia> model = ShallowAutoencoder(λ=100.0, verbose=false);
 
 julia> fit!(model, X);
 

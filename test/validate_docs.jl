@@ -35,7 +35,7 @@ println("\n[index.md] Quick Start")
 @validate "Quick Start" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
     X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
-    model = WMF(rank=10, λ=0.1, α=40.0, max_iter=15, verbose=false)
+    model = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=15, verbose=false)
     fit!(model, X_train)
     recommendations = recommend(model, X_train; k=10)
     map_score  = mean_ap_at_k(recommendations, X_test; k=10)
@@ -52,7 +52,7 @@ println("\n[index.md] Cross-Validation & Hyperparameter Search")
 @validate "cross_validate" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
     mean_map, std_map, scores = cross_validate(
-        () -> WMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
+        () -> WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
         X; n_folds=5, k=10, metric=mean_ap_at_k
     )
     @assert mean_map >= 0
@@ -61,7 +61,7 @@ end
 @validate "grid_search" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
     best_params, best_score, results = grid_search(
-        p -> EASE(λ=p.λ, verbose=false),
+        p -> ShallowAutoencoder(λ=p.λ, verbose=false),
         X,
         Dict(:λ => [10.0, 100.0, 500.0, 1000.0]);
         k=10
@@ -72,7 +72,7 @@ end
 @validate "random_search" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
     best_params, best_score, _ = random_search(
-        p -> WMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
+        p -> WeightedMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
         X,
         Dict(:rank => rng -> rand(rng, [10, 20, 50, 100]),
              :λ    => rng -> 10.0^(rand(rng) * 3 - 2));
@@ -89,7 +89,7 @@ println("\n[index.md] Callbacks")
     early_stop = EarlyStoppingCallback(patience=3)
     loss_history = LossHistoryCallback()
     checkpoint = CheckpointCallback(path=tempname(), every=5)
-    model = WMF(rank=10, λ=0.1, α=40.0, max_iter=50, verbose=false)
+    model = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=50, verbose=false)
     fit!(model, X; callbacks=[early_stop, loss_history, checkpoint])
     @assert length(loss_history.losses) > 0
 end
@@ -131,7 +131,7 @@ println("\n[index.md] Serialization")
 
 @validate "Serialization" begin
     X = sprand(MersenneTwister(42), 100, 50, 0.1)
-    model = EASE(λ=100.0, verbose=false)
+    model = ShallowAutoencoder(λ=100.0, verbose=false)
     fit!(model, X)
     tmpf = tempname() * ".jls"
     save_model(model, tmpf)
@@ -141,32 +141,32 @@ println("\n[index.md] Serialization")
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] WMF")
+println("\n[algorithms.md] WeightedMF")
 # ──────────────────────────────────────────────────────────────
 
-@validate "WMF - CholeskySolver" begin
+@validate "WeightedMF - CholeskySolver" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CholeskySolver(), verbose=false)
+    model = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CholeskySolver(), verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     preds = recommend(model, X; k=5)
     @assert size(preds) == (500, 5)
 end
 
-@validate "WMF - CGSolver" begin
+@validate "WeightedMF - CGSolver" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model_cg = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CGSolver(), cg_steps=3, verbose=false)
+    model_cg = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CGSolver(), cg_steps=3, verbose=false)
     fit!(model_cg, X; rng=MersenneTwister(42))
 end
 
-@validate "WMF - NonNegativeSolver" begin
+@validate "WeightedMF - NonNegativeSolver" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model_nn = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegativeSolver(), verbose=false)
+    model_nn = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegativeSolver(), verbose=false)
     fit!(model_nn, X; rng=MersenneTwister(42))
 end
 
-@validate "WMF - score & similar" begin
+@validate "WeightedMF - score & similar" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model = WMF(rank=10, λ=0.1, α=40.0, max_iter=5, verbose=false)
+    model = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=5, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     scores = score(model, X)
     ids, sims = similar_items(model, 42; k=5)
@@ -174,12 +174,12 @@ end
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] IALS")
+println("\n[algorithms.md] CachedALS")
 # ──────────────────────────────────────────────────────────────
 
-@validate "IALS" begin
+@validate "CachedALS" begin
     X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-    model = IALS(rank=32, λ=0.01, α=1.0, max_iter=15, verbose=false)
+    model = CachedALS(rank=32, λ=0.01, α=1.0, max_iter=15, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     preds = recommend(model, X; k=10)
     scores = score(model, X)
@@ -187,32 +187,32 @@ println("\n[algorithms.md] IALS")
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] EALS")
+println("\n[algorithms.md] ElementwiseALS")
 # ──────────────────────────────────────────────────────────────
 
-@validate "EALS" begin
+@validate "ElementwiseALS" begin
     X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-    model = EALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=20, verbose=false)
+    model = ElementwiseALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=20, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     preds = recommend(model, X; k=10)
     @assert size(preds) == (1000, 10)
 end
 
-@validate "EALS - update!" begin
+@validate "ElementwiseALS - update!" begin
     X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-    model = EALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=5, verbose=false)
+    model = ElementwiseALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=5, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     X_new = sprand(MersenneTwister(2), 1000, 500, 0.01)
     update!(model, X_new; n_iters=3)
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] BPR")
+println("\n[algorithms.md] PairwiseRanking")
 # ──────────────────────────────────────────────────────────────
 
-@validate "BPR" begin
+@validate "PairwiseRanking" begin
     X = sprand(MersenneTwister(1), 500, 300, 0.03)
-    model = BPR(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=50, verbose=false)
+    model = PairwiseRanking(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=50, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     preds = recommend(model, X; k=10)
     @assert size(preds) == (500, 10)
@@ -232,14 +232,14 @@ println("\n[algorithms.md] LogisticMF")
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] GloVe")
+println("\n[algorithms.md] GlobalVectors")
 # ──────────────────────────────────────────────────────────────
 
-@validate "GloVe" begin
+@validate "GlobalVectors" begin
     X = sprand(MersenneTwister(1), 100, 100, 0.1)
     X = X + X'
     nonzeros(X) .= abs.(nonzeros(X))
-    model = GloVe(rank=50, x_max=100.0, lr=0.05, max_iter=25, verbose=false)
+    model = GlobalVectors(rank=50, x_max=100.0, lr=0.05, max_iter=25, verbose=false)
     fit!(model, X; rng=MersenneTwister(42))
     E = embeddings(model)
     @assert size(E, 1) == 50
@@ -276,12 +276,12 @@ end
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] EASE")
+println("\n[algorithms.md] ShallowAutoencoder")
 # ──────────────────────────────────────────────────────────────
 
-@validate "EASE" begin
+@validate "ShallowAutoencoder" begin
     X = sprand(MersenneTwister(1), 500, 200, 0.05)
-    model = EASE(λ=500.0, verbose=false)
+    model = ShallowAutoencoder(λ=500.0, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=10)
     scores = score(model, X)
@@ -289,12 +289,12 @@ println("\n[algorithms.md] EASE")
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] SLIM")
+println("\n[algorithms.md] SparseLinearModel")
 # ──────────────────────────────────────────────────────────────
 
-@validate "SLIM" begin
+@validate "SparseLinearModel" begin
     X = sprand(MersenneTwister(1), 500, 100, 0.05)
-    model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonnegative=true, verbose=false)
+    model = SparseLinearModel(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonnegative=true, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=10)
     scores = score(model, X)
@@ -302,12 +302,12 @@ println("\n[algorithms.md] SLIM")
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] ADMMSLIM")
+println("\n[algorithms.md] SparseLinearADMM")
 # ──────────────────────────────────────────────────────────────
 
-@validate "ADMMSLIM" begin
+@validate "SparseLinearADMM" begin
     X = sprand(MersenneTwister(1), 500, 100, 0.05)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonnegative=true, verbose=false)
+    model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonnegative=true, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=10)
     @assert size(preds) == (500, 10)
@@ -371,22 +371,22 @@ end
 end
 
 # ──────────────────────────────────────────────────────────────
-println("\n[algorithms.md] FM")
+println("\n[algorithms.md] FactorizationMachine")
 # ──────────────────────────────────────────────────────────────
 
-@validate "FM - XOR" begin
+@validate "FactorizationMachine - XOR" begin
     X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
     y = [0.0, 1.0, 1.0, 0.0]
-    model = FM(rank=4, family=Binomial(), max_iter=100, lr_w=0.2, verbose=false)
+    model = FactorizationMachine(rank=4, family=Binomial(), max_iter=100, lr_w=0.2, verbose=false)
     fit!(model, X, y; rng=MersenneTwister(42))
     p = predict(model, X)
     @assert length(p) == 4
 end
 
-@validate "FM - Gaussian" begin
+@validate "FactorizationMachine - Gaussian" begin
     X_reg = sprand(MersenneTwister(1), 500, 20, 0.3)
     y_reg = randn(MersenneTwister(2), 500)
-    model_reg = FM(rank=8, family=Gaussian(), max_iter=50, verbose=false)
+    model_reg = FactorizationMachine(rank=8, family=Gaussian(), max_iter=50, verbose=false)
     fit!(model_reg, X_reg, y_reg; rng=MersenneTwister(42))
 end
 
@@ -408,7 +408,7 @@ end
 @validate "Metrics - workflow" begin
     X = sprand(MersenneTwister(42), 1000, 500, 0.02)
     X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
-    model = EASE(λ=500.0, verbose=false)
+    model = ShallowAutoencoder(λ=500.0, verbose=false)
     fit!(model, X_train)
     preds = recommend(model, X_train; k=10)
     m = mean_ap_at_k(preds, X_test; k=10)

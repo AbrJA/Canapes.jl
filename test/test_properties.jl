@@ -48,17 +48,17 @@ function _assert_valid_predictions(preds::Matrix{Int}, X::SparseMatrixCSC,
 end
 
 const _PROPERTY_MODELS = [
-    (name="WMF",         model=() -> WMF(rank=3, max_iter=3, verbose=false), explicit=false, square=false),
-    (name="IALS",        model=() -> IALS(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
-    (name="EALS",        model=() -> EALS(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
+    (name="WeightedMF",         model=() -> WeightedMF(rank=3, max_iter=3, verbose=false), explicit=false, square=false),
+    (name="CachedALS",        model=() -> CachedALS(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
+    (name="ElementwiseALS",        model=() -> ElementwiseALS(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
     (name="LogisticMF",  model=() -> LogisticMF(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
-    (name="BPR",         model=() -> BPR(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
-    (name="EASE",        model=() -> EASE(λ=100.0, verbose=false), explicit=false, square=false),
-    (name="SLIM",        model=() -> SLIM(λ_l1=0.01, max_iter=3, verbose=false), explicit=false, square=false),
-    (name="ADMMSLIM",    model=() -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false), explicit=false, square=false),
+    (name="PairwiseRanking",         model=() -> PairwiseRanking(rank=3, max_iter=2, verbose=false), explicit=false, square=false),
+    (name="ShallowAutoencoder",        model=() -> ShallowAutoencoder(λ=100.0, verbose=false), explicit=false, square=false),
+    (name="SparseLinearModel",        model=() -> SparseLinearModel(λ_l1=0.01, max_iter=3, verbose=false), explicit=false, square=false),
+    (name="SparseLinearADMM",    model=() -> SparseLinearADMM(λ_l1=0.01, max_iter=3, verbose=false), explicit=false, square=false),
     (name="ItemKNN",     model=() -> ItemKNN(k=3, verbose=false), explicit=false, square=false),
     (name="SoftImpute",  model=() -> SoftImpute(rank=3, max_iter=2, verbose=false), square=false, explicit=true),
-    (name="GloVe",       model=() -> GloVe(rank=3, max_iter=2, verbose=false), explicit=false, square=true, hogwild=true),
+    (name="GlobalVectors",       model=() -> GlobalVectors(rank=3, max_iter=2, verbose=false), explicit=false, square=true, hogwild=true),
 ]
 
 @testset "Randomized round-trip properties" begin
@@ -115,9 +115,9 @@ const _PROPERTY_MODELS = [
                     @test all(isfinite, Matrix(S))
 
                     # Deterministic re-fit reproduces recommendations
-                    # (BPR and GloVe are Hogwild by design and are excluded;
+                    # (PairwiseRanking and GlobalVectors are Hogwild by design and are excluded;
                     # explicit models compare score instead)
-                    if !(name in ("BPR", "GloVe"))
+                    if !(name in ("PairwiseRanking", "GlobalVectors"))
                         m2 = spec.model()
                         fit!(m2, Xm; rng=MersenneTwister(seed))
                         if spec.explicit
@@ -153,14 +153,14 @@ const _PROPERTY_MODELS = [
 end
 
 @testset "Signed feedback stays valid" begin
-    # Implicit-feedback models (IALS/LMF/BPR) assume non-negative ratings by
+    # Implicit-feedback models (CachedALS/LMF/PairwiseRanking) assume non-negative ratings by
     # design; the signed-feedback models are exercised separately.
     rng = MersenneTwister(99)
     signed_models = [
-        () -> WMF(rank=3, max_iter=3, feedback=Explicit, verbose=false),
-        () -> EASE(λ=100.0, verbose=false),
-        () -> SLIM(λ_l1=0.01, max_iter=3, verbose=false),
-        () -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false),
+        () -> WeightedMF(rank=3, max_iter=3, feedback=Explicit, verbose=false),
+        () -> ShallowAutoencoder(λ=100.0, verbose=false),
+        () -> SparseLinearModel(λ_l1=0.01, max_iter=3, verbose=false),
+        () -> SparseLinearADMM(λ_l1=0.01, max_iter=3, verbose=false),
         () -> ItemKNN(k=3, verbose=false),
         () -> SoftImpute(rank=3, max_iter=2, verbose=false),
     ]
@@ -195,12 +195,12 @@ end
     # scope (they legitimately fail with PosDefException or NaN).
     rng = MersenneTwister(77)
     robust_models = [
-        () -> WMF(rank=3, max_iter=3, verbose=false),
-        () -> IALS(rank=3, max_iter=2, verbose=false),
-        () -> EALS(rank=3, max_iter=2, verbose=false),
-        () -> EASE(λ=100.0, verbose=false),
-        () -> SLIM(λ_l1=0.01, max_iter=3, verbose=false),
-        () -> ADMMSLIM(λ_l1=0.01, max_iter=3, verbose=false),
+        () -> WeightedMF(rank=3, max_iter=3, verbose=false),
+        () -> CachedALS(rank=3, max_iter=2, verbose=false),
+        () -> ElementwiseALS(rank=3, max_iter=2, verbose=false),
+        () -> ShallowAutoencoder(λ=100.0, verbose=false),
+        () -> SparseLinearModel(λ_l1=0.01, max_iter=3, verbose=false),
+        () -> SparseLinearADMM(λ_l1=0.01, max_iter=3, verbose=false),
         () -> ItemKNN(k=3, verbose=false),
         () -> SoftImpute(rank=3, max_iter=2, verbose=false),
     ]

@@ -78,7 +78,7 @@ end
         tmpdir = joinpath(tempdir(), "canapes_test_$(rand(1000:9999))", "subdir")
         tmpfile = joinpath(tmpdir, "model.jls")
         try
-            model = EASE(λ=50.0, verbose=false)
+            model = ShallowAutoencoder(λ=50.0, verbose=false)
             rng = MersenneTwister(42)
             X = sprand(rng, 20, 15, 0.1)
             fit!(model, X)
@@ -95,8 +95,8 @@ end
         rng = MersenneTwister(42)
         X = sprand(rng, 30, 20, 0.1)
 
-        # WMF
-        m = WMF(rank=3, max_iter=2, verbose=false)
+        # WeightedMF
+        m = WeightedMF(rank=3, max_iter=2, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         tmpfile = tempname() * ".jls"
         save_model(m, tmpfile)
@@ -104,8 +104,8 @@ end
         @test loaded.user_factors ≈ m.user_factors
         rm(tmpfile; force=true)
 
-        # IALS
-        m = IALS(rank=3, max_iter=2, verbose=false)
+        # CachedALS
+        m = CachedALS(rank=3, max_iter=2, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         tmpfile = tempname() * ".jls"
         save_model(m, tmpfile)
@@ -113,8 +113,8 @@ end
         @test loaded.user_factors ≈ m.user_factors
         rm(tmpfile; force=true)
 
-        # BPR
-        m = BPR(rank=3, max_iter=2, verbose=false)
+        # PairwiseRanking
+        m = PairwiseRanking(rank=3, max_iter=2, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         tmpfile = tempname() * ".jls"
         save_model(m, tmpfile)
@@ -132,7 +132,7 @@ end
     tmpdir = joinpath(tempdir(), "canapes_checkpoint_$(rand(1000:9999))")
     try
         cb = CheckpointCallback(every=2, path=tmpdir)
-        model = IALS(rank=3, verbose=false)
+        model = CachedALS(rank=3, verbose=false)
         rng = MersenneTwister(42)
         X = sprand(rng, 20, 15, 0.1)
         fit!(model, X; rng=MersenneTwister(1))
@@ -151,7 +151,7 @@ end
 
         # Verify saved model is loadable
         loaded = load_model(joinpath(tmpdir, "model_epoch_4.jls"))
-        @test loaded isa IALS
+        @test loaded isa CachedALS
         @test loaded.user_factors ≈ model.user_factors
     finally
         rm(tmpdir; recursive=true, force=true)
@@ -166,8 +166,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 30, 0.1)
 
-    @testset "WMF score" begin
-        model = WMF(rank=4, max_iter=3, verbose=false)
+    @testset "WeightedMF score" begin
+        model = WeightedMF(rank=4, max_iter=3, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         scores = score(model, [1, 2, 3], [1, 2, 3])
         @test length(scores) == 3
@@ -187,9 +187,9 @@ end
         @test all(preds .<= 30)
     end
 
-    @testset "GloVe embeddings" begin
+    @testset "GlobalVectors embeddings" begin
         X_sq = sprand(MersenneTwister(7), 30, 30, 0.1)
-        model = GloVe(rank=4, max_iter=3, verbose=false)
+        model = GlobalVectors(rank=4, max_iter=3, verbose=false)
         fit!(model, X_sq; rng=MersenneTwister(1))
         emb = embeddings(model)
         @test size(emb) == (4, 30)
@@ -205,8 +205,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 100, 60, 0.05)
 
-    @testset "WMF CholeskySolver transform" begin
-        model = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
+    @testset "WeightedMF CholeskySolver transform" begin
+        model = WeightedMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         X_new = sprand(MersenneTwister(7), 5, 60, 0.1)
         U_new = Canapes.transform(model, X_new)
@@ -214,8 +214,8 @@ end
         @test all(isfinite, U_new)
     end
 
-    @testset "WMF CG transform" begin
-        model = WMF(rank=8, max_iter=5, solver=CGSolver(), verbose=false)
+    @testset "WeightedMF CG transform" begin
+        model = WeightedMF(rank=8, max_iter=5, solver=CGSolver(), verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         X_new = sprand(MersenneTwister(7), 3, 60, 0.1)
         U_new = Canapes.transform(model, X_new)
@@ -234,7 +234,7 @@ end
 
     @testset "cv with mean_ap_at_k" begin
         mean_s, std_s, folds = cross_validate(
-            () -> EASE(λ=200.0, verbose=false),
+            () -> ShallowAutoencoder(λ=200.0, verbose=false),
             X; n_folds=2, k=5, metric=mean_ap_at_k, rng=MersenneTwister(1)
         )
         @test length(folds) == 2
@@ -243,7 +243,7 @@ end
 
     @testset "cv with different model" begin
         mean_s, std_s, folds = cross_validate(
-            () -> WMF(rank=4, max_iter=3, verbose=false),
+            () -> WeightedMF(rank=4, max_iter=3, verbose=false),
             X; n_folds=2, k=5, metric=mean_ap_at_k, rng=MersenneTwister(1)
         )
         @test length(folds) == 2
@@ -267,7 +267,7 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 20, 15, 0.3)  # denser so we can check masking
 
-    model = EASE(λ=50.0, verbose=false)
+    model = ShallowAutoencoder(λ=50.0, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=5)
 
@@ -289,13 +289,13 @@ end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# SLIM specific tests
+# SparseLinearModel specific tests
 # ──────────────────────────────────────────────────────────────────────────────
 
-@testset "SLIM recommend" begin
+@testset "SparseLinearModel recommend" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 20, 0.15)
-    model = SLIM(λ_l1=1.0, λ_l2=0.5, max_iter=5, verbose=false)
+    model = SparseLinearModel(λ_l1=1.0, λ_l2=0.5, max_iter=5, verbose=false)
     fit!(model, X)
     @test model.is_fitted
 
@@ -352,11 +352,11 @@ end
     @test size(S) == (40, 20)
 end
 
-@testset "ADMMSLIM basic coverage" begin
+@testset "SparseLinearADMM basic coverage" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 15, 0.2)
 
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
+    model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(model, X)
     @test model.is_fitted
     preds = recommend(model, X; k=3)
@@ -382,24 +382,24 @@ end
 const _RUN_GPU = _HAS_CUDA && get(ENV, "TEST_SUITE", "full") == "full"
 
 if _RUN_GPU
-    @testset "GPU EASE correctness" begin
+    @testset "GPU ShallowAutoencoder correctness" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 100, 80, 0.05)
 
-        model_gpu = EASE(λ=100.0, verbose=false)
+        model_gpu = ShallowAutoencoder(λ=100.0, verbose=false)
         fit_gpu!(model_gpu, X)
-        model_cpu = EASE(λ=100.0, verbose=false)
+        model_cpu = ShallowAutoencoder(λ=100.0, verbose=false)
         fit!(model_cpu, X)
 
         @test model_gpu.is_fitted
         @test model_gpu.B ≈ model_cpu.B atol=1e-5
     end
 
-    @testset "GPU IALS correctness" begin
+    @testset "GPU CachedALS correctness" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 80, 60, 0.05)
 
-        model = IALS(rank=8, max_iter=5, α=10.0, verbose=false)
+        model = CachedALS(rank=8, max_iter=5, α=10.0, verbose=false)
         fit_gpu!(model, X; rng=MersenneTwister(1))
 
         @test model.is_fitted
@@ -409,17 +409,17 @@ if _RUN_GPU
         @test all(isfinite, model.item_factors)
 
         # Loss should decrease
-        model2 = IALS(rank=8, max_iter=1, α=10.0, verbose=false)
+        model2 = CachedALS(rank=8, max_iter=1, α=10.0, verbose=false)
         fit_gpu!(model2, X; rng=MersenneTwister(1))
         # More iterations => lower residual (loosely)
         @test norm(model.user_factors) > 0
     end
 
-    @testset "GPU WMF correctness" begin
+    @testset "GPU WeightedMF correctness" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 80, 60, 0.05)
 
-        model = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
+        model = WeightedMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
         fit_gpu!(model, X; rng=MersenneTwister(1))
 
         @test model.is_fitted
@@ -433,7 +433,7 @@ if _RUN_GPU
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 40, 0.1)
 
-        model = IALS(rank=8, max_iter=5, verbose=false)
+        model = CachedALS(rank=8, max_iter=5, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
 
         scores_gpu = score_gpu(model, X)
@@ -447,7 +447,7 @@ if _RUN_GPU
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 40, 0.1)
 
-        model = IALS(rank=8, max_iter=5, verbose=false)
+        model = CachedALS(rank=8, max_iter=5, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
 
         preds_gpu = recommend_gpu(model, X; k=10)
@@ -466,7 +466,7 @@ if _RUN_GPU
         rng = MersenneTwister(42)
         X = sprand(rng, 30, 25, 0.2)
 
-        model = WMF(rank=5, max_iter=5, verbose=false)
+        model = WeightedMF(rank=5, max_iter=5, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
 
         preds = recommend_gpu(model, X; k=5)
@@ -490,7 +490,7 @@ if _RUN_GPU
         rng = MersenneTwister(42)
         X = sprand(rng, 1000, 500, 0.01)
 
-        model = EASE(λ=500.0, verbose=false)
+        model = ShallowAutoencoder(λ=500.0, verbose=false)
         fit_gpu!(model, X)
         @test model.is_fitted
         @test size(model.B) == (500, 500)
@@ -511,7 +511,7 @@ end
 @testset "Algorithm edge cases" begin
     @testset "Very sparse matrix (1 interaction)" begin
         X = sparse([1], [1], [1.0], 50, 50)
-        model = IALS(rank=3, max_iter=3, verbose=false)
+        model = CachedALS(rank=3, max_iter=3, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         @test model.is_fitted
         @test all(isfinite, model.user_factors)
@@ -519,7 +519,7 @@ end
 
     @testset "Single user" begin
         X = sparse([1, 1, 1], [1, 2, 3], [1.0, 1.0, 1.0], 1, 10)
-        model = EASE(λ=10.0, verbose=false)
+        model = ShallowAutoencoder(λ=10.0, verbose=false)
         fit!(model, X)
         @test model.is_fitted
         preds = recommend(model, X; k=5)
@@ -528,14 +528,14 @@ end
 
     @testset "Single item per user" begin
         X = sparse([1, 2, 3], [1, 2, 3], [1.0, 1.0, 1.0], 3, 5)
-        model = BPR(rank=3, max_iter=5, verbose=false)
+        model = PairwiseRanking(rank=3, max_iter=5, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         @test model.is_fitted
     end
 
     @testset "k larger than items" begin
         X = sprand(MersenneTwister(42), 10, 5, 0.3)
-        model = EASE(λ=10.0, verbose=false)
+        model = ShallowAutoencoder(λ=10.0, verbose=false)
         fit!(model, X)
         # k=10 > n_items=5, should still work
         preds = recommend(model, X; k=10)
@@ -545,7 +545,7 @@ end
     @testset "Float32 input matrix" begin
         rng = MersenneTwister(42)
         X = SparseMatrixCSC{Float32,Int}(sprand(rng, 50, 30, 0.1))
-        model = WMF(rank=4, max_iter=3, verbose=false)
+        model = WeightedMF(rank=4, max_iter=3, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
         @test model.is_fitted
         @test all(isfinite, model.user_factors)

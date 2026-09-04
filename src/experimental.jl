@@ -18,7 +18,7 @@ production API stays clean. Currently:
 - [`LogisticMF`](@ref) (Johnson 2014) — logistic matrix factorization,
   reference-validated against `implicit`, but fragile under Adagrad and weak
   on implicit Top-N benchmarks.
-- [`PMF`](@ref) (Mnih & Salakhutdinov 2007) — probabilistic matrix
+- [`ProbabilisticMF`](@ref) (Mnih & Salakhutdinov 2007) — probabilistic matrix
   factorization via MAP-SGD (no reference-parity target).
 
 Both are implemented, tested, and numerically validated like the core model
@@ -41,7 +41,7 @@ using Random
 using SparseMatricesCSR
 
 include("experimental/logisticmf.jl")
-include("experimental/pmf.jl")
+include("experimental/probabilisticmf.jl")
 
-export LogisticMF, PMF
+export LogisticMF, ProbabilisticMF
 end # module Experimental

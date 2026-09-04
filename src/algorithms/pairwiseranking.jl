@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# BPR — Bayesian Personalized Ranking
+# PairwiseRanking — Bayesian Personalized Ranking
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # Reference: Rendle, Freudenthaler, Gantner, Schmidt-Thieme (2009)
@@ -16,7 +16,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    BPR{T} <: AbstractMatrixFactorization
+    PairwiseRanking{T} <: AbstractMatrixFactorization
 
 Bayesian Personalized Ranking via Matrix Factorization.
 
@@ -31,7 +31,7 @@ pointwise prediction. Uses SGD with negative sampling of (user, pos, neg) triple
 
 # Constructor
 ```julia
-BPR(; rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
+PairwiseRanking(; rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
       lr=0.05, max_iter=100, n_samples=0,
       negative_sampling=Sampling.Uniform(), dynamic_candidates=5,
       tol=-1.0, verbose=true)
@@ -49,7 +49,7 @@ BPR(; rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
 - `dynamic_candidates::Int` — number of candidates for Sampling.Dynamic() strategy
 - `tol::T` — AUC-based early stopping tolerance (-1 disables)
 """
-mutable struct BPR{T<:AbstractFloat} <: AbstractMatrixFactorization
+mutable struct PairwiseRanking{T<:AbstractFloat} <: AbstractMatrixFactorization
     const rank::Int
     const λ_user::T
     const λ_pos::T
@@ -68,7 +68,7 @@ mutable struct BPR{T<:AbstractFloat} <: AbstractMatrixFactorization
     is_fitted::Bool
 end
 
-function BPR(;
+function PairwiseRanking(;
     rank::Int = 64,
     λ_user::Float64 = 0.01,
     λ_pos::Float64 = 0.01,
@@ -85,7 +85,7 @@ function BPR(;
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
     dynamic_candidates >= 1 || throw(ArgumentError("dynamic_candidates must be ≥ 1, got $dynamic_candidates"))
-    BPR{T}(rank, T(λ_user), T(λ_pos), T(λ_neg), T(lr), max_iter, n_samples,
+    PairwiseRanking{T}(rank, T(λ_user), T(λ_pos), T(λ_neg), T(lr), max_iter, n_samples,
             negative_sampling, dynamic_candidates, T(tol), verbose,
             Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), T[], false)
 end
@@ -95,9 +95,9 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    fit!(model::BPR, X; rng) -> model
+    fit!(model::PairwiseRanking, X; rng) -> model
 
-Fit BPR-MF on implicit feedback matrix `X` (users × items).
+Fit PairwiseRanking-MF on implicit feedback matrix `X` (users × items).
 Non-zero entries are treated as positive interactions.
 
 Uses Hogwild!-style lock-free parallel SGD (Niu et al. 2011) for massive speedup
@@ -110,11 +110,11 @@ probability is low.
     across runs. For bit-reproducible output, run with a single thread
     (`julia --threads=1`) and a fixed `rng`.
 """
-function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
+function fit!(model::PairwiseRanking{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    _require_finite_input(X, "BPR")
+    _require_finite_input(X, "PairwiseRanking")
     k = model.rank
     old_user_factors = model.user_factors
     old_item_factors = model.item_factors
@@ -146,11 +146,11 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
         user_item_sorted[u] = items
     end
 
-    # Users who have interacted with every item cannot produce BPR triplets.
+    # Users who have interacted with every item cannot produce PairwiseRanking triplets.
     # Exclude their positive interactions rather than retrying forever.
     eligible_users = count(length(items) < n_items for items in user_item_sorted)
     eligible_users > 0 || throw(ArgumentError(
-        "BPR requires at least one user with an unobserved item"))
+        "PairwiseRanking requires at least one user with an unobserved item"))
 
     # Count eligible interactions so the flat sampling arrays are sized exactly.
     # `n_eligible` is assigned a single time: it is captured by the threaded loop
@@ -158,7 +158,7 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
     # type-instabilize the whole hot loop.
     n_eligible = sum(length(items) for items in user_item_sorted if length(items) < n_items)
     n_eligible > 0 || throw(ArgumentError(
-        "BPR requires at least one observed interaction"))
+        "PairwiseRanking requires at least one observed interaction"))
 
     userids = Vector{Int32}(undef, n_eligible)
     itemids = Vector{Int32}(undef, n_eligible)
@@ -273,13 +273,13 @@ function fit!(model::BPR{T}, X::SparseMatrixCSC{Tv,Ti};
         if model.verbose
             total_correct = sum(epoch_correct)
             auc_pct = 100.0 * total_correct / samples_per_epoch
-            log_iteration("BPR", epoch, model.max_iter, Float64(avg_loss),
+            log_iteration("PairwiseRanking", epoch, model.max_iter, Float64(avg_loss),
                          iter_seconds, total_seconds;
                          extra="auc≈$(round(auc_pct; digits=1))%")
         end
 
         if record!(monitor, avg_loss)
-            model.verbose && @info "[BPR] converged at epoch $epoch"
+            model.verbose && @info "[PairwiseRanking] converged at epoch $epoch"
             break
         end
 
@@ -323,7 +323,7 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Unifor
         !_insorted(sorted_items, j) && return Int(j)
         j = rand(rng, Int32(1):Int32(n_items))
     end
-    throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
+    throw(ArgumentError("no unobserved item is available for PairwiseRanking negative sampling"))
 end
 
 function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Popular, dns_k,
@@ -333,7 +333,7 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Popula
         !_insorted(sorted_items, j) && return Int(j)
         j = Int32(_sample_from_cumsum(rng, pop_cumsum, pop_total, n_items))
     end
-    throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
+    throw(ArgumentError("no unobserved item is available for PairwiseRanking negative sampling"))
 end
 
 function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Dynamic, dns_k,
@@ -365,7 +365,7 @@ function _bpr_sample_negative_impl(rng, n_items, sorted_items, ::Sampling.Dynami
     for j in Int32(1):Int32(n_items)
         !_insorted(sorted_items, j) && return Int(j)
     end
-    throw(ArgumentError("no unobserved item is available for BPR negative sampling"))
+    throw(ArgumentError("no unobserved item is available for PairwiseRanking negative sampling"))
 end
 
 """

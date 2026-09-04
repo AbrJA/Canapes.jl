@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # MovieLens 1M — explicit (rating prediction) benchmark for the explicit
-# subsystem: BiasedMF (WMF-Explicit), BaselineOnly, SlopeOne, PearsonKNN,
+# subsystem: BiasedMF (WeightedMF-Explicit), BaselineOnly, SlopeOne, PearsonKNN,
 # SoftImpute/SoftSVD/PureSVD, plus the plain global-mean baseline.
 #
 # Protocol: per-user temporal split (first 80% of each user's ratings since
@@ -74,9 +74,9 @@ end
 results = []
 push!(results, eval_model("GlobalMean", () -> BaselineOnly(max_iter=1, verbose=false)))
 push!(results, eval_model("BaselineOnly", () -> BaselineOnly(λ=0.1, max_iter=20, verbose=false)))
-push!(results, eval_model("BiasedMF (WMF-Explicit)", () -> WMF(rank=16, λ=0.1, max_iter=15, solver=CholeskySolver(),
+push!(results, eval_model("BiasedMF (WeightedMF-Explicit)", () -> WeightedMF(rank=16, λ=0.1, max_iter=15, solver=CholeskySolver(),
                                                                feedback=Explicit, verbose=false)))
-push!(results, eval_model("BiasedMF-CG", () -> WMF(rank=16, λ=0.1, max_iter=15, solver=CGSolver(),
+push!(results, eval_model("BiasedMF-CG", () -> WeightedMF(rank=16, λ=0.1, max_iter=15, solver=CGSolver(),
                                                    feedback=Explicit, verbose=false)))
 push!(results, eval_model("SlopeOne", () -> SlopeOne(verbose=false)))
 push!(results, eval_model("PearsonKNN k=40", () -> PearsonKNN(k=40, verbose=false)))

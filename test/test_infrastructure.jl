@@ -15,7 +15,7 @@ Canapes.on_epoch_end(::FailingCallback, ::Canapes.CallbackInfo) =
 @testset "Callbacks" begin
     @testset "EarlyStoppingCallback" begin
         cb = EarlyStoppingCallback(patience=3, min_delta=0.01)
-        model = IALS(rank=3, verbose=false)
+        model = CachedALS(rank=3, verbose=false)
 
         # Improving losses
         for loss in [1.0, 0.9, 0.8, 0.7]
@@ -37,7 +37,7 @@ Canapes.on_epoch_end(::FailingCallback, ::Canapes.CallbackInfo) =
 
     @testset "LossHistoryCallback" begin
         cb = LossHistoryCallback()
-        model = IALS(rank=3, verbose=false)
+        model = CachedALS(rank=3, verbose=false)
         for i in 1:5
             info = Canapes.CallbackInfo(i, Float64(i) * 0.1, 0.0, model)
             @test on_epoch_end(cb, info) == :continue
@@ -48,7 +48,7 @@ Canapes.on_epoch_end(::FailingCallback, ::Canapes.CallbackInfo) =
 
     @testset "LearningRateCallback" begin
         cb = LearningRateCallback(decay=0.5, min_lr=0.001)
-        model = BPR(rank=3, lr=1.0, verbose=false)
+        model = PairwiseRanking(rank=3, lr=1.0, verbose=false)
         info = Canapes.CallbackInfo(1, 0.5, 0.0, model)
         on_epoch_end(cb, info)
         @test model.lr ≈ 0.5
@@ -59,7 +59,7 @@ Canapes.on_epoch_end(::FailingCallback, ::Canapes.CallbackInfo) =
     @testset "run_callbacks" begin
         cb1 = LossHistoryCallback()
         cb2 = EarlyStoppingCallback(patience=1, min_delta=0.0)
-        model = IALS(rank=3, verbose=false)
+        model = CachedALS(rank=3, verbose=false)
 
         # First call - improving
         info1 = Canapes.CallbackInfo(1, 1.0, 0.0, model)
@@ -73,21 +73,21 @@ end
 
 @testset "Training lifecycle" begin
     cb = LifecycleCallback(Symbol[])
-    model = WMF(rank=2, max_iter=1, verbose=false)
+    model = WeightedMF(rank=2, max_iter=1, verbose=false)
     X = sparse([1, 2], [1, 2], [1.0, 1.0], 2, 3)
     fit!(model, X; rng=MersenneTwister(1), callbacks=[cb])
     @test cb.events == [:begin, :epoch, :end]
 
     for fit_model in [
         FTRL(max_iter=1, verbose=false),
-        FM(rank=2, max_iter=1, verbose=false),
+        FactorizationMachine(rank=2, max_iter=1, verbose=false),
     ]
         current = LifecycleCallback(Symbol[])
         fit!(fit_model, X, [1.0, 0.0]; rng=MersenneTwister(1), callbacks=[current])
         @test current.events == [:begin, :epoch, :end]
     end
 
-    model = WMF(rank=2, max_iter=1, verbose=false)
+    model = WeightedMF(rank=2, max_iter=1, verbose=false)
     fit!(model, X; rng=MersenneTwister(2))
     old_user_factors = copy(model.user_factors)
     old_item_factors = copy(model.item_factors)
@@ -97,9 +97,9 @@ end
     @test model.item_factors == old_item_factors
 
     for fit_model in [
-        IALS(rank=2, max_iter=1, verbose=false),
-        EALS(rank=2, max_iter=1, verbose=false),
-        BPR(rank=2, max_iter=1, verbose=false),
+        CachedALS(rank=2, max_iter=1, verbose=false),
+        ElementwiseALS(rank=2, max_iter=1, verbose=false),
+        PairwiseRanking(rank=2, max_iter=1, verbose=false),
         LogisticMF(rank=2, max_iter=1, verbose=false),
     ]
         fit!(fit_model, X; rng=MersenneTwister(2))
@@ -113,9 +113,9 @@ end
     end
 
     for (fit_model, state_field) in [
-        (EASE(λ=100.0, verbose=false), :B),
-        (SLIM(max_iter=1, verbose=false), :W),
-        (ADMMSLIM(max_iter=1, verbose=false), :W),
+        (ShallowAutoencoder(λ=100.0, verbose=false), :B),
+        (SparseLinearModel(max_iter=1, verbose=false), :W),
+        (SparseLinearADMM(max_iter=1, verbose=false), :W),
         (ItemKNN(k=2, verbose=false), :W),
     ]
         fit!(fit_model, X; rng=MersenneTwister(2))
@@ -129,7 +129,7 @@ end
 @testset "Serialization" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 20, 0.1)
-    model = EASE(λ=100.0, verbose=false)
+    model = ShallowAutoencoder(λ=100.0, verbose=false)
     fit!(model, X)
 
     # Save and load
@@ -139,7 +139,7 @@ end
         @test isfile(tmpfile)
 
         loaded = load_model(tmpfile)
-        @test loaded isa EASE
+        @test loaded isa ShallowAutoencoder
         @test loaded.is_fitted
         @test loaded.B ≈ model.B
         @test loaded.λ ≈ model.λ
@@ -159,7 +159,7 @@ end
 @testset "Atomic save" begin
     rng = MersenneTwister(7)
     X = sprand(rng, 30, 20, 0.1)
-    model = EASE(λ=100.0, verbose=false)
+    model = ShallowAutoencoder(λ=100.0, verbose=false)
     fit!(model, X)
 
     dir = mktempdir()
@@ -173,7 +173,7 @@ end
 
         # Overwriting an existing file replaces it atomically: last write wins,
         # and no temp files are left behind.
-        model2 = EASE(λ=500.0, verbose=false)
+        model2 = ShallowAutoencoder(λ=500.0, verbose=false)
         fit!(model2, X)
         save_model(model2, target)
         @test readdir(joinpath(dir, "nested")) == ["model.jls"]
@@ -220,7 +220,7 @@ end
         X = sprand(rng, 50, 30, 0.15)
 
         mean_score, std_score, fold_scores = cross_validate(
-            () -> EASE(λ=200.0, verbose=false),
+            () -> ShallowAutoencoder(λ=200.0, verbose=false),
             X; n_folds=3, k=5, metric=mean_ap_at_k, rng=MersenneTwister(1)
         )
 
@@ -235,7 +235,7 @@ end
         X = sprand(rng, 50, 30, 0.15)
 
         best_params, best_score, results = grid_search(
-            p -> EASE(λ=p.λ, verbose=false),
+            p -> ShallowAutoencoder(λ=p.λ, verbose=false),
             X,
             Dict(:λ => [100.0, 500.0]);
             k=5, test_fraction=0.3, verbose=false, rng=MersenneTwister(1)
@@ -251,7 +251,7 @@ end
         X = sprand(rng, 50, 30, 0.15)
 
         best_params, best_score, results = random_search(
-            p -> EASE(λ=p.λ, verbose=false),
+            p -> ShallowAutoencoder(λ=p.λ, verbose=false),
             X,
             Dict(:λ => r -> 10.0^(rand(r) * 3));
             n_trials=3, k=5, test_fraction=0.3, verbose=false, rng=MersenneTwister(1)
@@ -268,14 +268,14 @@ end
         X = sprand(rng, 50, 30, 0.15)
 
         mean_s, std_s, fold_scores = cross_validate(
-            () -> EASE(λ=200.0, verbose=false),
+            () -> ShallowAutoencoder(λ=200.0, verbose=false),
             X; n_folds=3, k=5, metric=ndcg_at_k, rng=MersenneTwister(1)
         )
         @test all(isfinite, fold_scores)
         @test mean_s ≈ sum(fold_scores) / 3
 
         best_params, best_score, results = grid_search(
-            p -> EASE(λ=p.λ, verbose=false),
+            p -> ShallowAutoencoder(λ=p.λ, verbose=false),
             X,
             Dict(:λ => [100.0, 500.0]);
             k=5, test_fraction=0.3, verbose=false, rng=MersenneTwister(1),
@@ -285,7 +285,7 @@ end
         @test best_score == maximum(r.score for r in results)
 
         best_params, best_score, results = random_search(
-            p -> EASE(λ=p.λ, verbose=false),
+            p -> ShallowAutoencoder(λ=p.λ, verbose=false),
             X,
             Dict(:λ => r -> 10.0^(rand(r) * 3));
             n_trials=3, k=5, test_fraction=0.3, verbose=false, rng=MersenneTwister(1),

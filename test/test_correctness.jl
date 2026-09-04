@@ -25,12 +25,12 @@ using Test
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 """
-    _wrmf_loss_ref(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
+    _weightedmf_loss_ref(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
                     X::SparseMatrixCSC, λ::Float64, α::Float64)
 
-Compute WMF loss for validation purposes
+Compute WeightedMF loss for validation purposes
 """
-function _wrmf_loss_ref(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
+function _weightedmf_loss_ref(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
                         X::SparseMatrixCSC, λ::Float64, α::Float64)
     rv = rowvals(X); nz = nonzeros(X); loss = 0.0
     for j in axes(X, 2), idx in nzrange(X, j)
@@ -66,27 +66,27 @@ end
 
 @testset "Tier 1 — Mathematical Invariants" begin
 
-    @testset "WMF: converges on rank-1 data" begin
+    @testset "WeightedMF: converges on rank-1 data" begin
         X = _rank1_data(20, 15)
-        m = WMF(rank=3, λ=0.01, max_iter=10, solver=CholeskySolver(),
+        m = WeightedMF(rank=3, λ=0.01, max_iter=10, solver=CholeskySolver(),
                  feedback=Implicit, tol=0.0, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
-        loss_initial = _wrmf_loss_ref(m.user_factors, m.item_factors, X, 0.01, 0.0)
+        loss_initial = _weightedmf_loss_ref(m.user_factors, m.item_factors, X, 0.01, 0.0)
         @test isfinite(loss_initial)
         @test loss_initial > 0
     end
 
-    @testset "WMF: regularization term is finite and positive" begin
+    @testset "WeightedMF: regularization term is finite and positive" begin
         X = _rank1_data(20, 15)
-        m = WMF(rank=3, λ=0.1, max_iter=5, verbose=false)
+        m = WeightedMF(rank=3, λ=0.1, max_iter=5, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         reg_term = 0.1 * (sum(abs2, m.user_factors) + sum(abs2, m.item_factors))
         @test isfinite(reg_term) && reg_term > 0
     end
 
-    @testset "WMF: factor norms remain stable" begin
+    @testset "WeightedMF: factor norms remain stable" begin
         X = _rank1_data(20, 15)
-        m = WMF(rank=3, λ=0.01, max_iter=20, verbose=false)
+        m = WeightedMF(rank=3, λ=0.01, max_iter=20, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         user_norm = norm(m.user_factors)
         item_norm = norm(m.item_factors)
@@ -106,20 +106,20 @@ end
         @test norm(w) < 1e6
     end
 
-    @testset "BPR: loss decreases overall" begin
+    @testset "PairwiseRanking: loss decreases overall" begin
         X = _rank1_data(20, 15)
-        m = BPR(rank=3, max_iter=15, verbose=false)
+        m = PairwiseRanking(rank=3, max_iter=15, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         @test m.loss_history[end] < m.loss_history[1]
     end
 
-    @testset "GloVe: loss generally decreases (most steps)" begin
-        # GloVe requires square symmetric matrices
+    @testset "GlobalVectors: loss generally decreases (most steps)" begin
+        # GlobalVectors requires square symmetric matrices
         n = 20
         A = sprand(MersenneTwister(42), n, n, 0.1)
         A = A + A'  # Make symmetric
         nonzeros(A) .= abs.(nonzeros(A)) .+ 0.01
-        m = GloVe(rank=3, max_iter=15, verbose=false)
+        m = GlobalVectors(rank=3, max_iter=15, verbose=false)
         fit!(m, A; rng=MersenneTwister(42))
         # Check that most steps decrease loss
         decreasing_steps = sum(diff(m.loss_history) .< 0)
@@ -134,31 +134,31 @@ end
 
 @testset "Tier 2 — Synthetic Data Correctness" begin
 
-    @testset "WMF: low-rank synthetic data produces reasonable factors" begin
+    @testset "WeightedMF: low-rank synthetic data produces reasonable factors" begin
         # Generate low-rank structure
         X = _rank1_data(30, 25)
-        m = WMF(rank=2, λ=0.001, max_iter=30, verbose=false)
+        m = WeightedMF(rank=2, λ=0.001, max_iter=30, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         # Check that factors are reasonable
         @test all(isfinite, m.user_factors)
         @test all(isfinite, m.item_factors)
         # Check reconstruction is finite
-        loss = _wrmf_loss_ref(m.user_factors, m.item_factors, X, 0.001, 0.0)
+        loss = _weightedmf_loss_ref(m.user_factors, m.item_factors, X, 0.001, 0.0)
         @test isfinite(loss)
     end
 
-    @testset "IALS: produces finite factors on low-rank data" begin
+    @testset "CachedALS: produces finite factors on low-rank data" begin
         # Use explicit Float64 initialization to avoid type instability
         X = _rank1_data(20, 15)
-        m = IALS(rank=2, λ=0.01, max_iter=15, verbose=false, α=0.0)
+        m = CachedALS(rank=2, λ=0.01, max_iter=15, verbose=false, α=0.0)
         fit!(m, X; rng=MersenneTwister(42))
         @test all(isfinite, m.user_factors)
         @test all(isfinite, m.item_factors)
     end
 
-    @testset "EALS: produces finite factors" begin
+    @testset "ElementwiseALS: produces finite factors" begin
         X = _rank1_data(25, 20)
-        m = EALS(rank=2, λ=0.01, max_iter=10, verbose=false)
+        m = ElementwiseALS(rank=2, λ=0.01, max_iter=10, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         @test all(isfinite, m.user_factors)
         @test all(isfinite, m.item_factors)
@@ -176,11 +176,11 @@ end
         @test all(isfinite, w)
     end
 
-    @testset "FM: produces finite predictions on XOR data" begin
+    @testset "FactorizationMachine: produces finite predictions on XOR data" begin
         # XOR problem (non-linearly separable)
         X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
         y = [0.0, 1.0, 1.0, 0.0]
-        m = FM(lr_w=1.0, rank=2, max_iter=50,
+        m = FactorizationMachine(lr_w=1.0, rank=2, max_iter=50,
                 λ_w=0.0, λ_v=0.0, family=Binomial(), intercept=true, verbose=false)
         fit!(m, X, y; rng=MersenneTwister(42))
         preds = predict(m, X)
@@ -188,21 +188,21 @@ end
         @test all(0 .<= preds .<= 1)
     end
 
-    @testset "GloVe: produces finite embeddings on synthetic co-occurrence" begin
+    @testset "GlobalVectors: produces finite embeddings on synthetic co-occurrence" begin
         # Square symmetric co-occurrence matrix
         n = 20
         A = sprand(MersenneTwister(42), n, n, 0.1)
         A = A + A'
         nonzeros(A) .= abs.(nonzeros(A)) .+ 0.01
-        m = GloVe(rank=5, max_iter=20, verbose=false)
+        m = GlobalVectors(rank=5, max_iter=20, verbose=false)
         fit!(m, A; rng=MersenneTwister(42))
         @test all(isfinite, m.W_main)
         @test all(isfinite, m.W_ctx)
     end
 
-    @testset "BPR: produces finite scores" begin
+    @testset "PairwiseRanking: produces finite scores" begin
         X = _rank1_data(25, 20)
-        m = BPR(rank=3, max_iter=10, verbose=false)
+        m = PairwiseRanking(rank=3, max_iter=10, verbose=false)
         fit!(m, X; rng=MersenneTwister(42))
         @test all(isfinite, m.user_factors)
         @test all(isfinite, m.item_factors)
@@ -216,26 +216,26 @@ end
 
 @testset "Tier 3 — Cross-Solver Consistency" begin
 
-    @testset "WMF: Cholesky and CG both produce finite factors" begin
+    @testset "WeightedMF: Cholesky and CG both produce finite factors" begin
         X = _rank1_data(25, 20)
         # Cholesky solver
-        m_chol = WMF(rank=3, λ=0.01, max_iter=10, solver=CholeskySolver(),
+        m_chol = WeightedMF(rank=3, λ=0.01, max_iter=10, solver=CholeskySolver(),
                       feedback=Implicit, verbose=false)
         fit!(m_chol, X; rng=MersenneTwister(42))
         @test all(isfinite, m_chol.user_factors)
         @test all(isfinite, m_chol.item_factors)
         # CG solver
-        m_cg = WMF(rank=3, λ=0.01, max_iter=10, solver=CGSolver(), cg_steps=3,
+        m_cg = WeightedMF(rank=3, λ=0.01, max_iter=10, solver=CGSolver(), cg_steps=3,
                     feedback=Implicit, verbose=false)
         fit!(m_cg, X; rng=MersenneTwister(42))
         @test all(isfinite, m_cg.user_factors)
         @test all(isfinite, m_cg.item_factors)
     end
 
-    @testset "EALS: different random seeds work" begin
+    @testset "ElementwiseALS: different random seeds work" begin
         X = _rank1_data(20, 15)
         for seed in [42, 99]
-            m = EALS(rank=2, λ=0.01, max_iter=10, verbose=false)
+            m = ElementwiseALS(rank=2, λ=0.01, max_iter=10, verbose=false)
             fit!(m, X; rng=MersenneTwister(seed))
             @test all(isfinite, m.user_factors)
             @test all(isfinite, m.item_factors)
@@ -253,11 +253,11 @@ end
         @test all(isfinite, w)
     end
 
-    @testset "BPR: multiple training runs consistent" begin
+    @testset "PairwiseRanking: multiple training runs consistent" begin
         X = _rank1_data(20, 15)
         losses = []
         for seed in [42, 99]
-            m = BPR(rank=3, max_iter=5, verbose=false)
+            m = PairwiseRanking(rank=3, max_iter=5, verbose=false)
             fit!(m, X; rng=MersenneTwister(seed))
             push!(losses, m.loss_history[end])
         end

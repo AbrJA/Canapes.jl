@@ -1,19 +1,19 @@
 # test/test_finite_input.jl — uniform NaN/Inf rejection across all fit! paths (Item 11)
 
 const _FINITE_MODEL_FACTORIES = [
-    (name="WMF",     model=() -> WMF(rank=2, max_iter=1, verbose=false), y=false),
-    (name="IALS",    model=() -> IALS(rank=2, max_iter=1, verbose=false), y=false),
-    (name="EALS",    model=() -> EALS(rank=2, max_iter=1, verbose=false), y=false),
-    (name="BPR",     model=() -> BPR(rank=2, max_iter=1, verbose=false), y=false),
+    (name="WeightedMF",     model=() -> WeightedMF(rank=2, max_iter=1, verbose=false), y=false),
+    (name="CachedALS",    model=() -> CachedALS(rank=2, max_iter=1, verbose=false), y=false),
+    (name="ElementwiseALS",    model=() -> ElementwiseALS(rank=2, max_iter=1, verbose=false), y=false),
+    (name="PairwiseRanking",     model=() -> PairwiseRanking(rank=2, max_iter=1, verbose=false), y=false),
     (name="LogisticMF", model=() -> LogisticMF(rank=2, max_iter=1, verbose=false), y=false),
-    (name="EASE",    model=() -> EASE(λ=100.0, verbose=false), y=false),
-    (name="SLIM",    model=() -> SLIM(max_iter=2, verbose=false), y=false),
-    (name="ADMMSLIM", model=() -> ADMMSLIM(max_iter=2, verbose=false), y=false),
+    (name="ShallowAutoencoder",    model=() -> ShallowAutoencoder(λ=100.0, verbose=false), y=false),
+    (name="SparseLinearModel",    model=() -> SparseLinearModel(max_iter=2, verbose=false), y=false),
+    (name="SparseLinearADMM", model=() -> SparseLinearADMM(max_iter=2, verbose=false), y=false),
     (name="ItemKNN", model=() -> ItemKNN(k=2, verbose=false), y=false),
     (name="SoftImpute", model=() -> SoftImpute(rank=2, max_iter=1, verbose=false), y=false),
-    (name="GloVe",   model=() -> GloVe(rank=2, max_iter=1, verbose=false), y=false),
+    (name="GlobalVectors",   model=() -> GlobalVectors(rank=2, max_iter=1, verbose=false), y=false),
     (name="FTRL",    model=() -> FTRL(max_iter=1, verbose=false), y=true),
-    (name="FM",      model=() -> FM(rank=2, max_iter=1, verbose=false), y=true),
+    (name="FactorizationMachine",      model=() -> FactorizationMachine(rank=2, max_iter=1, verbose=false), y=true),
 ]
 
 @testset "NaN/Inf input rejection" begin
@@ -57,7 +57,7 @@ const _FINITE_MODEL_FACTORIES = [
             @test_throws ArgumentError fit!(m_ftrl, X, y_bad)
             @test !m_ftrl.is_initialized
 
-            m_fm = FM(rank=2, max_iter=1, verbose=false)
+            m_fm = FactorizationMachine(rank=2, max_iter=1, verbose=false)
             @test_throws ArgumentError fit!(m_fm, X, y_bad)
             @test !m_fm.is_initialized
 
@@ -71,14 +71,14 @@ const _FINITE_MODEL_FACTORIES = [
         X_bad = copy(X0)
         nonzeros(X_bad)[1] = NaN
 
-        m = EASE(λ=100.0, verbose=false)
+        m = ShallowAutoencoder(λ=100.0, verbose=false)
         fit!(m, X0)
         B_before = copy(m.B)
         @test_throws ArgumentError fit!(m, X_bad)
         @test m.is_fitted
         @test m.B == B_before
 
-        m = WMF(rank=2, max_iter=1, verbose=false)
+        m = WeightedMF(rank=2, max_iter=1, verbose=false)
         fit!(m, X0; rng=MersenneTwister(1))
         U_before = copy(m.user_factors)
         @test_throws ArgumentError fit!(m, X_bad; rng=MersenneTwister(1))
@@ -86,15 +86,15 @@ const _FINITE_MODEL_FACTORIES = [
         @test m.user_factors == U_before
     end
 
-    @testset "GloVe keeps its positivity requirement" begin
+    @testset "GlobalVectors keeps its positivity requirement" begin
         X = sprand(rng, 20, 20, 0.2)
         nonzeros(X)[1] = -1.0
-        @test_throws ArgumentError fit!(GloVe(rank=2, max_iter=1, verbose=false), X)
+        @test_throws ArgumentError fit!(GlobalVectors(rank=2, max_iter=1, verbose=false), X)
     end
 
-    @testset "EALS update! rejects non-finite data" begin
+    @testset "ElementwiseALS update! rejects non-finite data" begin
         X0 = sprand(rng, 30, 20, 0.15)
-        m = EALS(rank=2, max_iter=1, verbose=false)
+        m = ElementwiseALS(rank=2, max_iter=1, verbose=false)
         fit!(m, X0; rng=MersenneTwister(1))
         X_bad = copy(X0)
         nonzeros(X_bad)[1] = Inf

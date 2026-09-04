@@ -19,7 +19,7 @@ matrix factorization, item-item similarity, low-rank completion, and sparse
 regression — all behind one unified `fit!` / `recommend` / `score` / `predict`
 API on `SparseMatrixCSC`.
 
-- **Reproducible training** for a fixed seed and environment (GloVe and BPR are
+- **Reproducible training** for a fixed seed and environment (GlobalVectors and PairwiseRanking are
   the documented Hogwild exceptions)
 - **Memory-bounded scoring** — top-k paths never materialize a full dense score
   matrix
@@ -50,7 +50,7 @@ df = (user=[1,1,2,3,3,4], item=[2,5,3,1,4,2], rating=[1.0,1.0,1.0,1.0,1.0,1.0])
 X = triplets_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating)   # 4×5
 
 # 2. Train (seen items are masked at recommend time)
-model = WMF(rank=8, λ=0.1, α=40.0, max_iter=15, verbose=false)
+model = WeightedMF(rank=8, λ=0.1, α=40.0, max_iter=15, verbose=false)
 fit!(model, X; rng=MersenneTwister(42))
 
 # 3. Top-k recommendations per user (k clamps to n_items)
@@ -69,41 +69,41 @@ println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10),
 
 | Model | Type | Reference |
 |-------|------|-----------|
-| `WMF` | Implicit/explicit ALS (Cholesky, CG, NNLS solvers) | Hu, Koren & Volinsky (2008) |
-| `IALS` | Implicit ALS with Gramian caching | Rendle et al. (2021) |
-| `EALS` | Element-wise ALS with popularity weighting | He et al. (2016) |
-| `BPR` | Pairwise ranking via SGD | Rendle et al. (2009) |
-| `GloVe` | Co-occurrence embeddings | Pennington, Socher & Manning (2014) |
-| `EASE` | Closed-form item-item model | Steck (2019) |
-| `SLIM` | Sparse linear methods (elastic net) | Ning & Karypis (2011) |
-| `ADMMSLIM` | ADMM-based SLIM | Steck et al. (2020) |
+| `WeightedMF` | Implicit/explicit ALS (Cholesky, CG, NNLS solvers) | Hu, Koren & Volinsky (2008) |
+| `CachedALS` | Implicit ALS with Gramian caching | Rendle et al. (2021) |
+| `ElementwiseALS` | Element-wise ALS with popularity weighting | He et al. (2016) |
+| `PairwiseRanking` | Pairwise ranking via SGD | Rendle et al. (2009) |
+| `GlobalVectors` | Co-occurrence embeddings | Pennington, Socher & Manning (2014) |
+| `ShallowAutoencoder` | Closed-form item-item model | Steck (2019) |
+| `SparseLinearModel` | Sparse linear methods (elastic net) | Ning & Karypis (2011) |
+| `SparseLinearADMM` | ADMM-based SparseLinearModel | Steck et al. (2020) |
 | `ItemKNN` | Item-based KNN (cosine, Jaccard, asymmetric, BM25) | Deshpande & Karypis (2004) |
-| `RandomWalk` | RP3β graph random walk | Paolino et al. (2017) |
+| `GraphRandomWalk` | RP3β graph random walk | Paolino et al. (2017) |
 | `FTRL` | Online GLM (elastic-net, streaming) | McMahan et al. (2013) |
-| `FM` | Factorization Machines | Rendle (2010) |
+| `FactorizationMachine` | Factorization Machines | Rendle (2010) |
 | `SoftImpute` | Low-rank matrix completion | Hastie et al. (2014) |
 | `SoftSVD` / `PureSVD` | Low-rank SVD (ALS style) | Hastie et al. (2014) / Cremonesi et al. (2010) |
 | `BaselineOnly` | Rating baseline μ + b_u + b_i | Koren (2009) |
 | `SlopeOne` | Rating predictor from pair deviations | Lemire & Maclachlan (2005) |
 | `PearsonKNN` | User-centered Pearson neighborhood | Resnick et al. (1994) |
 
-`PMF` and `LogisticMF` live in the `Canapes.Experimental` namespace; the latter
+`ProbabilisticMF` and `LogisticMF` live in the `Canapes.Experimental` namespace; the latter
 is reference-validated against `implicit` but ranks at the bottom of implicit
 top-N benchmarks and needs fragile tuning.
 
 Choosing a model, briefly:
 
-- **Implicit feedback (clicks, views, plays)**: `WMF` (fast, any scale), `IALS`
-  (accuracy/cost balance), `EALS` (popularity-weighted), `BPR` (pairwise
+- **Implicit feedback (clicks, views, plays)**: `WeightedMF` (fast, any scale), `CachedALS`
+  (accuracy/cost balance), `ElementwiseALS` (popularity-weighted), `PairwiseRanking` (pairwise
   ranking). Note: "iALS" in the literature usually means Hu et al. (2008) —
-  that is this package's `WMF`; `IALS` here is Rendle et al. (2021).
-- **Item-item similarity**: `EASE` (accuracy), `SLIM` / `ADMMSLIM` (sparse and
-  interpretable weights), `ItemKNN` (lightweight baseline), `RandomWalk`
+  that is this package's `WeightedMF`; `CachedALS` here is Rendle et al. (2021).
+- **Item-item similarity**: `ShallowAutoencoder` (accuracy), `SparseLinearModel` / `SparseLinearADMM` (sparse and
+  interpretable weights), `ItemKNN` (lightweight baseline), `GraphRandomWalk`
   (long-tail bias).
-- **Explicit ratings (rating prediction)**: `WMF(feedback=Explicit)` (BiasedMF),
+- **Explicit ratings (rating prediction)**: `WeightedMF(feedback=Explicit)` (BiasedMF),
   plus `BaselineOnly`, `SlopeOne`, `PearsonKNN`, and the completion models;
   evaluated with `rmse` / `mae`.
-- **Sparse regression / CTR**: `FTRL` (online) and `FM`.
+- **Sparse regression / CTR**: `FTRL` (online) and `FactorizationMachine`.
 
 ---
 
@@ -112,13 +112,13 @@ Choosing a model, briefly:
 | Function | Description |
 |----------|-------------|
 | `fit!(model, X)` | Train in place on a sparse matrix (transactional: previous state intact on failure) |
-| `update!(model, X, y)` | Online / incremental update (FTRL, FM, EALS) |
+| `update!(model, X, y)` | Online / incremental update (FTRL, FactorizationMachine, ElementwiseALS) |
 | `recommend(model, X; k)` | Top-k item indices per user, seen items masked — never builds the full score matrix |
 | `score(model, X)` | Full user × item score matrix |
 | `score(model, users, items)` | Scores for specific (user, item) pairs |
 | `transform(model, X)` | Latent embeddings for new users (fold-in) |
 | `similar_items(model, id; k)` | Cosine nearest neighbors |
-| `coef(model)` / `predict(model, X)` | Learned weights / regression predictions (FTRL, FM) |
+| `coef(model)` / `predict(model, X)` | Learned weights / regression predictions (FTRL, FactorizationMachine) |
 
 Metrics (`ap_at_k`, `ndcg_at_k`, `precision_at_k`, `recall_at_k`, `mean_ap_at_k`,
 `rmse`, `mae`), `grid_search` / `random_search`, and the `triplets_to_sparse` /
@@ -152,7 +152,7 @@ uploads coverage to Codecov.
 ## GPU
 
 With CUDA.jl installed, a package extension adds `fit_gpu!`, `score_gpu`, and
-`recommend_gpu` for EASE, IALS, and WMF — load `CUDA` and the same API works.
+`recommend_gpu` for ShallowAutoencoder, CachedALS, and WeightedMF — load `CUDA` and the same API works.
 
 ## Contributing
 

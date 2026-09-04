@@ -2,10 +2,10 @@
 
 ## Matrix Factorization
 
-### WMF — Weighted Regularized Matrix Factorization
+### WeightedMF — Weighted Regularized Matrix Factorization
 
 ```@docs
-WMF
+WeightedMF
 ```
 
 #### Example
@@ -15,16 +15,16 @@ using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 300, 0.03)
 
 # Cholesky solver (default for small-medium datasets)
-model = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CholeskySolver())
+model = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CholeskySolver())
 fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=5)
 
 # Conjugate gradient solver (better for large datasets)
-model_cg = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CGSolver(), cg_steps=3)
+model_cg = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=CGSolver(), cg_steps=3)
 fit!(model_cg, X; rng=MersenneTwister(42))
 
 # Non-negative solver
-model_nn = WMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegativeSolver())
+model_nn = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=20, solver=NonNegativeSolver())
 fit!(model_nn, X; rng=MersenneTwister(42))
 
 # Score matrix and similarity search
@@ -32,10 +32,10 @@ scores = score(model, X)
 ids, sims = similar_items(model, 42; k=5)
 ```
 
-### IALS — Implicit ALS with Gramian Caching
+### CachedALS — Implicit ALS with Gramian Caching
 
 ```@docs
-IALS
+CachedALS
 ```
 
 #### Example
@@ -43,16 +43,16 @@ IALS
 ```julia
 using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-model = IALS(rank=32, λ=0.01, α=1.0, max_iter=15)
+model = CachedALS(rank=32, λ=0.01, α=1.0, max_iter=15)
 fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 scores = score(model, X)
 ```
 
-### EALS — Element-wise ALS
+### ElementwiseALS — Element-wise ALS
 
 ```@docs
-EALS
+ElementwiseALS
 ```
 
 #### Example
@@ -60,7 +60,7 @@ EALS
 ```julia
 using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 1000, 500, 0.02)
-model = EALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=20)
+model = ElementwiseALS(rank=64, λ=0.01, unobserved_weight=10.0, max_iter=20)
 fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 
@@ -69,10 +69,10 @@ X_new = sprand(MersenneTwister(2), 1000, 500, 0.01)
 update!(model, X_new; n_iters=3)
 ```
 
-### BPR — Bayesian Personalized Ranking
+### PairwiseRanking — Bayesian Personalized Ranking
 
 ```@docs
-BPR
+PairwiseRanking
 ```
 
 #### Example
@@ -80,7 +80,7 @@ BPR
 ```julia
 using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 300, 0.03)
-model = BPR(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=50)
+model = PairwiseRanking(rank=32, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=50)
 fit!(model, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)
 ```
@@ -121,9 +121,9 @@ PearsonKNN
 ```
 
 The biased matrix factorization lives in the dual model
-[`WMF`](@ref) with `feedback=Explicit` (BiasedMF: `μ + b_u + b_i + x_uᵀ y_i`,
-learned via augmented ALS), loss `WMF`'s `predict` returns the dense fitted
-ratings. Experimental: [`Canapes.Experimental.PMF`](@ref) is a MAP-SGD
+[`WeightedMF`](@ref) with `feedback=Explicit` (BiasedMF: `μ + b_u + b_i + x_uᵀ y_i`,
+learned via augmented ALS), loss `WeightedMF`'s `predict` returns the dense fitted
+ratings. Experimental: [`Canapes.Experimental.ProbabilisticMF`](@ref) is a MAP-SGD
 Probabilistic Matrix Factorization with no reference-parity target.
 
 #### Example
@@ -134,7 +134,7 @@ X = sprand(MersenneTwister(1), 500, 300, 0.1)
 nonzeros(X) .= 1.0 .+ 4.0 .* rand(MersenneTwister(2), nnz(X))   # ratings 1-5
 X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(3))
 
-model = WMF(rank=16, λ=0.1, max_iter=15, feedback=Explicit, verbose=false)
+model = WeightedMF(rank=16, λ=0.1, max_iter=15, feedback=Explicit, verbose=false)
 fit!(model, X_train; rng=MersenneTwister(4))
 preds = predict(model, X_train)
 rmse(preds, X_train)         # training error; hold out for honest evaluation
@@ -146,10 +146,10 @@ for m in (BaselineOnly(verbose=false), SlopeOne(verbose=false),
 end
 ```
 
-### RandomWalk — RP3β Graph Random Walk
+### GraphRandomWalk — RP3β Graph Random Walk
 
 ```@docs
-RandomWalk
+GraphRandomWalk
 ```
 
 #### Example
@@ -160,16 +160,16 @@ X = sprand(MersenneTwister(1), 2000, 1000, 0.01)
 
 # 3-step bipartite random walk with popularity penalization (RP3β).
 # No training loop; memory O(nnz); β > 0 boosts long-tail items.
-model = RandomWalk(α=1.0, β=0.6, k=200, verbose=false)
+model = GraphRandomWalk(α=1.0, β=0.6, k=200, verbose=false)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 W = model.W   # sparse item×item walk matrix
 ```
 
-### GloVe — Global Vectors
+### GlobalVectors — Global Vectors
 
 ```@docs
-GloVe
+GlobalVectors
 ```
 
 #### Example
@@ -177,12 +177,12 @@ GloVe
 ```julia
 using Canapes, SparseArrays, Random
 
-# GloVe expects a symmetric co-occurrence matrix
+# GlobalVectors expects a symmetric co-occurrence matrix
 X = sprand(MersenneTwister(1), 100, 100, 0.1)
 X = X + X'
 nonzeros(X) .= abs.(nonzeros(X))  # ensure positive counts
 
-model = GloVe(rank=50, x_max=100.0, lr=0.05, max_iter=25)
+model = GlobalVectors(rank=50, x_max=100.0, lr=0.05, max_iter=25)
 fit!(model, X; rng=MersenneTwister(42))
 E = embeddings(model)  # rank × n_words
 ```
@@ -216,10 +216,10 @@ println("RMSE = ", round(rmse(preds, X_test), digits=3))
 
 ## Item Similarity
 
-### EASE — Embarrassingly Shallow Autoencoders
+### ShallowAutoencoder — Embarrassingly Shallow Autoencoders
 
 ```@docs
-EASE
+ShallowAutoencoder
 ```
 
 #### Example
@@ -229,16 +229,16 @@ using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 200, 0.05)
 
 # Closed-form solution — no iterations, just λ controls regularization
-model = EASE(λ=500.0)
+model = ShallowAutoencoder(λ=500.0)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 scores = score(model, X)  # dense Matrix
 ```
 
-### SLIM — Sparse Linear Methods
+### SparseLinearModel — Sparse Linear Methods
 
 ```@docs
-SLIM
+SparseLinearModel
 ```
 
 #### Example
@@ -248,16 +248,16 @@ using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
 # λ_l1 controls L1 sparsity, λ_l2 controls L2 shrinkage
-model = SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonnegative=true)
+model = SparseLinearModel(λ_l1=0.01, λ_l2=0.1, max_iter=100, nonnegative=true)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 scores = score(model, X)  # sparse SparseMatrixCSC
 ```
 
-### ADMMSLIM — ADMM-based SLIM
+### SparseLinearADMM — ADMM-based SparseLinearModel
 
 ```@docs
-ADMMSLIM
+SparseLinearADMM
 ```
 
 #### Example
@@ -266,15 +266,15 @@ ADMMSLIM
 using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(1), 500, 100, 0.05)
 
-# Same objective as SLIM but 10-100× faster via ADMM
+# Same objective as SparseLinearModel but 10-100× faster via ADMM
 # ρ controls ADMM convergence speed and adapts automatically (primal/dual
 # residual rebalancing, Boyd et al. 2011); convergence requires the primal
 # residual AND the solution drift below tol. The direct dense solve is used
 # deliberately: the Gram matrix of implicit data is ~99.9% dense, where
 # per-column CG/PCG is 5-10× more expensive than the Cholesky substitution.
-# Training memory is O(n_items²) (dense joint solve); prefer SLIM for very
+# Training memory is O(n_items²) (dense joint solve); prefer SparseLinearModel for very
 # large item counts. The fitted W is stored sparse: score returns SparseMatrixCSC.
-model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonnegative=true)
+model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, nonnegative=true)
 fit!(model, X)
 preds = recommend(model, X; k=10)
 ```
@@ -334,10 +334,10 @@ model_pois = FTRL(lr=0.1, family=Links.Poisson())
 w = coef(model)
 ```
 
-### FM — Factorization Machines
+### FactorizationMachine — Factorization Machines
 
 ```@docs
-FM
+FactorizationMachine
 ```
 
 #### Example
@@ -348,13 +348,13 @@ using Canapes, SparseArrays, Random
 # XOR problem with second-order interactions
 X = sparse([0.0 0.0; 0.0 1.0; 1.0 0.0; 1.0 1.0])
 y = [0.0, 1.0, 1.0, 0.0]
-model = FM(rank=4, family=Links.Binomial(), max_iter=100, lr_w=0.2)
+model = FactorizationMachine(rank=4, family=Links.Binomial(), max_iter=100, lr_w=0.2)
 fit!(model, X, y; rng=MersenneTwister(42))
 predict(model, X)
 
 # Gaussian regression with feature interactions
 X_reg = sprand(MersenneTwister(1), 500, 20, 0.3)
 y_reg = randn(MersenneTwister(2), 500)
-model_reg = FM(rank=8, family=Links.Gaussian(), max_iter=50)
+model_reg = FactorizationMachine(rank=8, family=Links.Gaussian(), max_iter=50)
 fit!(model_reg, X_reg, y_reg; rng=MersenneTwister(42))
 ```

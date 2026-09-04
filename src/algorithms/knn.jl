@@ -464,7 +464,7 @@ function _bm25_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T,
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# recommend / score — same pattern as SLIM (sparse W)
+# recommend / score — same pattern as SparseLinearModel (sparse W)
 # ──────────────────────────────────────────────────────────────────────────────
 
 """

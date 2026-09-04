@@ -111,25 +111,25 @@ end
 
 # ── 4. Model catalog ─────────────────────────────────────────────────────────
 # Hyperparameters use the tuned settings found in usage/ml1m_tune.jl (ml-100k
-# random split); stock defaults flag as: ItemKNN k, EALS unobserved_weight,
-# LogisticMF* lr (experimental), ADMMSLIM λ_l2/max_iter, BPR max_iter.
+# random split); stock defaults flag as: ItemKNN k, ElementwiseALS unobserved_weight,
+# LogisticMF* lr (experimental), SparseLinearADMM λ_l2/max_iter, PairwiseRanking max_iter.
 results = []
 
-push!(results, evaluate(WMF(rank=32, α=40.0, λ=0.1, max_iter=10, verbose=false), "WMF"))
-push!(results, evaluate(IALS(rank=64, α=40.0, max_iter=10, verbose=false), "IALS"))
-push!(results, evaluate(EALS(rank=64, λ=0.01, unobserved_weight=64.0, max_iter=30,
-                             verbose=false), "EALS"))
-push!(results, evaluate(BPR(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
-                            max_iter=30, verbose=false), "BPR"))
+push!(results, evaluate(WeightedMF(rank=32, α=40.0, λ=0.1, max_iter=10, verbose=false), "WeightedMF"))
+push!(results, evaluate(CachedALS(rank=64, α=40.0, max_iter=10, verbose=false), "CachedALS"))
+push!(results, evaluate(ElementwiseALS(rank=64, λ=0.01, unobserved_weight=64.0, max_iter=30,
+                             verbose=false), "ElementwiseALS"))
+push!(results, evaluate(PairwiseRanking(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
+                            max_iter=30, verbose=false), "PairwiseRanking"))
 push!(results, evaluate(Canapes.Experimental.LogisticMF(rank=32, λ=0.6, lr=1.0, α=1.0, max_iter=50,
                                    n_negative=5, verbose=false), "LogisticMF*"))
 
-push!(results, evaluate(EASE(λ=200.0, verbose=false), "EASE"))
-push!(results, evaluate(SLIM(λ_l1=0.01, λ_l2=0.1, max_iter=10, verbose=false), "SLIM"))
-push!(results, evaluate(ADMMSLIM(λ_l1=0.01, λ_l2=500.0, max_iter=50, verbose=false), "ADMMSLIM"))
+push!(results, evaluate(ShallowAutoencoder(λ=200.0, verbose=false), "ShallowAutoencoder"))
+push!(results, evaluate(SparseLinearModel(λ_l1=0.01, λ_l2=0.1, max_iter=10, verbose=false), "SparseLinearModel"))
+push!(results, evaluate(SparseLinearADMM(λ_l1=0.01, λ_l2=500.0, max_iter=50, verbose=false), "SparseLinearADMM"))
 push!(results, evaluate(ItemKNN(k=400, similarity=:cosine, verbose=false), "ItemKNN"))
-push!(results, evaluate(RandomWalk(β=0.0, k=nothing, verbose=false), "RandomWalk β=0"))
-push!(results, evaluate(RandomWalk(β=0.6, k=nothing, verbose=false), "RandomWalk β=0.6"))
+push!(results, evaluate(GraphRandomWalk(β=0.0, k=nothing, verbose=false), "GraphRandomWalk β=0"))
+push!(results, evaluate(GraphRandomWalk(β=0.6, k=nothing, verbose=false), "GraphRandomWalk β=0.6"))
 push!(results, evaluate(SoftImpute(rank=20, λ=0.5, max_iter=50, verbose=false), "SoftImpute"))
 push!(results, evaluate(SoftSVD(rank=20, max_iter=50, verbose=false), "SoftSVD"))
 push!(results, evaluate(PureSVD(rank=20, max_iter=50, verbose=false), "PureSVD"))

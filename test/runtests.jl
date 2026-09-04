@@ -29,44 +29,44 @@ const TEST_FULL = get(ENV, "TEST_SUITE", "full") == "full"
     @testset "Types & Utils" begin
         include("test_utils.jl")
     end
-    @testset "WMF" begin
-        include("test_wrmf.jl")
+    @testset "WeightedMF" begin
+        include("test_weightedmf.jl")
     end
-    @testset "IALS" begin
-        include("test_ials.jl")
+    @testset "CachedALS" begin
+        include("test_cachedals.jl")
     end
-    @testset "EALS" begin
-        include("test_eals.jl")
+    @testset "ElementwiseALS" begin
+        include("test_elementwiseals.jl")
     end
     @testset "FTRL" begin
         include("test_ftrl.jl")
     end
-    @testset "FM" begin
-        include("test_fm.jl")
+    @testset "FactorizationMachine" begin
+        include("test_factorizationmachine.jl")
     end
-    @testset "GloVe" begin
-        include("test_glove.jl")
+    @testset "GlobalVectors" begin
+        include("test_globalvectors.jl")
     end
     @testset "LogisticMF" begin
         include("test_lmf.jl")
     end
-    @testset "BPR" begin
-        include("test_bpr.jl")
+    @testset "PairwiseRanking" begin
+        include("test_pairwiseranking.jl")
     end
-    @testset "EASE" begin
-        include("test_ease.jl")
+    @testset "ShallowAutoencoder" begin
+        include("test_shallowautoencoder.jl")
     end
-    @testset "SLIM" begin
-        include("test_slim.jl")
+    @testset "SparseLinearModel" begin
+        include("test_sparselinearmodel.jl")
     end
-    @testset "ADMMSLIM" begin
-        include("test_admmslim.jl")
+    @testset "SparseLinearADMM" begin
+        include("test_sparseadmm.jl")
     end
     @testset "ItemKNN" begin
         include("test_knn.jl")
     end
-    @testset "RandomWalk" begin
-        include("test_randomwalk.jl")
+    @testset "GraphRandomWalk" begin
+        include("test_graphrandomwalk.jl")
     end
     @testset "SoftImpute" begin
         include("test_soft_impute.jl")

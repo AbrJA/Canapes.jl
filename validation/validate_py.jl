@@ -12,28 +12,28 @@ include(joinpath(@__DIR__, "common.jl"))
 soft_strict = get(ENV, "CANAPES_PY_SOFT_STRICT", "0") == "1"
 
 const SCORE_CASES = [
-    (name="WMF-Cholesky vs ALS", model=() -> WMF(rank=16, λ=0.1, α=40.0, max_iter=20,
+    (name="WeightedMF-Cholesky vs ALS", model=() -> WeightedMF(rank=16, λ=0.1, α=40.0, max_iter=20,
                                                    solver=CholeskySolver(), feedback=Implicit, verbose=false),
      scores_path="py_als_scores.csv", required=true, metrics_path=nothing,
      min_cor=_env_float("CANAPES_PY_ALS_MIN_COR", 0.45),
      min_overlap=_env_float("CANAPES_PY_ALS_MIN_OVERLAP", 0.20),
      max_ndcg=nothing, max_recall=nothing),
-    (name="BPR", model=() -> BPR(rank=16, max_iter=40, verbose=false),
+    (name="PairwiseRanking", model=() -> PairwiseRanking(rank=16, max_iter=40, verbose=false),
      scores_path="py_bpr_scores.csv", required=true, metrics_path="py_bpr_metrics.json",
      min_cor=_env_float("CANAPES_PY_BPR_MIN_COR", 0.20),
      min_overlap=_env_float("CANAPES_PY_BPR_MIN_OVERLAP", 0.10),
      max_ndcg=_env_float("CANAPES_PY_BPR_MAX_NDCG_DELTA", 0.05),
-     # Both sides are stochastic: Julia's BPR is Hogwild and implicit's BPR is
+     # Both sides are stochastic: Julia's PairwiseRanking is Hogwild and implicit's PairwiseRanking is
      # not fully seeded by random_state (reference values move ~0.03-0.08 with
      # every fixture regeneration). 0.10 covers the observed regeneration noise.
      max_recall=_env_float("CANAPES_PY_BPR_MAX_RECALL_DELTA", 0.10)),
-    (name="IALS", model=() -> IALS(rank=16, λ=0.01, α=40.0, max_iter=15, verbose=false),
+    (name="CachedALS", model=() -> CachedALS(rank=16, λ=0.01, α=40.0, max_iter=15, verbose=false),
      scores_path="py_ials_scores.csv", required=true, metrics_path="py_ials_metrics.json",
      min_cor=_env_float("CANAPES_PY_IALS_MIN_COR", 0.35),
      min_overlap=_env_float("CANAPES_PY_IALS_MIN_OVERLAP", 0.15),
      max_ndcg=_env_float("CANAPES_PY_IALS_MAX_NDCG_DELTA", 0.06),
      max_recall=_env_float("CANAPES_PY_IALS_MAX_RECALL_DELTA", 0.06)),
-    (name="EALS", model=() -> EALS(rank=16, λ=0.01, unobserved_weight=10.0, max_iter=20, verbose=false),
+    (name="ElementwiseALS", model=() -> ElementwiseALS(rank=16, λ=0.01, unobserved_weight=10.0, max_iter=20, verbose=false),
      scores_path="py_eals_scores.csv", required=true, metrics_path="py_eals_metrics.json",
      min_cor=_env_float("CANAPES_PY_EALS_MIN_COR", 0.15),
      min_overlap=_env_float("CANAPES_PY_EALS_MIN_OVERLAP", 0.10),
@@ -102,13 +102,13 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
         end
     end
 
-    # ── EASE: closed-form solution → exact match ────────────────────────────
-    @testset "EASE vs Python" begin
+    # ── ShallowAutoencoder: closed-form solution → exact match ────────────────────────────
+    @testset "ShallowAutoencoder vs Python" begin
         ease_path = joinpath(PY_FIXTURE_DIR, "py_ease_B.csv")
         isfile(ease_path) || error("missing required fixture: py_ease_B.csv")
 
         py_B = _read_matrix(ease_path)
-        m = EASE(λ=100.0, verbose=false)
+        m = ShallowAutoencoder(λ=100.0, verbose=false)
         fit!(m, X)
         jl_B = Matrix(m.B)
 
@@ -122,18 +122,18 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
         @test all(abs.(diag(jl_B)) .< 1e-8)
         @test rel_frob <= max_rel
         @test c >= min_cor
-        println("  EASE relative Frobenius error: $rel_frob")
-        println("  EASE matrix correlation: $c")
+        println("  ShallowAutoencoder relative Frobenius error: $rel_frob")
+        println("  ShallowAutoencoder matrix correlation: $c")
     end
 
-    # ── SLIM vs sklearn ElasticNet (optional: sklearn may be absent) ────────
-    @testset "SLIM vs Python" begin
+    # ── SparseLinearModel vs sklearn ElasticNet (optional: sklearn may be absent) ────────
+    @testset "SparseLinearModel vs Python" begin
         slim_path = joinpath(PY_FIXTURE_DIR, "py_slim_W.csv")
         if !isfile(slim_path)
-            @info "Skipping SLIM parity: py_slim_W.csv not found (scikit-learn may be unavailable)"
+            @info "Skipping SparseLinearModel parity: py_slim_W.csv not found (scikit-learn may be unavailable)"
         else
             py_w = _read_matrix(slim_path)
-            m = SLIM(λ_l1=0.001, λ_l2=0.01, max_iter=50, verbose=false)
+            m = SparseLinearModel(λ_l1=0.001, λ_l2=0.01, max_iter=50, verbose=false)
             fit!(m, X_train)
             jl_w = Matrix(m.W)
 
@@ -141,10 +141,10 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
             c = _cor(vec(jl_w), vec(py_w))
             min_cor = _env_float("CANAPES_PY_SLIM_MIN_W_COR", 0.6)
             @test c >= min_cor
-            println("  SLIM weight-matrix correlation: $c")
+            println("  SparseLinearModel weight-matrix correlation: $c")
 
             assert_metric_parity(
-                label="SLIM",
+                label="SparseLinearModel",
                 model=m, X_train=X_train, X_test=X_test,
                 metrics_path=joinpath(PY_FIXTURE_DIR, "py_slim_metrics.json"),
                 max_ndcg=_env_float("CANAPES_PY_SLIM_MAX_NDCG_DELTA", 0.08),
@@ -251,17 +251,17 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
         end
     end
 
-    # ── ADMMSLIM vs Python ADMM reference ───────────────────────────────────
-    @testset "ADMMSLIM vs Python ADMM" begin
+    # ── SparseLinearADMM vs Python ADMM reference ───────────────────────────────────
+    @testset "SparseLinearADMM vs Python ADMM" begin
         w_path = joinpath(PY_FIXTURE_DIR, "py_admmslim_W.csv")
         scores_path = joinpath(PY_FIXTURE_DIR, "py_admmslim_scores.csv")
         if !(isfile(w_path) && isfile(scores_path))
-            @info "Skipping ADMMSLIM parity: fixture files not found"
+            @info "Skipping SparseLinearADMM parity: fixture files not found"
         else
             py_W = _read_matrix(w_path)
             py_scores = _read_matrix(scores_path)
 
-            m = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=100,
+            m = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=100,
                          tol=1e-5, nonnegative=true, verbose=false)
             fit!(m, X)
             jl_W = Matrix(m.W)
@@ -279,13 +279,13 @@ X_test  = _load_sparse(XE_PATH, XE_DIMS)
             @test w_cor >= 0.99
             @test score_cor >= 0.99
             @test overlap >= 0.85
-            println("  ADMMSLIM W Frobenius relative error: $(round(w_frob; sigdigits=4))")
-            println("  ADMMSLIM W correlation: $(round(w_cor; sigdigits=6))")
-            println("  ADMMSLIM score correlation: $(round(score_cor; sigdigits=6))")
-            println("  ADMMSLIM top-$k overlap: $(round(overlap; sigdigits=4))")
+            println("  SparseLinearADMM W Frobenius relative error: $(round(w_frob; sigdigits=4))")
+            println("  SparseLinearADMM W correlation: $(round(w_cor; sigdigits=6))")
+            println("  SparseLinearADMM score correlation: $(round(score_cor; sigdigits=6))")
+            println("  SparseLinearADMM top-$k overlap: $(round(overlap; sigdigits=4))")
 
             assert_metric_parity(
-                label="ADMMSLIM",
+                label="SparseLinearADMM",
                 model=m, X_train=X_train, X_test=X_test,
                 metrics_path=joinpath(PY_FIXTURE_DIR, "py_admmslim_metrics.json"),
                 max_ndcg=0.05, max_recall=nothing,

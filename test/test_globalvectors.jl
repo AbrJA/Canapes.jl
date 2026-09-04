@@ -1,4 +1,4 @@
-# test/test_glove.jl — GloVe algorithm tests
+# test/test_globalvectors.jl — GlobalVectors algorithm tests
 
 @testset "Basic fit" begin
     rng = MersenneTwister(42)
@@ -7,7 +7,7 @@
     A = A + A'
     nonzeros(A) .= abs.(nonzeros(A)) .+ 0.1
 
-    model = GloVe(rank=10, x_max=10.0, lr=0.15, max_iter=5, verbose=false)
+    model = GlobalVectors(rank=10, x_max=10.0, lr=0.15, max_iter=5, verbose=false)
     fit!(model, A; rng=rng)
 
     @test model.is_fitted
@@ -26,7 +26,7 @@ end
     n = 80
     A = sprand(rng, n, n, 0.1); A = A + A'
     nonzeros(A) .= abs.(nonzeros(A)) .+ 0.1
-    model = GloVe(rank=5, x_max=10.0, lr=0.15, max_iter=20, verbose=false)
+    model = GlobalVectors(rank=5, x_max=10.0, lr=0.15, max_iter=20, verbose=false)
     fit!(model, A; rng=rng)
     @test length(model.loss_history) == 20
     @test sum(diff(model.loss_history) .< 0) >= 15
@@ -37,7 +37,7 @@ end
     n = 60
     A = sprand(rng, n, n, 0.15); A = A + A'
     nonzeros(A) .= abs.(nonzeros(A)) .+ 0.1
-    model = GloVe(rank=8, x_max=10.0, lr=0.15, max_iter=30, verbose=false)
+    model = GlobalVectors(rank=8, x_max=10.0, lr=0.15, max_iter=30, verbose=false)
     fit!(model, A; rng=rng)
     emb = embeddings(model)
     @test all(isfinite, emb)
@@ -54,7 +54,7 @@ end
     A = sparse(vcat(I,J), vcat(J,I), vcat(V,V), 20, 20)
     # lr/duration tuned for Hogwild robustness: more, smaller steps make the
     # separation robust to thread-scheduling order (20/20 over trials)
-    model = GloVe(rank=4, x_max=10.0, lr=0.1, max_iter=100, verbose=false)
+    model = GlobalVectors(rank=4, x_max=10.0, lr=0.1, max_iter=100, verbose=false)
     fit!(model, A; rng=MersenneTwister(1))
     emb = embeddings(model)
     vcos(a, b) = dot(a, b) / (norm(a)*norm(b) + 1e-8)
@@ -69,7 +69,7 @@ end
     n = 50
     A = sprand(rng, n, n, 0.1); A = A + A'
     nonzeros(A) .= abs.(nonzeros(A)) .+ 0.1
-    model = GloVe(rank=5, x_max=10.0, lr=0.15, tol=0.001, max_iter=100, verbose=false)
+    model = GlobalVectors(rank=5, x_max=10.0, lr=0.15, tol=0.001, max_iter=100, verbose=false)
     fit!(model, A; rng=rng)
     @test model.is_fitted
     # Should converge before 100 iterations
@@ -82,8 +82,8 @@ end
     A = sprand(rng, n, n, 0.2); A = A + A'
     nonzeros(A) .= abs.(nonzeros(A)) .+ 0.1
 
-    m_noreg = GloVe(rank=5, x_max=10.0, lr=0.15, λ=0.0, max_iter=20, verbose=false)
-    m_reg = GloVe(rank=5, x_max=10.0, lr=0.15, λ=1.0, max_iter=20, verbose=false)
+    m_noreg = GlobalVectors(rank=5, x_max=10.0, lr=0.15, λ=0.0, max_iter=20, verbose=false)
+    m_reg = GlobalVectors(rank=5, x_max=10.0, lr=0.15, λ=1.0, max_iter=20, verbose=false)
     fit!(m_noreg, A; rng=MersenneTwister(1))
     fit!(m_reg, A; rng=MersenneTwister(1))
 
@@ -92,6 +92,6 @@ end
 end
 
 @testset "Empty input" begin
-    @test_throws ArgumentError fit!(GloVe(rank=2, max_iter=1, verbose=false), spzeros(3, 3))
-    @test_throws ArgumentError fit!(GloVe(rank=2, max_iter=1, verbose=false), spzeros(0, 0))
+    @test_throws ArgumentError fit!(GlobalVectors(rank=2, max_iter=1, verbose=false), spzeros(3, 3))
+    @test_throws ArgumentError fit!(GlobalVectors(rank=2, max_iter=1, verbose=false), spzeros(0, 0))
 end

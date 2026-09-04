@@ -1,9 +1,9 @@
-# test/test_ease.jl — EASE algorithm tests
+# test/test_shallowautoencoder.jl — ShallowAutoencoder algorithm tests
 
 @testset "Basic fit" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 30, 0.1)
-    model = EASE(λ=100.0, verbose=false)
+    model = ShallowAutoencoder(λ=100.0, verbose=false)
     fit!(model, X)
 
     @test model.is_fitted
@@ -16,7 +16,7 @@ end
 @testset "predict returns valid indices" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 30, 0.1)
-    model = EASE(λ=100.0, verbose=false)
+    model = ShallowAutoencoder(λ=100.0, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=5)
     @test size(preds) == (50, 5)
@@ -27,7 +27,7 @@ end
 @testset "score full matrix" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 20, 0.1)
-    model = EASE(λ=100.0, verbose=false)
+    model = ShallowAutoencoder(λ=100.0, verbose=false)
     fit!(model, X)
     S = score(model, X)
     @test size(S) == (30, 20)
@@ -38,8 +38,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 25, 0.15)
 
-    m_low = EASE(λ=10.0, verbose=false)
-    m_high = EASE(λ=1000.0, verbose=false)
+    m_low = ShallowAutoencoder(λ=10.0, verbose=false)
+    m_high = ShallowAutoencoder(λ=1000.0, verbose=false)
     fit!(m_low, X)
     fit!(m_high, X)
 
@@ -50,8 +50,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 20, 0.1)
 
-    m1 = EASE(λ=200.0, verbose=false)
-    m2 = EASE(λ=200.0, verbose=false)
+    m1 = ShallowAutoencoder(λ=200.0, verbose=false)
+    m2 = ShallowAutoencoder(λ=200.0, verbose=false)
     fit!(m1, X)
     fit!(m2, X)
     @test m1.B ≈ m2.B

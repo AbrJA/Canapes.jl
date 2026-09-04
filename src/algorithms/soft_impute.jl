@@ -39,7 +39,7 @@ that handles missing data properly.
     loss is reconstruction error over observed entries), not for implicit
     Top-N ranking. On binarized implicit data it ranks below the popularity
     baseline in benchmarks — for implicit feedback use the item-similarity or
-    matrix-factorization models (EASE, SLIM, WMF, IALS).
+    matrix-factorization models (ShallowAutoencoder, SparseLinearModel, WeightedMF, CachedALS).
 
 # Constructor
 ```julia

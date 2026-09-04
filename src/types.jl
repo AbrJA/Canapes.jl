@@ -115,7 +115,7 @@ end
 
 GLM link functions for the regression models (`Links.Binomial`,
 `Links.Gaussian`, `Links.Poisson`). Used as
-`family=Links.Binomial()` in the FTRL/FM constructors; see also the
+`family=Links.Binomial()` in the FTRL/FactorizationMachine constructors; see also the
 `LossFamily` root alias for the abstract type.
 """
 module Links
@@ -156,7 +156,7 @@ end
 const LossFamily = Links.Family
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Sampling — negative sampling strategies (for BPR)
+# Sampling — negative sampling strategies (for PairwiseRanking)
 # Submodule: `Sampling.<TAB>` lists exactly the available strategies.
 # `NegativeSampling` below is a root alias for the abstract type.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -164,9 +164,9 @@ const LossFamily = Links.Family
 """
     Sampling
 
-Negative sampling strategies for BPR (`Sampling.Uniform`,
+Negative sampling strategies for PairwiseRanking (`Sampling.Uniform`,
 `Sampling.Popular`, `Sampling.Dynamic`). Used as
-`negative_sampling=Sampling.Uniform()` in the BPR constructor.
+`negative_sampling=Sampling.Uniform()` in the PairwiseRanking constructor.
 """
 module Sampling
 
@@ -251,7 +251,7 @@ function predict end
 """
     coef(model) -> Vector
 
-Return the fitted coefficient vector of a regression model (FTRL, FM).
+Return the fitted coefficient vector of a regression model (FTRL, FactorizationMachine).
 """
 function coef end
 
@@ -259,7 +259,7 @@ function coef end
     update!(model, X, y; kwargs...)
 
 Run a single epoch of online/incremental learning. For streaming models
-(FTRL, FM, EALS).
+(FTRL, FactorizationMachine, ElementwiseALS).
 """
 function update! end
 

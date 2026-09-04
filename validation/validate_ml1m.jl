@@ -81,9 +81,9 @@ function main()
         (name, fit_s, fit_alloc, rec_alloc, map_, ndcg)
     end
     jl = []
-    push!(jl, run_jl("als", WMF(rank=32, α=40.0, λ=0.1, max_iter=10,
+    push!(jl, run_jl("als", WeightedMF(rank=32, α=40.0, λ=0.1, max_iter=10,
                                  solver=CholeskySolver(), verbose=false)))
-    push!(jl, run_jl("bpr", BPR(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
+    push!(jl, run_jl("bpr", PairwiseRanking(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01,
                                  lr=0.1, max_iter=100, verbose=false)))
     push!(jl, run_jl("itemknn", ItemKNN(k=400, similarity=:cosine, verbose=false)))
 
@@ -109,7 +109,7 @@ function main()
         pndcg = mean(ndcg_at_k(precs, X_te; k=10))
         pfit = get(timings, name, NaN)
         dmap = abs(jmap - pmap); dndcg = abs(jndcg - pndcg)
-        # BPR is SGD-based: both implementations are valid but trajectories
+        # PairwiseRanking is SGD-based: both implementations are valid but trajectories
         # diverge, so it is reported as diagnostic rather than gated.
         diagnostic = name == "bpr"
         ok = diagnostic || (dmap <= MAX_MAP && dndcg <= MAX_NDCG)

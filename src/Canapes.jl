@@ -18,18 +18,18 @@ include("callbacks.jl")
 include("serialization.jl")
 
 # ── Algorithms ──
-include("algorithms/wrmf.jl")
-include("algorithms/ials.jl")
-include("algorithms/eals.jl")
+include("algorithms/weightedmf.jl")
+include("algorithms/cachedals.jl")
+include("algorithms/elementwiseals.jl")
 include("algorithms/ftrl.jl")
-include("algorithms/fm.jl")
-include("algorithms/glove.jl")
-include("algorithms/bpr.jl")
-include("algorithms/ease.jl")
-include("algorithms/slim.jl")
-include("algorithms/admmslim.jl")
+include("algorithms/factorizationmachine.jl")
+include("algorithms/globalvectors.jl")
+include("algorithms/pairwiseranking.jl")
+include("algorithms/shallowautoencoder.jl")
+include("algorithms/sparselinearmodel.jl")
+include("algorithms/sparselinearadmm.jl")
 include("algorithms/knn.jl")
-include("algorithms/rp3beta.jl")
+include("algorithms/graphrandomwalk.jl")
 include("algorithms/soft_impute.jl")
 include("algorithms/baselineonly.jl")
 include("algorithms/slopeone.jl")
@@ -65,18 +65,18 @@ export
     NegativeSampling, Sampling,
 
     # Models
-    WMF,
-    IALS,
-    EALS,
+    WeightedMF,
+    CachedALS,
+    ElementwiseALS,
     FTRL,
-    FM,
-    GloVe,
-    BPR,
-    EASE,
-    SLIM,
-    ADMMSLIM,
+    FactorizationMachine,
+    GlobalVectors,
+    PairwiseRanking,
+    ShallowAutoencoder,
+    SparseLinearModel,
+    SparseLinearADMM,
     ItemKNN,
-    RandomWalk,
+    GraphRandomWalk,
     SoftImpute,
     SoftSVD,
     PureSVD,

@@ -13,6 +13,12 @@ similarity is the centered cosine over co-rated items. Neighbors with
 non-positive similarity are dropped (`min_k` controls the fallback to the
 plain user mean).
 
+# Reference
+
+User-based Pearson nearest-neighbor prediction originates with Resnick et
+al. (1994), "GroupLens: An Open Architecture for Collaborative Filtering of
+Netnews" (ACM CSCW).
+
 # Constructor
 ```julia
 PearsonKNN(; k=40, min_k=1, verbose=true)

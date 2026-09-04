@@ -1,9 +1,9 @@
-# test/test_admm_slim.jl — ADMM-SLIM algorithm tests
+# test/test_sparseadmm.jl — SparseLinearADMM algorithm tests
 
 @testset "Basic fit" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=30, verbose=false)
+    model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(model, X)
 
     @test model.is_fitted
@@ -20,7 +20,7 @@ end
 @testset "Non-negativity constraint" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 15, 0.2)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, nonnegative=true, max_iter=30, verbose=false)
+    model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, nonnegative=true, max_iter=30, verbose=false)
     fit!(model, X)
     # All weights should be non-negative
     @test all(model.W .>= -1e-10)
@@ -30,8 +30,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
 
-    m_sparse = ADMMSLIM(λ_l1=0.5, λ_l2=100.0, max_iter=50, verbose=false)
-    m_dense = ADMMSLIM(λ_l1=0.001, λ_l2=100.0, max_iter=50, verbose=false)
+    m_sparse = SparseLinearADMM(λ_l1=0.5, λ_l2=100.0, max_iter=50, verbose=false)
+    m_dense = SparseLinearADMM(λ_l1=0.001, λ_l2=100.0, max_iter=50, verbose=false)
     fit!(m_sparse, X)
     fit!(m_dense, X)
 
@@ -43,7 +43,7 @@ end
 @testset "recommend returns valid indices" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 20, 0.15)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=30, verbose=false)
+    model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(model, X)
     preds = recommend(model, X; k=5)
 
@@ -55,7 +55,7 @@ end
 @testset "score returns sparse matrix" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 15, 0.2)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
+    model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(model, X)
     S = score(model, X)
 
@@ -71,7 +71,7 @@ end
     X = sprand(rng, 40, 20, 0.15)
 
     # Dense-ish W (low λ_l1) → dense batched-GEMM path
-    m_dense = ADMMSLIM(λ_l1=0.001, λ_l2=100.0, max_iter=30, verbose=false)
+    m_dense = SparseLinearADMM(λ_l1=0.001, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_dense, X)
     @test !Canapes._use_sparse_score_path(m_dense.W, X)
     @test recommend(m_dense, X; k=5) ==
@@ -79,7 +79,7 @@ end
 
     # Path selection is a pure function of (W, X): hand-crafted sparse W must
     # take the sparse path regardless of how fit! shaped W.
-    m_sparse = ADMMSLIM(λ_l1=0.5, λ_l2=100.0, max_iter=30, verbose=false)
+    m_sparse = SparseLinearADMM(λ_l1=0.5, λ_l2=100.0, max_iter=30, verbose=false)
     fit!(m_sparse, X)
     m_sparse.W = sparse([1.0f0], [2], [1], 20, 20)
     m_sparse.is_fitted = true
@@ -101,7 +101,7 @@ end
 @testset "Sparse W survives persistence round-trip" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 15, 0.2)
-    model = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
+    model = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(model, X)
 
     tmpfile = tempname() * ".jls"
@@ -120,21 +120,21 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 20, 0.15)
 
-    m_low = ADMMSLIM(λ_l1=0.01, λ_l2=10.0, max_iter=50, verbose=false)
-    m_high = ADMMSLIM(λ_l1=0.01, λ_l2=1000.0, max_iter=50, verbose=false)
+    m_low = SparseLinearADMM(λ_l1=0.01, λ_l2=10.0, max_iter=50, verbose=false)
+    m_high = SparseLinearADMM(λ_l1=0.01, λ_l2=1000.0, max_iter=50, verbose=false)
     fit!(m_low, X)
     fit!(m_high, X)
 
     @test sum(abs2, m_high.W) < sum(abs2, m_low.W)
 end
 
-@testset "Converges to SLIM-like solution" begin
-    # On a small problem, ADMM-SLIM and SLIM should produce similar W
+@testset "Converges to SparseLinearModel-like solution" begin
+    # On a small problem, ADMM-SparseLinearModel and SparseLinearModel should produce similar W
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 10, 0.25)
 
-    m_slim = SLIM(λ_l1=0.05, λ_l2=1.0, max_iter=200, nonnegative=true, verbose=false)
-    m_admm = ADMMSLIM(λ_l1=0.05, λ_l2=1.0, ρ=1.0, max_iter=200, nonnegative=true, verbose=false)
+    m_slim = SparseLinearModel(λ_l1=0.05, λ_l2=1.0, max_iter=200, nonnegative=true, verbose=false)
+    m_admm = SparseLinearADMM(λ_l1=0.05, λ_l2=1.0, ρ=1.0, max_iter=200, nonnegative=true, verbose=false)
     fit!(m_slim, X)
     fit!(m_admm, X)
 
@@ -158,8 +158,8 @@ end
     rng = MersenneTwister(42)
     X = sprand(rng, 40, 15, 0.2)
 
-    m1 = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
-    m2 = ADMMSLIM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
+    m1 = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
+    m2 = SparseLinearADMM(λ_l1=0.01, λ_l2=100.0, max_iter=20, verbose=false)
     fit!(m1, X)
     fit!(m2, X)
 
@@ -167,16 +167,16 @@ end
 end
 
 @testset "Invalid parameters" begin
-    @test_throws ArgumentError ADMMSLIM(λ_l1=-0.1)
-    @test_throws ArgumentError ADMMSLIM(λ_l2=-1.0)
-    @test_throws ArgumentError ADMMSLIM(ρ=0.0)
+    @test_throws ArgumentError SparseLinearADMM(λ_l1=-0.1)
+    @test_throws ArgumentError SparseLinearADMM(λ_l2=-1.0)
+    @test_throws ArgumentError SparseLinearADMM(ρ=0.0)
 end
 
 @testset "Fixed penalty determinism" begin
     rng = MersenneTwister(7)
     X = sprand(rng, 60, 25, 0.15)
-    m1 = ADMMSLIM(λ_l1=0.01, λ_l2=50.0, ρ=1.0, max_iter=30, verbose=false)
-    m2 = ADMMSLIM(λ_l1=0.01, λ_l2=50.0, ρ=1.0, max_iter=30, verbose=false)
+    m1 = SparseLinearADMM(λ_l1=0.01, λ_l2=50.0, ρ=1.0, max_iter=30, verbose=false)
+    m2 = SparseLinearADMM(λ_l1=0.01, λ_l2=50.0, ρ=1.0, max_iter=30, verbose=false)
     fit!(m1, X)
     fit!(m2, X)
     # identical inputs (no rng dependence) → identical fits

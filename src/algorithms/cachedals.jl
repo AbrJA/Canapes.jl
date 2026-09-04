@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# IALS — Implicit Alternating Least Squares with Subspace Optimization
+# CachedALS — Implicit Alternating Least Squares with Subspace Optimization
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # References:
@@ -18,7 +18,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    IALS{T} <: AbstractMatrixFactorization
+    CachedALS{T} <: AbstractMatrixFactorization
 
 Implicit Alternating Least Squares (Rendle et al. 2021, "IALS++") with
 efficient Gramian caching.
@@ -33,8 +33,8 @@ O(nnz_per_user × d² + d³) per user, which is dramatically faster for sparse d
 
 !!! note "Naming"
     In the literature and in other libraries, "iALS" usually refers to the
-    classic implicit ALS of Hu et al. (2008) — the [`WMF`](@ref) family in this
-    package, not `IALS` (which is the improved IALS++ algorithm).
+    classic implicit ALS of Hu et al. (2008) — the [`WeightedMF`](@ref) family in this
+    package, not `CachedALS` (which is the improved IALS++ algorithm).
 
 # Solver Options
 - `CholeskySolver()` — exact solve via Cholesky decomposition, O(d³) per user. Best for d ≤ 128.
@@ -43,7 +43,7 @@ O(nnz_per_user × d² + d³) per user, which is dramatically faster for sparse d
 
 # Constructor
 ```julia
-IALS(; rank=64, λ=0.01, α=40.0, max_iter=15, tol=0.005,
+CachedALS(; rank=64, λ=0.01, α=40.0, max_iter=15, tol=0.005,
        solver=CholeskySolver(), cg_steps=3, verbose=true)
 ```
 
@@ -58,7 +58,7 @@ IALS(; rank=64, λ=0.01, α=40.0, max_iter=15, tol=0.005,
 - `user_factors::Matrix{T}` — (rank × n_users) after fitting
 - `item_factors::Matrix{T}` — (rank × n_items) after fitting
 """
-mutable struct IALS{T<:AbstractFloat} <: AbstractMatrixFactorization
+mutable struct CachedALS{T<:AbstractFloat} <: AbstractMatrixFactorization
     const rank::Int
     const λ::T
     const α::T
@@ -73,7 +73,7 @@ mutable struct IALS{T<:AbstractFloat} <: AbstractMatrixFactorization
     is_fitted::Bool
 end
 
-function IALS(;
+function CachedALS(;
     rank::Int = 64,
     λ::Float64 = 0.01,
     α::Float64 = 40.0,
@@ -87,9 +87,9 @@ function IALS(;
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
     λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
     α >= 0.0 || throw(ArgumentError("α must be non-negative, got $α"))
-    solver isa Union{CholeskySolver, CGSolver} || throw(ArgumentError("IALS supports only CholeskySolver() or CGSolver() solvers"))
+    solver isa Union{CholeskySolver, CGSolver} || throw(ArgumentError("CachedALS supports only CholeskySolver() or CGSolver() solvers"))
     cg_steps >= 1 || throw(ArgumentError("cg_steps must be ≥ 1, got $cg_steps"))
-    IALS{T}(rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, verbose,
+    CachedALS{T}(rank, T(λ), T(α), max_iter, T(tol), solver, cg_steps, verbose,
             Matrix{T}(undef,0,0), Matrix{T}(undef,0,0), false)
 end
 
@@ -98,21 +98,21 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    fit!(model::IALS, X; rng, U_init, V_init) -> model
+    fit!(model::CachedALS, X; rng, U_init, V_init) -> model
 
-Fit IALS on sparse interaction matrix `X` (users × items).
+Fit CachedALS on sparse interaction matrix `X` (users × items).
 
 Uses the efficient Gramian-caching approach: precomputes `YᵀY` (or `XᵀX`) once
 per iteration, then adds per-user diagonal corrections from non-zero entries.
 """
-function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
+function fit!(model::CachedALS{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG = Random.default_rng(),
               U_init::Union{Nothing,AbstractMatrix} = nothing,
                V_init::Union{Nothing,AbstractMatrix} = nothing,
                callbacks::Vector{<:AbstractCallback} = AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
-    _require_nonempty_dimensions(X, "IALS")
-    _require_finite_input(X, "IALS")
+    _require_nonempty_dimensions(X, "CachedALS")
+    _require_finite_input(X, "CachedALS")
     old_user_factors = model.user_factors
     old_item_factors = model.item_factors
     old_is_fitted = model.is_fitted
@@ -192,12 +192,12 @@ function fit!(model::IALS{T}, X::SparseMatrixCSC{Tv,Ti};
         total_seconds = elapsed_seconds(monitor)
 
         if model.verbose
-            log_iteration("IALS", iter, model.max_iter, Float64(loss),
+            log_iteration("CachedALS", iter, model.max_iter, Float64(loss),
                          iter_seconds, total_seconds)
         end
 
         if record!(monitor, loss)
-            model.verbose && @info "[IALS] converged at iteration $iter"
+            model.verbose && @info "[CachedALS] converged at iteration $iter"
             break
         end
 

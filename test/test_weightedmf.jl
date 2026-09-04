@@ -1,7 +1,7 @@
-# test/test_wrmf.jl — WMF algorithm tests
+# test/test_weightedmf.jl — WeightedMF algorithm tests
 
-# Helper: compute observed-entry implicit WMF loss
-function _wrmf_loss(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
+# Helper: compute observed-entry implicit WeightedMF loss
+function _weightedmf_loss(U::Matrix{<:AbstractFloat}, V::Matrix{<:AbstractFloat},
                     X::SparseMatrixCSC, λ::Float64, α::Float64)
     rv = rowvals(X); nz = nonzeros(X); loss = 0.0
     for j in axes(X, 2), idx in nzrange(X, j)
@@ -17,7 +17,7 @@ X = sprand(rng, 100, 80, 0.05)
 λ = 0.1; α = 1.0
 
 @testset "Implicit CholeskySolver" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=Implicit, verbose=false)
+    model = WeightedMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test size(model.user_factors) == (5, 100)
@@ -27,7 +27,7 @@ X = sprand(rng, 100, 80, 0.05)
 end
 
 @testset "Implicit CG" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CGSolver(), feedback=Implicit, verbose=false)
+    model = WeightedMF(rank=5, λ=λ, α=α, max_iter=5, solver=CGSolver(), feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test size(model.user_factors) == (5, 100)
@@ -35,13 +35,13 @@ end
 end
 
 @testset "Explicit" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=Explicit, verbose=false)
+    model = WeightedMF(rank=5, λ=λ, α=α, max_iter=5, solver=CholeskySolver(), feedback=Explicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
 end
 
 @testset "NonNegativeSolver" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=3, solver=NonNegativeSolver(), feedback=Implicit, verbose=false)
+    model = WeightedMF(rank=5, λ=λ, α=α, max_iter=3, solver=NonNegativeSolver(), feedback=Implicit, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     @test all(model.user_factors .>= -1e-12)
@@ -49,7 +49,7 @@ end
 end
 
 @testset "recommend top-k" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=3, verbose=false)
+    model = WeightedMF(rank=5, λ=λ, α=α, max_iter=3, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     preds = recommend(model, X; k=5)
     @test size(preds) == (100, 5)
@@ -58,7 +58,7 @@ end
 end
 
 @testset "transform new users" begin
-    model = WMF(rank=4, λ=λ, α=α, max_iter=10, solver=CholeskySolver(), verbose=false)
+    model = WeightedMF(rank=4, λ=λ, α=α, max_iter=10, solver=CholeskySolver(), verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     X_new = sprand(MersenneTwister(3), 7, size(X, 2), 0.15)
     U_new = transform(model, X_new)
@@ -69,7 +69,7 @@ end
 
 @testset "Empty sparse matrix" begin
     X_empty = sparse(Int[], Int[], Float64[], 10, 10)
-    model = WMF(rank=3, max_iter=2, verbose=false)
+    model = WeightedMF(rank=3, max_iter=2, verbose=false)
     fit!(model, X_empty; rng=MersenneTwister(1))
     @test model.is_fitted
 end
@@ -77,10 +77,10 @@ end
 @testset "Loss monotonically decreasing (CholeskySolver)" begin
     losses = Float64[]
     for n_iter in [2, 5, 15, 30]
-        m = WMF(rank=4, λ=λ, α=α, max_iter=n_iter, solver=CholeskySolver(),
+        m = WeightedMF(rank=4, λ=λ, α=α, max_iter=n_iter, solver=CholeskySolver(),
                  feedback=Implicit, tol=-1.0, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
-        push!(losses, _wrmf_loss(m.user_factors, m.item_factors, X, λ, α))
+        push!(losses, _weightedmf_loss(m.user_factors, m.item_factors, X, λ, α))
     end
     for i in 2:length(losses)
         @test losses[i] <= losses[i-1] * 1.01
@@ -88,37 +88,37 @@ end
 end
 
 @testset "CG loss decreases with more iterations" begin
-    m_early = WMF(rank=4, λ=λ, α=α, max_iter=2, solver=CGSolver(),
+    m_early = WeightedMF(rank=4, λ=λ, α=α, max_iter=2, solver=CGSolver(),
                    cg_steps=20, tol=-1.0, verbose=false)
-    m_conv = WMF(rank=4, λ=λ, α=α, max_iter=30, solver=CGSolver(),
+    m_conv = WeightedMF(rank=4, λ=λ, α=α, max_iter=30, solver=CGSolver(),
                   cg_steps=20, tol=-1.0, verbose=false)
     fit!(m_early, X; rng=MersenneTwister(1))
     fit!(m_conv, X; rng=MersenneTwister(1))
-    l_early = _wrmf_loss(m_early.user_factors, m_early.item_factors, X, λ, α)
-    l_conv = _wrmf_loss(m_conv.user_factors, m_conv.item_factors, X, λ, α)
+    l_early = _weightedmf_loss(m_early.user_factors, m_early.item_factors, X, λ, α)
+    l_conv = _weightedmf_loss(m_conv.user_factors, m_conv.item_factors, X, λ, α)
     @test l_conv < l_early
 end
 
 @testset "CholeskySolver ≈ CG at convergence" begin
-    m_chol = WMF(rank=4, λ=λ, α=α, max_iter=100, solver=CholeskySolver(),
+    m_chol = WeightedMF(rank=4, λ=λ, α=α, max_iter=100, solver=CholeskySolver(),
                   tol=1e-7, verbose=false)
-    m_cg = WMF(rank=4, λ=λ, α=α, max_iter=100, solver=CGSolver(),
+    m_cg = WeightedMF(rank=4, λ=λ, α=α, max_iter=100, solver=CGSolver(),
                 cg_steps=50, tol=1e-7, verbose=false)
     fit!(m_chol, X; rng=MersenneTwister(7))
     fit!(m_cg, X; rng=MersenneTwister(7))
-    l_chol = _wrmf_loss(m_chol.user_factors, m_chol.item_factors, X, λ, α)
-    l_cg = _wrmf_loss(m_cg.user_factors, m_cg.item_factors, X, λ, α)
+    l_chol = _weightedmf_loss(m_chol.user_factors, m_chol.item_factors, X, λ, α)
+    l_cg = _weightedmf_loss(m_cg.user_factors, m_cg.item_factors, X, λ, α)
     rel = abs(l_chol - l_cg) / (min(l_chol, l_cg) + 1e-10)
     @test rel < 0.05
 end
 
 @testset "NonNegativeSolver warm-start" begin
-    m_chol = WMF(rank=4, λ=λ, α=α, max_iter=20, solver=CholeskySolver(), verbose=false)
+    m_chol = WeightedMF(rank=4, λ=λ, α=α, max_iter=20, solver=CholeskySolver(), verbose=false)
     fit!(m_chol, X; rng=MersenneTwister(1))
     U_warm = abs.(m_chol.user_factors)
     V_warm = abs.(m_chol.item_factors)
 
-    m_nnls = WMF(rank=4, λ=λ, α=α, max_iter=20, solver=NonNegativeSolver(), verbose=false)
+    m_nnls = WeightedMF(rank=4, λ=λ, α=α, max_iter=20, solver=NonNegativeSolver(), verbose=false)
     fit!(m_nnls, X; rng=MersenneTwister(1), U_init=U_warm, V_init=V_warm)
     @test all(m_nnls.user_factors .>= -1e-12)
     @test all(m_nnls.item_factors .>= -1e-12)
@@ -133,7 +133,7 @@ end
     V = vcat(10.0*ones(25), ones(30))
     X2 = sparse(I, J, V, 30, 40)
 
-    m2 = WMF(rank=5, λ=0.01, α=10.0, max_iter=50, solver=CholeskySolver(), verbose=false)
+    m2 = WeightedMF(rank=5, λ=0.01, α=10.0, max_iter=50, solver=CholeskySolver(), verbose=false)
     fit!(m2, X2; rng=MersenneTwister(42))
     preds = recommend(m2, X2; k=5)
     @test size(preds) == (30, 5)
@@ -148,7 +148,7 @@ end
     rng3 = MersenneTwister(5)
     X_ex = sprand(rng3, 40, 30, 0.2)
     nonzeros(X_ex) .= 1.0 .+ 4.0 .* rand(rng3, nnz(X_ex))   # ratings in [1, 5]
-    m_ex = WMF(rank=4, λ=0.1, α=1.0, max_iter=20, solver=CholeskySolver(),
+    m_ex = WeightedMF(rank=4, λ=0.1, α=1.0, max_iter=20, solver=CholeskySolver(),
                 feedback=Explicit, verbose=false)
     fit!(m_ex, X_ex; rng=rng3)
     P = predict(m_ex, X_ex)
@@ -161,7 +161,7 @@ end
 end
 
 @testset "Early stopping" begin
-    model = WMF(rank=5, λ=λ, α=α, max_iter=100, tol=0.001, verbose=false)
+    model = WeightedMF(rank=5, λ=λ, α=α, max_iter=100, tol=0.001, verbose=false)
     fit!(model, X; rng=MersenneTwister(1))
     @test model.is_fitted
     # Should converge before 100 iterations
@@ -178,14 +178,14 @@ end
         X_scale[r, c] += rand(rng) < 0.5 ? rand(rng, 1:10) : 10.0^rand(rng, 1:60)
     end
     for solver in (CholeskySolver(), NonNegativeSolver())
-        model = WMF(rank=6, λ=0.0, α=40.0, max_iter=6, solver=solver, verbose=false)
+        model = WeightedMF(rank=6, λ=0.0, α=40.0, max_iter=6, solver=solver, verbose=false)
         fit!(model, X_scale; rng=rng)
         @test all(isfinite, model.user_factors)
         @test all(isfinite, model.item_factors)
     end
 end
 
-@testset "BiasedMF (WMF explicit): formula & quality" begin
+@testset "BiasedMF (WeightedMF explicit): formula & quality" begin
     rng = MersenneTwister(11)
     n_u, n_i = 80, 60
     rows, cols = Int[], Int[]
@@ -197,7 +197,7 @@ end
     X = sparse(rows, cols, vals, n_u, n_i)
 
     for solver in (CholeskySolver(), CGSolver())
-        m = WMF(rank=6, λ=0.1, α=1.0, max_iter=15, solver=solver, feedback=Explicit, verbose=false)
+        m = WeightedMF(rank=6, λ=0.1, α=1.0, max_iter=15, solver=solver, feedback=Explicit, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         @test m.is_fitted
         @test size(m.user_factors) == (6, n_u)
@@ -244,17 +244,17 @@ end
     end
 
     # predict dimension guards on the explicit path
-    m = WMF(rank=4, feedback=Explicit, max_iter=3, verbose=false)
+    m = WeightedMF(rank=4, feedback=Explicit, max_iter=3, verbose=false)
     fit!(m, X; rng=MersenneTwister(1))
     @test_throws DimensionMismatch predict(m, sprand(MersenneTwister(2), 5, n_i, 0.3))
     @test_throws DimensionMismatch predict(m, sprand(MersenneTwister(2), n_u, 7, 0.3))
 
     # NonNegativeSolver degrades to plain augmented ALS on explicit (finite)
-    m_nn = WMF(rank=4, λ=0.1, max_iter=3, solver=NonNegativeSolver(), feedback=Explicit, verbose=false)
+    m_nn = WeightedMF(rank=4, λ=0.1, max_iter=3, solver=NonNegativeSolver(), feedback=Explicit, verbose=false)
     fit!(m_nn, X; rng=MersenneTwister(1))
     @test all(isfinite, predict(m_nn, X))
     # ... and keeps non-negativity on implicit
-    m_nn2 = WMF(rank=4, λ=0.1, max_iter=3, solver=NonNegativeSolver(), feedback=Implicit, verbose=false)
+    m_nn2 = WeightedMF(rank=4, λ=0.1, max_iter=3, solver=NonNegativeSolver(), feedback=Implicit, verbose=false)
     fit!(m_nn2, X; rng=MersenneTwister(1))
     @test all(m_nn2.user_factors .>= -1e-12)
 end

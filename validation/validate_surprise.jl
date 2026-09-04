@@ -120,7 +120,7 @@ function main()
         models_jl[name] = [Float64(P[r, c]) for (r, c) in zip(te_rows, te_cols)]
     end
     # BiasedMF (ALS) vs Surprise SVD (SGD) — diagnostic correlation only
-    m_biased = WMF(rank=12, λ=0.05, max_iter=15, solver=CholeskySolver(),
+    m_biased = WeightedMF(rank=12, λ=0.05, max_iter=15, solver=CholeskySolver(),
                    feedback=Explicit, verbose=false)
     fit!(m_biased, X_tr)
     P_b = predict(m_biased, X_tr)

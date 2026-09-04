@@ -17,29 +17,29 @@ const _SLIM_MATRICES = 2
     X_small = sprand(rng, 50, 10, 0.2)
     X_large = sprand(rng, 50, 20, 0.2)
 
-    @testset "EASE" begin
+    @testset "ShallowAutoencoder" begin
         # Default: unlimited.
-        m = EASE(λ=100.0, verbose=false)
+        m = ShallowAutoencoder(λ=100.0, verbose=false)
         @test m.max_memory === nothing
         fit!(m, X_small)
         @test m.is_fitted
 
         # Limit above the estimate → fits; equality with the estimate fits too.
         est = Canapes._fit_memory_estimate(10, _EASE_MATRICES, Float32)
-        m = EASE(λ=100.0, verbose=false, max_memory=est + 1000)
+        m = ShallowAutoencoder(λ=100.0, verbose=false, max_memory=est + 1000)
         fit!(m, X_small)
         @test m.is_fitted
-        m = EASE(λ=100.0, verbose=false, max_memory=est)
+        m = ShallowAutoencoder(λ=100.0, verbose=false, max_memory=est)
         fit!(m, X_small)
         @test m.is_fitted
 
         # Tiny limit → early ArgumentError, model stays unfitted.
-        m = EASE(λ=100.0, verbose=false, max_memory=1024)
+        m = ShallowAutoencoder(λ=100.0, verbose=false, max_memory=1024)
         @test_throws ArgumentError fit!(m, X_small)
         @test !m.is_fitted
 
         # Transactional: a refit that exceeds the limit keeps prior state.
-        m = EASE(λ=100.0, verbose=false,
+        m = ShallowAutoencoder(λ=100.0, verbose=false,
                  max_memory=Canapes._fit_memory_estimate(10, _EASE_MATRICES, Float32))
         fit!(m, X_small)
         B_before = copy(m.B)
@@ -48,44 +48,44 @@ const _SLIM_MATRICES = 2
         @test m.B == B_before
 
         # Constructor validation.
-        @test_throws ArgumentError EASE(max_memory=0)
-        @test_throws ArgumentError EASE(max_memory=-5)
+        @test_throws ArgumentError ShallowAutoencoder(max_memory=0)
+        @test_throws ArgumentError ShallowAutoencoder(max_memory=-5)
     end
 
-    @testset "SLIM" begin
-        m = SLIM(max_iter=5, verbose=false)
+    @testset "SparseLinearModel" begin
+        m = SparseLinearModel(max_iter=5, verbose=false)
         @test m.max_memory === nothing
 
         est = Canapes._fit_memory_estimate(10, _SLIM_MATRICES, Float32)
-        m = SLIM(max_iter=5, verbose=false, max_memory=est)
+        m = SparseLinearModel(max_iter=5, verbose=false, max_memory=est)
         fit!(m, X_small)
         @test m.is_fitted
 
-        m = SLIM(max_iter=5, verbose=false, max_memory=100)
+        m = SparseLinearModel(max_iter=5, verbose=false, max_memory=100)
         @test_throws ArgumentError fit!(m, X_small)
         @test !m.is_fitted
 
-        @test_throws ArgumentError SLIM(max_memory=0)
+        @test_throws ArgumentError SparseLinearModel(max_memory=0)
     end
 
-    @testset "ADMMSLIM" begin
-        m = ADMMSLIM(max_iter=5, verbose=false)
+    @testset "SparseLinearADMM" begin
+        m = SparseLinearADMM(max_iter=5, verbose=false)
         @test m.max_memory === nothing
 
         est = Canapes._fit_memory_estimate(10, Canapes._ADMMSLIM_DENSE_MATRICES, Float32)
-        m = ADMMSLIM(max_iter=5, verbose=false, max_memory=est)
+        m = SparseLinearADMM(max_iter=5, verbose=false, max_memory=est)
         fit!(m, X_small)
         @test m.is_fitted
 
-        m = ADMMSLIM(max_iter=5, verbose=false, max_memory=1024)
+        m = SparseLinearADMM(max_iter=5, verbose=false, max_memory=1024)
         @test_throws ArgumentError fit!(m, X_small)
         @test !m.is_fitted
 
-        @test_throws ArgumentError ADMMSLIM(max_memory=-1)
+        @test_throws ArgumentError SparseLinearADMM(max_memory=-1)
     end
 
     @testset "guard message mentions the limit" begin
-        m = EASE(λ=100.0, verbose=false, max_memory=1)
+        m = ShallowAutoencoder(λ=100.0, verbose=false, max_memory=1)
         err = try
             fit!(m, X_small)
             nothing
@@ -94,6 +94,6 @@ const _SLIM_MATRICES = 2
         end
         @test err isa ArgumentError
         @test occursin("max_memory=1", sprint(showerror, err))
-        @test occursin("EASE", sprint(showerror, err))
+        @test occursin("ShallowAutoencoder", sprint(showerror, err))
     end
 end

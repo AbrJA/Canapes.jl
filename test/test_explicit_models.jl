@@ -140,11 +140,11 @@ end
         @test r_tr < const_rmse * 1.05
     end
 end
-@testset "PMF (experimental)" begin
-    using Canapes.Experimental: PMF
+@testset "ProbabilisticMF (experimental)" begin
+    using Canapes.Experimental: ProbabilisticMF
     rng = MersenneTwister(11)
     X = _rating_matrix(rng, 60, 40, 0.25)
-    m = PMF(rank=6, λ=0.1, lr=0.02, max_iter=15, verbose=false)
+    m = ProbabilisticMF(rank=6, λ=0.1, lr=0.02, max_iter=15, verbose=false)
     fit!(m, X; rng=MersenneTwister(2))
     @test m.is_fitted
     @test m isa AbstractExplicitModel
@@ -158,6 +158,6 @@ end
     @test length(pv) == 2
     @test pv[1] ≈ P[1, 3] atol=1e-4
     @test_throws DimensionMismatch predict(m, sparse([1], [1], [1.0], 5, 5))
-    @test_throws ArgumentError PMF(rank=0)
-    @test_throws ArgumentError PMF(lr=0.0)
+    @test_throws ArgumentError ProbabilisticMF(rank=0)
+    @test_throws ArgumentError ProbabilisticMF(lr=0.0)
 end

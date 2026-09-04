@@ -42,7 +42,7 @@ using Canapes, SparseArrays, Random
 X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
 
-model = EASE(λ=500.0, verbose=false)
+model = ShallowAutoencoder(λ=500.0, verbose=false)
 fit!(model, X_train)
 preds = recommend(model, X_train; k=10)
 

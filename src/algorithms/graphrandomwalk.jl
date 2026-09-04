@@ -1,10 +1,10 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# RandomWalk — 3-step random-walk item similarity with popularity penalty
+# GraphRandomWalk — 3-step random-walk item similarity with popularity penalty
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # Reference: Paolino, Boratto, Trevisiol, Castells (2017)
 #   "RP3β: A Novel Approach to the Long-tail Problem in Recommender Systems"
-#   (RecSys 2017) — the type name is `RandomWalk`; `α`/`β` are the paper's
+#   (RecSys 2017) — the type name is `GraphRandomWalk`; `α`/`β` are the paper's
 #   hyperparameters. Lineage: 3-step bipartite-graph walk (P3α, Cooper et al.
 #   2014) with an item-popularity penalization. This is the closed-form
 #   matrix formulation (as in irspack / similaripy); it is NOT the Pixie
@@ -18,7 +18,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    RandomWalk{T} <: AbstractItemSimilarity
+    GraphRandomWalk{T} <: AbstractItemSimilarity
 
 3-step random-walk item similarity with item-popularity penalization
 ("RP3β", Paolino et al. 2017). Learns a sparse item-item score matrix:
@@ -32,14 +32,14 @@ relevant when the matrix carries weights).
 
 No training loop — the walk matrix is built with two sparse matrix products.
 The fitted `W` is sparse; `recommend`/`score` reuse the sparse item-similarity
-paths. Memory is O(nnz(X) + nnz(W)) and scales well beyond EASE's O(n_items²).
+paths. Memory is O(nnz(X) + nnz(W)) and scales well beyond ShallowAutoencoder's O(n_items²).
 
 Note: this is the closed-form RP3β formulation (as in irspack/similaripy), not
 the Pixie real-time sampled-walk system (Eksombatchai et al. 2018).
 
 # Constructor
 ```julia
-RandomWalk(; α=1.0, β=0.6, k=nothing, normalize=false, verbose=true)
+GraphRandomWalk(; α=1.0, β=0.6, k=nothing, normalize=false, verbose=true)
 ```
 
 # Fields
@@ -56,7 +56,7 @@ julia> using SparseArrays, Random
 
 julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
-julia> model = RandomWalk(β=0.0, k=50, verbose=false);
+julia> model = GraphRandomWalk(β=0.0, k=50, verbose=false);
 
 julia> fit!(model, X);
 
@@ -64,7 +64,7 @@ julia> size(recommend(model, X; k=10))
 (200, 10)
 ```
 """
-mutable struct RandomWalk{T<:AbstractFloat} <: AbstractItemSimilarity
+mutable struct GraphRandomWalk{T<:AbstractFloat} <: AbstractItemSimilarity
     const α::T
     const β::T
     const k::Union{Nothing,Int}
@@ -74,7 +74,7 @@ mutable struct RandomWalk{T<:AbstractFloat} <: AbstractItemSimilarity
     is_fitted::Bool
 end
 
-function RandomWalk(;
+function GraphRandomWalk(;
     α::Float64 = 1.0,
     β::Float64 = 0.6,
     k::Union{Nothing,Int} = nothing,
@@ -85,14 +85,14 @@ function RandomWalk(;
     α > 0.0 || throw(ArgumentError("α must be positive, got $α"))
     β >= 0.0 || throw(ArgumentError("β must be non-negative, got $β"))
     k === nothing || k >= 1 || throw(ArgumentError("k must be ≥ 1 or nothing, got $k"))
-    RandomWalk{T}(T(α), T(β), k, normalize, verbose, spzeros(T, 0, 0), false)
+    GraphRandomWalk{T}(T(α), T(β), k, normalize, verbose, spzeros(T, 0, 0), false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
 # fit!
 # ──────────────────────────────────────────────────────────────────────────────
 
-function fit!(model::RandomWalk{T}, X::SparseMatrixCSC{Tv,Ti};
+function fit!(model::GraphRandomWalk{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
               callbacks::Vector{<:AbstractCallback}=AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
@@ -101,10 +101,10 @@ function fit!(model::RandomWalk{T}, X::SparseMatrixCSC{Tv,Ti};
     model.is_fitted = false
     run_callbacks_train_begin(callbacks, model)
     try
-    _require_nonempty_dimensions(X, "RandomWalk")
-    _require_finite_input(X, "RandomWalk")
+    _require_nonempty_dimensions(X, "GraphRandomWalk")
+    _require_finite_input(X, "GraphRandomWalk")
     all(x -> x >= zero(x), nonzeros(X)) || throw(ArgumentError(
-        "RandomWalk requires non-negative interaction values, got negative"))
+        "GraphRandomWalk requires non-negative interaction values, got negative"))
 
     # Degrees: user popularity d_u (rows), item popularity d_i (columns)
     d_u = vec(sum(X; dims=2))
@@ -178,7 +178,7 @@ function fit!(model::RandomWalk{T}, X::SparseMatrixCSC{Tv,Ti};
 
     model.W = W
     model.is_fitted = true
-    model.verbose && @info "[RandomWalk] Done. W has $(nnz(W)) nonzeros (density=$(round(nnz(W)/n_items^2; digits=6)))"
+    model.verbose && @info "[GraphRandomWalk] Done. W has $(nnz(W)) nonzeros (density=$(round(nnz(W)/n_items^2; digits=6)))"
     model
     catch
         model.W = old_W
@@ -217,21 +217,21 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    recommend(model::RandomWalk, X; k=10) -> Matrix{Int}
+    recommend(model::GraphRandomWalk, X; k=10) -> Matrix{Int}
 
 Return top-k item indices per user. Scores = X * W, excluding seen items.
 """
-function recommend(model::RandomWalk{T}, X::SparseMatrixCSC; k::Int=10) where {T}
+function recommend(model::GraphRandomWalk{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
     _predict_sparse_score_topk(X, model.W, k)
 end
 
 """
-    score(model::RandomWalk, X) -> SparseMatrixCSC
+    score(model::GraphRandomWalk, X) -> SparseMatrixCSC
 
 Return sparse score matrix S = X * W.
 """
-function score(model::RandomWalk{T}, X::SparseMatrixCSC) where {T}
+function score(model::GraphRandomWalk{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
     size(X, 2) == size(model.W, 1) || throw(DimensionMismatch(
         "X has $(size(X, 2)) items but the fitted model has $(size(model.W, 1))"))

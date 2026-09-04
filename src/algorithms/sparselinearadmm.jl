@@ -1,37 +1,37 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# ADMM-SLIM — ADMM-based Sparse Linear Methods
+# ADMM-SparseLinearModel — ADMM-based Sparse Linear Methods
 # ──────────────────────────────────────────────────────────────────────────────
 #
 # Reference: Steck, Liang, et al. (2020)
-#   "ADMM SLIM: Sparse Recommendations for Many Users"
+#   "ADMM SparseLinearModel: Sparse Recommendations for Many Users"
 #   (WSDM 2020) — arXiv:2003.04710
 #
-# Instead of solving n_items independent elastic-net problems (standard SLIM),
-# ADMM-SLIM solves the full item-item weight matrix jointly using ADMM:
+# Instead of solving n_items independent elastic-net problems (standard SparseLinearModel),
+# ADMM-SparseLinearModel solves the full item-item weight matrix jointly using ADMM:
 #
 #   min_B  ½‖X - XB‖²_F + λ_l1‖B‖₁ + λ_l2/2‖B‖²_F
 #   s.t.   diag(B) = 0
 #
-# This is equivalent to SLIM but 10-100× faster because:
+# This is equivalent to SparseLinearModel but 10-100× faster because:
 # 1. Computes the Gram matrix G = XᵀX once (dominant cost)
 # 2. Pre-factors (G + ρI)⁻¹ via Cholesky once
 # 3. Iterates ADMM updates (matrix-level, not per-column)
 #
-# The result interpolates between EASE (λ_l1=0) and SLIM (λ_l1>0).
+# The result interpolates between ShallowAutoencoder (λ_l1=0) and SparseLinearModel (λ_l1>0).
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    ADMMSLIM{T} <: AbstractItemSimilarity
+    SparseLinearADMM{T} <: AbstractItemSimilarity
 
 ADMM-based Sparse Linear Methods for top-N recommendation.
 
-A dramatically faster alternative to standard SLIM that solves the full
+A dramatically faster alternative to standard SparseLinearModel that solves the full
 item-item weight matrix jointly using ADMM. Produces the same solution
-as coordinate-descent SLIM but in 10-100× less time.
+as coordinate-descent SparseLinearModel but in 10-100× less time.
 
 # Constructor
 ```julia
-ADMMSLIM(; λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, tol=1e-4,
+SparseLinearADMM(; λ_l1=0.01, λ_l2=100.0, ρ=1.0, max_iter=50, tol=1e-4,
             nonnegative=true, verbose=true, max_memory=nothing)
 ```
 
@@ -57,9 +57,9 @@ below 100% and shrinks as λ_l1 grows), and `score` returns a sparse matrix.
 `recommend` picks the scoring path adaptively (sparse when the score matrix
 stays sparse, memory-bounded batched GEMM otherwise).
 
-Prefer SLIM when `n_items` is large enough that an O(n_items²) dense solve
-is prohibitive (SLIM fits per-item in O(n_items) memory per column), or
-when the training set is small enough that SLIM's slower per-item
+Prefer SparseLinearModel when `n_items` is large enough that an O(n_items²) dense solve
+is prohibitive (SparseLinearModel fits per-item in O(n_items) memory per column), or
+when the training set is small enough that SparseLinearModel's slower per-item
 coordinate descent is affordable.
 
 # Example
@@ -68,7 +68,7 @@ julia> using SparseArrays
 
 julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
-julia> model = ADMMSLIM(λ_l1=0.05, λ_l2=200.0, max_iter=5, verbose=false);
+julia> model = SparseLinearADMM(λ_l1=0.05, λ_l2=200.0, max_iter=5, verbose=false);
 
 julia> fit!(model, X; rng=MersenneTwister(2));
 
@@ -78,7 +78,7 @@ julia> size(preds)
 (200, 10)
 ```
 """
-mutable struct ADMMSLIM{T<:AbstractFloat} <: AbstractItemSimilarity
+mutable struct SparseLinearADMM{T<:AbstractFloat} <: AbstractItemSimilarity
     const λ_l1::T
     const λ_l2::T
     const ρ::T
@@ -95,7 +95,7 @@ end
 # Z, Z_prev, U (the fitted W is built afterwards as sparse).
 const _ADMMSLIM_DENSE_MATRICES = 7
 
-function ADMMSLIM(;
+function SparseLinearADMM(;
     λ_l1::Float64 = 0.01,
     λ_l2::Float64 = 100.0,
     ρ::Float64 = 1.0,
@@ -111,7 +111,7 @@ function ADMMSLIM(;
     ρ > 0.0 || throw(ArgumentError("ρ must be positive, got $ρ"))
     max_memory === nothing || max_memory > 0 ||
         throw(ArgumentError("max_memory must be positive, got $max_memory"))
-    ADMMSLIM{T}(T(λ_l1), T(λ_l2), T(ρ), max_iter, T(tol), nonnegative, verbose,
+    SparseLinearADMM{T}(T(λ_l1), T(λ_l2), T(ρ), max_iter, T(tol), nonnegative, verbose,
                  max_memory, spzeros(T, 0, 0), false)
 end
 
@@ -120,9 +120,9 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    fit!(model::ADMMSLIM, X; rng) -> model
+    fit!(model::SparseLinearADMM, X; rng) -> model
 
-Fit ADMM-SLIM on interaction matrix `X` (users × items).
+Fit ADMM-SparseLinearModel on interaction matrix `X` (users × items).
 
 Computes the Gram matrix once, pre-factors `(G + (λ_l2+ρ)I)`, then iterates ADMM:
 - B-update: solve linear system (pre-factored Cholesky)
@@ -142,10 +142,10 @@ directly via the pre-factored Cholesky. This is intentional: the Gram matrix
 `G = XᵀX` of typical implicit interaction data is nearly dense (99.9% for
 MovieLens-1M), so an iterative per-column solver (CG/PCG) would cost
 `nnz(G)·cg_iters` per column — 5-10× more than the direct substitution at the
-scales where ADMMSLIM is usable. SLIM (coordinate descent, per-item) and EASE
+scales where SparseLinearADMM is usable. SparseLinearModel (coordinate descent, per-item) and ShallowAutoencoder
 (one-shot dense solve) remain the preferred models at movie-scale item counts.
 """
-function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
+function fit!(model::SparseLinearADMM{T}, X::SparseMatrixCSC{Tv,Ti};
               rng::AbstractRNG=Random.default_rng(),
               callbacks::Vector{<:AbstractCallback}=AbstractCallback[]) where {T,Tv,Ti}
     n_users, n_items = size(X)
@@ -156,15 +156,15 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     old_is_fitted = model.is_fitted
     model.is_fitted = false
     try
-    _require_nonempty_dimensions(X, "ADMMSLIM")
-    _require_finite_input(X, "ADMMSLIM")
+    _require_nonempty_dimensions(X, "SparseLinearADMM")
+    _require_finite_input(X, "SparseLinearADMM")
 
     # Peak fit memory: G, lhs, Cholesky factor, B, Z, Z_prev, U — seven dense
     # n_items² matrices (the fitted W is built afterwards as sparse).
     _require_fit_memory(_fit_memory_estimate(n_items, _ADMMSLIM_DENSE_MATRICES, T),
-                        model.max_memory, "ADMMSLIM")
+                        model.max_memory, "SparseLinearADMM")
 
-    model.verbose && @info "[ADMM-SLIM] Computing Gram matrix ($n_items × $n_items)..."
+    model.verbose && @info "[ADMM-SparseLinearModel] Computing Gram matrix ($n_items × $n_items)..."
 
     # Gram matrix: G = XᵀX
     G = Matrix{T}(X' * X)
@@ -178,7 +178,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
     end
     C = cholesky(Symmetric(lhs))
 
-    model.verbose && @info "[ADMM-SLIM] Running ADMM ($n_items items, max_iter=$(model.max_iter))..."
+    model.verbose && @info "[ADMM-SparseLinearModel] Running ADMM ($n_items items, max_iter=$(model.max_iter))..."
 
     # Initialize ADMM variables. Use `fill` (not `zeros`): JET's abstract
     # interpretation of `zeros(T, n, n)` under the free typevar T widens the
@@ -253,11 +253,11 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
 
         if model.verbose && (iter <= 5 || iter % 10 == 0 || iter == model.max_iter)
             nnz_iter = count(>(T(1e-10)), Z)
-            @info "[ADMM-SLIM] iter=$iter  primal=$(round(primal_rel; sigdigits=4))  drift=$(round(drift_rel; sigdigits=4))  ρ=$(round(ρ; sigdigits=3))  nnz=$(nnz_iter)"
+            @info "[ADMM-SparseLinearModel] iter=$iter  primal=$(round(primal_rel; sigdigits=4))  drift=$(round(drift_rel; sigdigits=4))  ρ=$(round(ρ; sigdigits=3))  nnz=$(nnz_iter)"
         end
 
         if primal_rel < model.tol && drift_rel < model.tol
-            model.verbose && @info "[ADMM-SLIM] Converged at iteration $iter (primal=$(round(primal_rel; sigdigits=4)), drift=$(round(drift_rel; sigdigits=4)))"
+            model.verbose && @info "[ADMM-SparseLinearModel] Converged at iteration $iter (primal=$(round(primal_rel; sigdigits=4)), drift=$(round(drift_rel; sigdigits=4)))"
             break
         end
     end
@@ -267,7 +267,7 @@ function fit!(model::ADMMSLIM{T}, X::SparseMatrixCSC{Tv,Ti};
 
     nnz_w = nnz(model.W)
     density = nnz_w / (n_items * n_items) * 100
-    model.verbose && @info "[ADMM-SLIM] Done. W: $(n_items)×$(n_items), nnz=$(nnz_w) ($(round(density; digits=3))%)"
+    model.verbose && @info "[ADMM-SparseLinearModel] Done. W: $(n_items)×$(n_items), nnz=$(nnz_w) ($(round(density; digits=3))%)"
     model
     catch
         model.W = old_W
@@ -281,17 +281,17 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    recommend(model::ADMMSLIM, X; k=10) -> Matrix{Int}
+    recommend(model::SparseLinearADMM, X; k=10) -> Matrix{Int}
 
 Return top-k item indices per user. Scores = X * W, excluding seen items.
 
 The scoring path is chosen adaptively: when `W` is sparse enough that the
 score matrix `X * W` stays sparse, a sparse path is used (shared with
-SLIM/ItemKNN); otherwise the densified `W` is scored through the
+SparseLinearModel/ItemKNN); otherwise the densified `W` is scored through the
 memory-bounded batched GEMM path. Both produce the same scores up to
 floating-point accumulation order.
 """
-function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
+function recommend(model::SparseLinearADMM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
     _require_fitted(model.is_fitted)
     if _use_sparse_score_path(model.W, X)
         _predict_sparse_score_topk(X, model.W, k)
@@ -301,11 +301,11 @@ function recommend(model::ADMMSLIM{T}, X::SparseMatrixCSC; k::Int=10) where {T}
 end
 
 """
-    score(model::ADMMSLIM, X) -> SparseMatrixCSC
+    score(model::SparseLinearADMM, X) -> SparseMatrixCSC
 
 Return sparse score matrix S = X * W.
 """
-function score(model::ADMMSLIM{T}, X::SparseMatrixCSC) where {T}
+function score(model::SparseLinearADMM{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_fitted)
     size(X, 2) == size(model.W, 1) || throw(DimensionMismatch(
         "X has $(size(X, 2)) items but the fitted model has $(size(model.W, 1))"))

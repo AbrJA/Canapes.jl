@@ -10,7 +10,7 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    FM{T} <: AbstractSparseRegression
+    FactorizationMachine{T} <: AbstractSparseRegression
 
 Second-order Factorization Machine trained via SGD with AdaGrad.
 
@@ -19,7 +19,7 @@ the `family` parameter. Uses per-coordinate adaptive learning rates (AdaGrad).
 
 # Constructor
 ```julia
-FM(; rank=4, lr_w=0.2, lr_v=lr_w,
+FactorizationMachine(; rank=4, lr_w=0.2, lr_v=lr_w,
                        λ_w=0.0, λ_v=0.0, family=Links.Binomial(), intercept=true,
                        max_iter=10, tol=-1.0, verbose=true)
 ```
@@ -32,7 +32,7 @@ julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
 
 julia> y = rand(MersenneTwister(3), [0.0, 1.0], 200);
 
-julia> model = FM(rank=4, max_iter=2, verbose=false);
+julia> model = FactorizationMachine(rank=4, max_iter=2, verbose=false);
 
 julia> fit!(model, X, y; rng=MersenneTwister(2));
 
@@ -40,7 +40,7 @@ julia> size(predict(model, X))
 (200,)
 ```
 """
-mutable struct FM{T<:AbstractFloat} <: AbstractSparseRegression
+mutable struct FactorizationMachine{T<:AbstractFloat} <: AbstractSparseRegression
     const rank::Int
     lr_w::T
     lr_v::T
@@ -60,7 +60,7 @@ mutable struct FM{T<:AbstractFloat} <: AbstractSparseRegression
     is_initialized::Bool
 end
 
-function FM(;
+function FactorizationMachine(;
     rank::Int = 4,
     lr_w::Float64 = 0.2,
     lr_v::Float64 = lr_w,
@@ -74,8 +74,8 @@ function FM(;
     T::Type{<:AbstractFloat} = Float32,
 )
     rank >= 1 || throw(ArgumentError("rank must be ≥ 1, got $rank"))
-    family isa Union{Links.Binomial, Links.Gaussian} || throw(ArgumentError("FM supports Links.Binomial() or Links.Gaussian() families"))
-    FM{T}(
+    family isa Union{Links.Binomial, Links.Gaussian} || throw(ArgumentError("FactorizationMachine supports Links.Binomial() or Links.Gaussian() families"))
+    FactorizationMachine{T}(
         rank, T(lr_w), T(lr_v), T(λ_w), T(λ_v), family, intercept,
         max_iter, T(tol), verbose,
         0, T(0), T[], Matrix{T}(undef,0,0),
@@ -88,19 +88,19 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    update!(model::FM, X, y; weights, rng) -> model
+    update!(model::FactorizationMachine, X, y; weights, rng) -> model
 
 Run a single SGD epoch over the data.
 """
-function update!(model::FM{T}, X::SparseMatrixCSC{Tv,Ti},
+function update!(model::FactorizationMachine{T}, X::SparseMatrixCSC{Tv,Ti},
                       y::AbstractVector;
                       weights::AbstractVector{T} = ones(T, length(y)),
                       rng::AbstractRNG = Random.default_rng()) where {T,Tv,Ti}
     iter_start = time_ns()
     n_samples, n_features = size(X)
     n_samples == length(y) || throw(DimensionMismatch("X rows ($n_samples) ≠ length(y) ($(length(y)))"))
-    _require_finite_input(X, "FM")
-    _require_finite_vector(y, "FM")
+    _require_finite_input(X, "FactorizationMachine")
+    _require_finite_vector(y, "FactorizationMachine")
 
     if !model.is_initialized
         model.n_features = n_features
@@ -185,18 +185,18 @@ function update!(model::FM{T}, X::SparseMatrixCSC{Tv,Ti},
 
     if model.verbose
         pass_seconds = (time_ns() - iter_start) / 1e9
-        @info @sprintf("[FM] update: %d samples, %d features | time=%s",
+        @info @sprintf("[FactorizationMachine] update: %d samples, %d features | time=%s",
                        n_samples, n_features, elapsed_str(pass_seconds))
     end
     model
 end
 
 """
-    fit!(model::FM, X, y; kwargs...) -> model
+    fit!(model::FactorizationMachine, X, y; kwargs...) -> model
 
-Train the FM for `model.max_iter` epochs.
+Train the FactorizationMachine for `model.max_iter` epochs.
 """
-function fit!(model::FM{T}, X::SparseMatrixCSC, y::AbstractVector;
+function fit!(model::FactorizationMachine{T}, X::SparseMatrixCSC, y::AbstractVector;
               weights::AbstractVector{T}=ones(T, length(y)),
               rng::AbstractRNG=Random.default_rng(),
               callbacks::AbstractVector{<:AbstractCallback}=AbstractCallback[]) where {T}
@@ -220,10 +220,10 @@ function fit!(model::FM{T}, X::SparseMatrixCSC, y::AbstractVector;
                 sum((preds .- y).^2) / length(y)
             end
             if model.verbose
-                log_iteration("FM", i, model.max_iter, Float64(loss), epoch_seconds, total_seconds)
+                log_iteration("FactorizationMachine", i, model.max_iter, Float64(loss), epoch_seconds, total_seconds)
             end
             if i > 1 && abs(prev_loss - loss) / (abs(prev_loss) + T(1e-12)) < model.tol
-                model.verbose && @info "[FM] converged at epoch $i"
+                model.verbose && @info "[FactorizationMachine] converged at epoch $i"
                 break
             end
             prev_loss = loss
@@ -232,7 +232,7 @@ function fit!(model::FM{T}, X::SparseMatrixCSC, y::AbstractVector;
                 run_callbacks(callbacks, info) && break
             end
         elseif model.verbose
-            @info @sprintf("[FM] epoch %d/%d | epoch=%s | total=%s",
+            @info @sprintf("[FactorizationMachine] epoch %d/%d | epoch=%s | total=%s",
                            i, model.max_iter, elapsed_str(epoch_seconds), elapsed_str(total_seconds))
         end
     end
@@ -247,13 +247,13 @@ end
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    predict(model::FM, X) -> Vector
+    predict(model::FactorizationMachine, X) -> Vector
 
 Generate predictions. Output depends on family:
 - `Links.Binomial()` → probabilities in [0,1]
 - `Links.Gaussian()` → real-valued predictions
 """
-function predict(model::FM{T}, X::SparseMatrixCSC) where {T}
+function predict(model::FactorizationMachine{T}, X::SparseMatrixCSC) where {T}
     _require_fitted(model.is_initialized)
     n_samples = size(X, 1)
     size(X, 2) == model.n_features || throw(DimensionMismatch("Feature dimension mismatch: expected $(model.n_features), got $(size(X, 2))"))

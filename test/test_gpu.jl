@@ -23,37 +23,37 @@ if HAS_CUDA
         rng = MersenneTwister(42)
         X = sprand(rng, 100, 80, 0.05)
 
-        # EASE (fully on GPU)
-        me = EASE(λ=100.0, verbose=false)
+        # ShallowAutoencoder (fully on GPU)
+        me = ShallowAutoencoder(λ=100.0, verbose=false)
         fit_gpu!(me, X)
-        mec = EASE(λ=100.0, verbose=false)
+        mec = ShallowAutoencoder(λ=100.0, verbose=false)
         fit!(mec, X)
         @test me.B ≈ mec.B atol=1e-6
 
-        # IALS (Gramian on GPU, solves on CPU)
-        mi = IALS(rank=8, max_iter=5, α=10.0, verbose=false)
+        # CachedALS (Gramian on GPU, solves on CPU)
+        mi = CachedALS(rank=8, max_iter=5, α=10.0, verbose=false)
         fit_gpu!(mi, X; rng=MersenneTwister(1))
-        mic = IALS(rank=8, max_iter=5, α=10.0, verbose=false)
+        mic = CachedALS(rank=8, max_iter=5, α=10.0, verbose=false)
         fit!(mic, X; rng=MersenneTwister(1))
         @test mi.user_factors ≈ mic.user_factors atol=1e-4
         @test mi.item_factors ≈ mic.item_factors atol=1e-4
         @test mi.user_factors' * mi.item_factors ≈
               mic.user_factors' * mic.item_factors atol=1e-4
 
-        # WMF Cholesky
-        mw = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
+        # WeightedMF Cholesky
+        mw = WeightedMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
         fit_gpu!(mw, X; rng=MersenneTwister(1))
-        mwc = WMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
+        mwc = WeightedMF(rank=8, max_iter=5, solver=CholeskySolver(), verbose=false)
         fit!(mwc, X; rng=MersenneTwister(1))
         @test mw.user_factors ≈ mwc.user_factors atol=1e-4
         @test mw.item_factors ≈ mwc.item_factors atol=1e-4
         @test mw.user_factors' * mw.item_factors ≈
               mwc.user_factors' * mwc.item_factors atol=1e-4
 
-        # WMF NonNegativeSolver
-        mn = WMF(rank=4, max_iter=5, solver=NonNegativeSolver(), verbose=false)
+        # WeightedMF NonNegativeSolver
+        mn = WeightedMF(rank=4, max_iter=5, solver=NonNegativeSolver(), verbose=false)
         fit_gpu!(mn, X; rng=MersenneTwister(2))
-        mnc = WMF(rank=4, max_iter=5, solver=NonNegativeSolver(), verbose=false)
+        mnc = WeightedMF(rank=4, max_iter=5, solver=NonNegativeSolver(), verbose=false)
         fit!(mnc, X; rng=MersenneTwister(2))
         @test mn.user_factors ≈ mnc.user_factors atol=1e-4
         @test mn.item_factors ≈ mnc.item_factors atol=1e-4
@@ -66,15 +66,15 @@ if HAS_CUDA
         nonzeros(X_bad)[1] = NaN
 
         # Unfitted models are rejected by scoring paths
-        m_uf = IALS(rank=4, max_iter=3, verbose=false)
+        m_uf = CachedALS(rank=4, max_iter=3, verbose=false)
         @test_throws ArgumentError score_gpu(m_uf, X)
         @test_throws ArgumentError recommend_gpu(m_uf, X)
 
         # NaN and empty inputs are rejected by fit_gpu! and leave the model
         # unfitted (transactional)
-        for m in (EASE(λ=100.0, verbose=false),
-                  IALS(rank=4, max_iter=1, verbose=false),
-                  WMF(rank=4, max_iter=1, verbose=false))
+        for m in (ShallowAutoencoder(λ=100.0, verbose=false),
+                  CachedALS(rank=4, max_iter=1, verbose=false),
+                  WeightedMF(rank=4, max_iter=1, verbose=false))
             @test_throws ArgumentError fit_gpu!(m, X_bad)
             @test !m.is_fitted
             @test_throws ArgumentError fit_gpu!(m, spzeros(0, 0))
@@ -82,7 +82,7 @@ if HAS_CUDA
         end
 
         # A failed GPU refit keeps the previously fitted state intact
-        m = WMF(rank=4, max_iter=2, verbose=false)
+        m = WeightedMF(rank=4, max_iter=2, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         U_before = copy(m.user_factors)
         @test_throws ArgumentError fit_gpu!(m, X_bad)
@@ -91,12 +91,12 @@ if HAS_CUDA
 
         # Unsupported solvers fail loudly instead of silently using Cholesky
         @test_throws ArgumentError fit_gpu!(
-            IALS(rank=4, solver=CGSolver(), max_iter=1, verbose=false), X)
+            CachedALS(rank=4, solver=CGSolver(), max_iter=1, verbose=false), X)
         @test_throws ArgumentError fit_gpu!(
-            WMF(rank=4, solver=CGSolver(), max_iter=1, verbose=false), X)
+            WeightedMF(rank=4, solver=CGSolver(), max_iter=1, verbose=false), X)
 
         # Dimension mismatch on a fitted model
-        m = IALS(rank=4, max_iter=2, verbose=false)
+        m = CachedALS(rank=4, max_iter=2, verbose=false)
         fit!(m, X; rng=MersenneTwister(1))
         X_wide = sprand(rng, 50, 40, 0.1)
         @test_throws DimensionMismatch score_gpu(m, X_wide)
@@ -106,11 +106,11 @@ if HAS_CUDA
         @test size(recommend_gpu(m, X; k=1000)) == (50, 30)
     end
 
-    @testset "GPU EASE" begin
+    @testset "GPU ShallowAutoencoder" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 30, 0.1)
 
-        model = EASE(λ=100.0, verbose=false)
+        model = ShallowAutoencoder(λ=100.0, verbose=false)
         fit_gpu!(model, X)
 
         @test model.is_fitted
@@ -118,16 +118,16 @@ if HAS_CUDA
         @test !any(isnan, model.B)
 
         # Compare with CPU result
-        model_cpu = EASE(λ=100.0, verbose=false)
+        model_cpu = ShallowAutoencoder(λ=100.0, verbose=false)
         fit!(model_cpu, X)
         @test model.B ≈ model_cpu.B atol=1e-4
     end
 
-    @testset "GPU IALS" begin
+    @testset "GPU CachedALS" begin
         rng = MersenneTwister(42)
         X = sprand(rng, 50, 30, 0.1)
 
-        model = IALS(rank=8, max_iter=3, verbose=false)
+        model = CachedALS(rank=8, max_iter=3, verbose=false)
         fit_gpu!(model, X; rng=MersenneTwister(1))
 
         @test model.is_fitted
@@ -135,9 +135,9 @@ if HAS_CUDA
         @test size(model.item_factors) == (8, 30)
     end
 
-    @testset "GPU WMF nonnegative solver" begin
+    @testset "GPU WeightedMF nonnegative solver" begin
         X = sprand(MersenneTwister(42), 20, 15, 0.1)
-        model = WMF(rank=4, max_iter=1, solver=NonNegativeSolver(), verbose=false)
+        model = WeightedMF(rank=4, max_iter=1, solver=NonNegativeSolver(), verbose=false)
         fit_gpu!(model, X; rng=MersenneTwister(1))
         @test model.is_fitted
         @test all(>=(0), model.user_factors)
@@ -148,7 +148,7 @@ if HAS_CUDA
         rng = MersenneTwister(42)
         X = sprand(rng, 30, 20, 0.1)
 
-        model = IALS(rank=4, max_iter=3, verbose=false)
+        model = CachedALS(rank=4, max_iter=3, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
 
         scores_gpu = score_gpu(model, X)
@@ -162,7 +162,7 @@ if HAS_CUDA
         rng = MersenneTwister(42)
         X = sprand(rng, 30, 20, 0.1)
 
-        model = IALS(rank=4, max_iter=3, verbose=false)
+        model = CachedALS(rank=4, max_iter=3, verbose=false)
         fit!(model, X; rng=MersenneTwister(1))
 
         preds = recommend_gpu(model, X; k=5)

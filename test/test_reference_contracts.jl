@@ -9,13 +9,13 @@ function _reference_interactions()
 end
 
 const RECOMMENDER_FACTORIES = [
-    (name="WMF", factory=() -> WMF(rank=3, max_iter=2, verbose=false)),
-    (name="IALS", factory=() -> IALS(rank=3, max_iter=2, verbose=false)),
-    (name="EALS", factory=() -> EALS(rank=3, max_iter=2, verbose=false)),
-    (name="BPR", factory=() -> BPR(rank=3, max_iter=2, verbose=false)),
+    (name="WeightedMF", factory=() -> WeightedMF(rank=3, max_iter=2, verbose=false)),
+    (name="CachedALS", factory=() -> CachedALS(rank=3, max_iter=2, verbose=false)),
+    (name="ElementwiseALS", factory=() -> ElementwiseALS(rank=3, max_iter=2, verbose=false)),
+    (name="PairwiseRanking", factory=() -> PairwiseRanking(rank=3, max_iter=2, verbose=false)),
     (name="LogisticMF", factory=() -> LogisticMF(rank=3, max_iter=2, verbose=false)),
-    (name="EASE", factory=() -> EASE(λ=10.0, verbose=false)),
-    (name="SLIM", factory=() -> SLIM(max_iter=2, verbose=false)),
+    (name="ShallowAutoencoder", factory=() -> ShallowAutoencoder(λ=10.0, verbose=false)),
+    (name="SparseLinearModel", factory=() -> SparseLinearModel(max_iter=2, verbose=false)),
     (name="ItemKNN", factory=() -> ItemKNN(k=3, verbose=false)),
 ]
 
@@ -75,7 +75,7 @@ end
     X[8, :] .= 0
     X[:, 10] .= 0
 
-    model = WMF(rank=3, max_iter=2, verbose=false, T=Float64)
+    model = WeightedMF(rank=3, max_iter=2, verbose=false, T=Float64)
     fit!(model, X; rng=MersenneTwister(42))
     predictions = recommend(model, X; k=3)
 

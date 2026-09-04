@@ -10,31 +10,31 @@ references for validation** — no source code is derived from them.
 ## Features
 
 ### Matrix Factorization
-- **WMF** — Weighted Regularized Matrix Factorization (Cholesky, CG & NNLS solvers)
-- **IALS** — Implicit ALS with Gramian caching (Rendle et al. 2021)
-- **EALS** — Element-wise ALS with popularity-based weighting (He et al. 2016)
-- **BPR** — Bayesian Personalized Ranking (pairwise learning)
+- **WeightedMF** — Weighted Regularized Matrix Factorization (Cholesky, CG & NNLS solvers)
+- **CachedALS** — Implicit ALS with Gramian caching (Rendle et al. 2021)
+- **ElementwiseALS** — Element-wise ALS with popularity-based weighting (He et al. 2016)
+- **PairwiseRanking** — Bayesian Personalized Ranking (pairwise learning)
 
-- **GloVe** — Global Vectors for word/item embeddings
+- **GlobalVectors** — Global Vectors for word/item embeddings
 - **SoftImpute / SoftSVD / PureSVD** — Nuclear-norm regularized matrix completion
 - **BaselineOnly / SlopeOne / PearsonKNN** — explicit rating prediction (RMSE/MAE)
 
 ### Item Similarity
-- **EASE** — Embarrassingly Shallow Autoencoders (closed-form)
-- **SLIM** — Sparse Linear Methods (elastic-net, coordinate descent)
-- **ADMMSLIM** — ADMM-based SLIM (dense joint solve)
+- **ShallowAutoencoder** — Embarrassingly Shallow Autoencoders (closed-form)
+- **SparseLinearModel** — Sparse Linear Methods (elastic-net, coordinate descent)
+- **SparseLinearADMM** — ADMM-based SparseLinearModel (dense joint solve)
 - **ItemKNN** — Item-based K-Nearest Neighbors (cosine / Jaccard / asymmetric / BM25)
-- **RandomWalk** — RP3β 3-step graph random walk with long-tail bias
+- **GraphRandomWalk** — RP3β 3-step graph random walk with long-tail bias
 
 ### Regression
 - **FTRL** — Follow The Regularized Leader (Binomial, Gaussian, Poisson)
-- **FM** — Factorization Machines (second-order feature interactions)
+- **FactorizationMachine** — Factorization Machines (second-order feature interactions)
 
 ### Infrastructure
 - **Ranking Metrics** — MAP@k, NDCG@k, Precision@k, Recall@k
 - **Cross-validation** — random holdout, k-fold, grid search, random search
 - **Callbacks** — early stopping, loss history, checkpointing, learning rate schedules
-- **GPU acceleration** — CUDA.jl extension for EASE, IALS, WMF
+- **GPU acceleration** — CUDA.jl extension for ShallowAutoencoder, CachedALS, WeightedMF
 - **Tables.jl integration** — accept interaction data as (user, item, value) triplets
 - **Serialization** — versioned save/load for all models
 
@@ -50,7 +50,7 @@ X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
 
 # Fit a model
-model = WMF(rank=10, λ=0.1, α=40.0, max_iter=15, verbose=false)
+model = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=15, verbose=false)
 fit!(model, X_train)
 
 # Get top-10 recommendations (seen items automatically masked)
@@ -85,8 +85,8 @@ Canapes separates **recommender models** from **regression models** with domain-
 
 | Model type | Top-k predictions | Raw scores | Regression |
 |---|---|---|---|
-| Recommenders (WMF, IALS, EASE, ...) | `recommend(model, X; k)` | `score(model, X)` | — |
-| Regression (FTRL, FM) | — | — | `predict(model, X)` |
+| Recommenders (WeightedMF, CachedALS, ShallowAutoencoder, ...) | `recommend(model, X; k)` | `score(model, X)` | — |
+| Regression (FTRL, FactorizationMachine) | — | — | `predict(model, X)` |
 
 All models share `fit!(model, X)` for training. Matrix factorization models additionally support:
 
@@ -98,10 +98,10 @@ The type hierarchy uses Julia's dispatch to provide default implementations:
 ```
 AbstractSparseModel
 ├── AbstractRecommender
-│   ├── AbstractMatrixFactorization   # WMF, IALS, EALS, BPR, GloVe
+│   ├── AbstractMatrixFactorization   # WeightedMF, CachedALS, ElementwiseALS, PairwiseRanking, GlobalVectors
 │   │   └── AbstractSoftALS           # SoftImpute, SoftSVD, PureSVD
-│   └── AbstractItemSimilarity        # EASE, SLIM, ADMMSLIM, ItemKNN, RandomWalk
-└── AbstractSparseRegression          # FTRL, FM
+│   └── AbstractItemSimilarity        # ShallowAutoencoder, SparseLinearModel, SparseLinearADMM, ItemKNN, GraphRandomWalk
+└── AbstractSparseRegression          # FTRL, FactorizationMachine
 ```
 
 New models inheriting from `AbstractMatrixFactorization` automatically get `recommend`,
@@ -116,13 +116,13 @@ X = sprand(MersenneTwister(42), 1000, 500, 0.02)
 
 # 5-fold cross-validation
 mean_map, std_map, scores = cross_validate(
-    () -> WMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
+    () -> WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
     X; n_folds=5, k=10, metric=mean_ap_at_k
 )
 
 # Grid search
 best_params, best_score, results = grid_search(
-    p -> EASE(λ=p.λ, verbose=false),
+    p -> ShallowAutoencoder(λ=p.λ, verbose=false),
     X,
     Dict(:λ => [10.0, 100.0, 500.0, 1000.0]);
     k=10
@@ -130,7 +130,7 @@ best_params, best_score, results = grid_search(
 
 # Random search with log-uniform sampling
 best_params, best_score, _ = random_search(
-    p -> WMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
+    p -> WeightedMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
     X,
     Dict(:rank => rng -> rand(rng, [10, 20, 50, 100]),
          :λ    => rng -> 10.0^(rand(rng) * 3 - 2));  # log-uniform [0.01, 10]
@@ -154,7 +154,7 @@ loss_history = LossHistoryCallback()
 # Checkpoint every 5 iterations
 checkpoint = CheckpointCallback(path="checkpoints/wmf", every=5)
 
-model = WMF(rank=10, λ=0.1, α=40.0, max_iter=50)
+model = WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=50)
 fit!(model, X; callbacks=[early_stop, loss_history, checkpoint])
 
 # Inspect loss curve
@@ -174,8 +174,8 @@ loss_history.losses  # Vector of per-iteration losses
   fitted state intact.
 - **Reproducibility** — fits are deterministic for a given `rng` seed.
   Training kernels use `muladd` reductions (strict scalar order), so results
-  match across builds and platforms; `GloVe` is additionally bit-identical
-  across thread counts. `BPR` is the exception: Hogwild! lock-free SGD is
+  match across builds and platforms; `GlobalVectors` is additionally bit-identical
+  across thread counts. `PairwiseRanking` is the exception: Hogwild! lock-free SGD is
   intentionally racy.
 
 ## Tables.jl Integration

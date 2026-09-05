@@ -32,7 +32,7 @@ ItemKNN(; k=20, similarity=:cosine, shrinkage=0.0, asym_alpha=0.5,
 - `similarity::Symbol` — `:cosine`, `:jaccard`, `:asym_cosine` or `:bm25`
 - `shrinkage::T` — additive shrinkage to denominator (regularizes rare items)
 - `asym_alpha::T` — asymmetry exponent for `:asym_cosine` (0.5 = symmetric binary cosine; values below 0.5 favor niche candidates)
-- `k1::T`, `b::T` — BM25 parameters for `:bm25` (saturation and length normalization; standard IR values 1.2 / 0.75)
+- `k1::T`, `b::T` — BM25 parameters for `:bm25` (saturation and length normalization; standard IR values 1.2 / 0.75; for binary interactions the BM25 weighting reduces to the idf-weighted cosine, matching the `implicit` reference — `k1`/`b` then have no effect on the ranking)
 - `normalize::Bool` — row-normalize the similarity matrix (divide by row sum)
 - `W::SparseMatrixCSC{T,Int}` — sparse item-item similarity matrix after fitting
 
@@ -391,8 +391,7 @@ function _bm25_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T,
                    k1::T, b::T) where {Tv,Ti,T}
     n_users, n_items = size(X)
 
-    # Per-user frequency (document frequency of the "user-as-term" view): how
-    # many items the user interacted with.
+    # Per-user frequency ("document frequency" of the user-as-term view).
     user_df = zeros(Int, n_users)
     @inbounds for j in 1:n_items
         for idx in nzrange(X, j)
@@ -400,11 +399,10 @@ function _bm25_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T,
         end
     end
 
-    # IDF of a user spreads mass over few items: log((N - df + 0.5)/(df + 0.5))
+    # BM25 idf of a user-term, implicit's convention: log(N) - log1p(df).
     idf = Vector{T}(undef, n_users)
     @inbounds for u in 1:n_users
-        df = user_df[u]
-        idf[u] = df > 0 ? T(log((n_items - df + 0.5) / (df + 0.5))) : zero(T)
+        idf[u] = user_df[u] > 0 ? T(log(n_users) - log1p(user_df[u])) : zero(T)
     end
 
     # Weighted Gram: G[i, j] = Σ_{u ∈ N(i)∩N(j)} idf_u  = (D^{1/2} X)' (D^{1/2} X)
@@ -413,19 +411,17 @@ function _bm25_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T,
                          [T(sqrt(idf[rv[idx]])) for idx in 1:nnz(X)])
     G = Xw' * Xw
 
-    col_nnz = Vector{Int}(undef, n_items)
-    @inbounds for j in 1:n_items
-        col_nnz[j] = length(nzrange(X, j))
+    diag_G = Vector{T}(undef, n_items)
+    @inbounds for i in 1:n_items
+        diag_G[i] = G[i, i]
     end
-    avgdl = sum(col_nnz) / max(n_items, 1)
 
-    # Document-length normalization of the target item j (saturating at k1)
-    scale_j = Vector{T}(undef, n_items)
-    @inbounds for j in 1:n_items
-        len = col_nnz[j]
-        denom = len > 0 ? k1 * (one(T) - b + b * T(len) / T(max(avgdl, 1))) + one(T) : one(T)
-        scale_j[j] = (k1 + one(T)) / (denom + shrinkage)
-    end
+    # For binary interactions the BM25 saturation factor (k1+1)·tf / (k1·len_norm
+    # + tf) evaluates to tf = 1 and the per-item length-norm / (k1+1) factors
+    # cancel under the final cosine normalization, exactly as in `implicit`'s
+    # BM25Recommender: the effective similarity is the idf-weighted cosine
+    #     sim(i, j) = Σ_{u∈N(i)∩N(j)} idf_u / (√Σ_u∈N(i) idf_u · √Σ_u∈N(j) idf_u)
+    # k1/b are retained for API compatibility (they matter only for tf > 1 data).
 
     nt = Threads.nthreads()
     local_rows = _thread_buffers(() -> Int[], nt)
@@ -434,13 +430,14 @@ function _bm25_knn(X::SparseMatrixCSC{Tv,Ti}, k::Int, shrinkage::T,
 
     Threads.@threads for chunk in 1:nt
         for j in _thread_chunk_bounds(chunk, n_items, nt)
-        col_nnz[j] == 0 && continue
+        denom = sqrt(diag_G[j]) + shrinkage
+        denom == zero(T) && continue
 
         sims = Vector{Pair{Int,T}}()
         for idx in nzrange(G, j)
             i = rowvals(G)[idx]
             i == j && continue
-            sim = T(nonzeros(G)[idx]) * scale_j[j]
+            sim = T(nonzeros(G)[idx]) / (sqrt(diag_G[i]) + shrinkage) / denom
             sim > zero(T) && push!(sims, i => sim)
         end
 

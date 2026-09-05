@@ -13,8 +13,9 @@ where `R_i(u)` is the set of items j rated by `u` that share at least one user
 with `i`, and `μ_u` is the user's mean rating. This is Surprise's simplified
 (unweighted) variant — not the classic weighted `dev(i,j) + r_uj` form — and
 matches the reference implementation exactly. Memory is O(n_items²) for
-`dev` + `freq`, plus the `mask` scoring cache (also O(n_items²), stored as `T`)
-that makes `predict` a contiguous, cache-friendly column accumulation. Users
+`dev`, `freq`, and the `mask` scoring cache — all stored as `T`, so a
+Float32 model keeps three compact 4-byte matrices — and `mask` makes
+`predict` a contiguous, cache-friendly column accumulation. Users
 without any relevant item fall back to their own mean rating, then the global
 mean.
 
@@ -40,21 +41,21 @@ julia> size(predict(model, X))
 mutable struct SlopeOne{T<:AbstractFloat} <: AbstractExplicitModel
     const verbose::Bool
     dev::Matrix{T}          # mean rating difference dev(i, j) = mean(r_ui - r_uj)
-    freq::Matrix{Int}       # number of users who rated both items
+    freq::Matrix{T}         # number of users who rated both items (exact for counts < 2^24)
     mask::Matrix{T}         # scoring cache: mask[i, j] = freq[i,j] > 0 ? 1 : 0
     user_mean::Vector{T}
     is_fitted::Bool
 end
 
 function SlopeOne(; verbose::Bool=true, T::Type{<:AbstractFloat}=Float32)
-    SlopeOne{T}(verbose, Matrix{T}(undef, 0, 0), Matrix{Int}(undef, 0, 0),
+    SlopeOne{T}(verbose, Matrix{T}(undef, 0, 0), Matrix{T}(undef, 0, 0),
                 Matrix{T}(undef, 0, 0), T[], false)
 end
 
 # Accumulate pair differences dev(i,j) and co-occurrence counts freq(i,j)
 # from one user's CSR row (items `it`, ratings `rv` of length m).
 @inline function _slopeone_accumulate!(
-    dev::Matrix{T}, freq::Matrix{Int}, it::Vector{Int}, rv::Vector{T}, m::Int,
+    dev::Matrix{T}, freq::Matrix{T}, it::Vector{Int}, rv::Vector{T}, m::Int,
 ) where {T}
     @inbounds for a in 1:m, b in 1:m
         a == b && continue
@@ -76,7 +77,7 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     run_callbacks_train_begin(callbacks, model)
     try
     dev = fill(zero(T), n_items, n_items)
-    freq = zeros(Int, n_items, n_items)
+    freq = zeros(T, n_items, n_items)
 
     user_mean = zeros(T, n_users)
     item_cnt = zeros(Int, n_items)

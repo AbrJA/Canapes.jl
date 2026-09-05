@@ -117,7 +117,10 @@ function fit!(model::PearsonKNN{T}, X::SparseMatrixCSC{Tv,Ti};
         end
         if length(sims) > model.k
             partialsort!(sims, 1:model.k; by=last, rev=true)
-            resize!(sims, model.k)
+            # copy into an exactly-sized vector: the push!-grown buffer keeps
+            # its (possibly huge) capacity through resize!, which would retain
+            # O(n_users) dead weight per user
+            sims = sims[1:model.k]
         end
         # if fewer than min_k positive neighbors, fall back to the user mean
         neighbors[u] = length(sims) < model.min_k ? Pair{Int,T}[] : sims

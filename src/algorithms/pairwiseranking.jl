@@ -237,7 +237,10 @@ function fit!(model::PairwiseRanking{T}, X::SparseMatrixCSC{Tv,Ti};
                     x_uij += U[f, u] * (V[f, i] - V[f, j_int])
                 end
 
-                # σ(-x_uij) = 1/(1 + exp(x_uij))
+                # σ(-x_uij) = 1/(1 + exp(x_uij))  — the BPR gradient weight:
+                # the SGD step must scale with σ(-x̂) = 1 - σ(x̂), i.e. steep
+                # for wrongly-ranked pairs and ~0 for pairs already correct.
+                # (Previously σ(x̂) was used, which inverts that weighting.)
                 sig = one(T) / (one(T) + exp(x_uij))
 
                 if sig < T(0.5)

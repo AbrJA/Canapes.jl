@@ -63,6 +63,28 @@ end
     end
 end
 
+@testset "GraphRandomWalk top-k path equals the full walk (memory-bounded)" begin
+    rng = MersenneTwister(7)
+    X = sprand(rng, 30, 20, 0.15)
+    nonzeros(X) .= 1.0  # binary interactions
+    for β in (0.0, 0.6)
+        full = GraphRandomWalk(α=1.0, β=β, k=nothing, verbose=false, T=Float64)
+        fit!(full, X)
+        top = GraphRandomWalk(α=1.0, β=β, k=20, verbose=false, T=Float64)
+        fit!(top, X)
+        @test Matrix(top.W) ≈ Matrix(full.W) atol=1e-8
+    end
+
+    # weighted interactions with α ≠ 1 exercise the general streaming path
+    Xw = sprand(rng, 30, 20, 0.15)
+    nonzeros(Xw) .= 0.5 .+ 0.5 .* rand(MersenneTwister(3), nnz(Xw))
+    full = GraphRandomWalk(α=2.0, β=0.0, k=nothing, verbose=false, T=Float64)
+    fit!(full, Xw)
+    top = GraphRandomWalk(α=2.0, β=0.0, k=20, verbose=false, T=Float64)
+    fit!(top, Xw)
+    @test Matrix(top.W) ≈ Matrix(full.W) atol=1e-7
+end
+
 @testset "GraphRandomWalk popularity penalization" begin
     rng = MersenneTwister(11)
     X = sprand(rng, 50, 40, 0.1)

@@ -84,13 +84,22 @@ end
 # Benchmark definitions
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Each spec is (name, model, fit!, infer, dense).
+# Each spec is (name, model, fit!, infer, dense, infer_millions).
 #   fit!(model, X, rng) → nothing
 #   infer(model, X)      → output (recommendations, predictions or scores)
 #   dense::Bool          — output is a dense n_users × n_items matrix (skip
 #                          at the "millions" scale, where it would be 100K×50K)
-function benchmark_specs(X)
+#   infer_millions       — optional scale-scaled inference for dense-output
+#                          models: pairwise score over `pairs` (sampled 1M
+#                          (user, item) pairs) instead of the dense matrix.
+#                          Models without an infer_millions entry are skipped
+#                          at the millions scale.
+# At millions, only models that fit AND infer in < 15 s are tracked (verified
+# per-model with a probe); SoftImpute (23 s) and LogisticMF (40 s) are excluded
+# for that reason, as are the O(n_items²) item-item fits.
+function benchmark_specs(X, pairs)
     y = rand(MersenneTwister(3), size(X, 1))
+    pu, pi = pairs
     [
         # ── implicit ranking (recommend) ──
         (name="WeightedMF-Cholesky", dense=false,
@@ -108,9 +117,6 @@ function benchmark_specs(X)
         (name="PairwiseRanking", dense=false,
          model=PairwiseRanking(rank=64, λ_user=0.01, λ_pos=0.01, λ_neg=0.01, lr=0.05, max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
-        (name="LogisticMF", dense=false,
-         model=Canapes.Experimental.LogisticMF(rank=64, λ=0.6, lr=1.0, max_iter=10, n_negative=30, tol=-1.0, verbose=false),
-         fit=(m,r)->fit!(m, X; rng=r), infer=m->recommend(m, X; k=K)),
 
         # ── item similarity (recommend) ──
         (name="ShallowAutoencoder", dense=true,  # O(n_items²)
@@ -122,37 +128,41 @@ function benchmark_specs(X)
         (name="SparseLinearADMM", dense=true,  # O(n_items²)
          model=SparseLinearADMM(max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
-        (name="ItemKNN", dense=true,  # O(n_items²)
+        (name="ItemKNN", dense=false,  # memory-bounded column-by-column top-k; probed < 15 s at millions
          model=ItemKNN(k=50, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
-        (name="GraphRandomWalk", dense=true,   # item-item W can reach O(n_items²) at scale
+        (name="GraphRandomWalk", dense=false,  # sparse W; probed ~10 s fit at millions
          model=GraphRandomWalk(β=0.0, k=50, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->recommend(m, X; k=K)),
 
         # ── explicit rating prediction (predict — dense output) ──
         (name="BiasedMF", dense=true,
          model=WeightedMF(rank=64, λ=0.1, max_iter=10, solver=CholeskySolver(), feedback=Explicit, verbose=false),
-         fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X)),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X),
+         infer_millions=m->score(m, pu, pi)),
         (name="BaselineOnly", dense=true,
          model=BaselineOnly(λ=0.02, max_iter=10, verbose=false),
-         fit=(m,r)->fit!(m, X), infer=m->predict(m, X)),
-        (name="SlopeOne", dense=true,
+         fit=(m,r)->fit!(m, X), infer=m->predict(m, X),
+         infer_millions=m->score(m, pu, pi)),
+        (name="SlopeOne", dense=true,  # O(n_items²) fit — millions skipped
          model=SlopeOne(verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->predict(m, X)),
-        (name="PearsonKNN", dense=true,
+        (name="PearsonKNN", dense=true,  # O(n_users²) fit — millions skipped
          model=PearsonKNN(k=50, verbose=false),
          fit=(m,r)->fit!(m, X), infer=m->predict(m, X)),
 
         # ── completion (score — dense output) ──
-        (name="SoftImpute", dense=true,
+        (name="SoftImpute", dense=true,  # 23 s fit at millions — skipped (gate < 15 s)
          model=SoftImpute(rank=32, λ=0.5, max_iter=10, verbose=false),
          fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X)),
         (name="SoftSVD", dense=true,
          model=SoftSVD(rank=32, max_iter=10, verbose=false),
-         fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X)),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X),
+         infer_millions=m->score(m, pu, pi)),
         (name="PureSVD", dense=true,
          model=PureSVD(rank=32, max_iter=10, verbose=false),
-         fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X)),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->score(m, X),
+         infer_millions=m->score(m, pu, pi)),
 
         # ── sparse regression (predict — vector output) ──
         (name="FTRL", dense=false,
@@ -164,17 +174,21 @@ function benchmark_specs(X)
 
         # ── experimental ──
         (name="ProbabilisticMF", dense=true,
-         model=Canapes.Experimental.ProbabilisticMF(rank=64, λ=0.1, lr=0.05, max_iter=10, verbose=false),
-         fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X)),
+         model=Canapes.Experimental.ProbabilisticMF(rank=32, λ=0.1, lr=0.05, max_iter=10, verbose=false),
+         fit=(m,r)->fit!(m, X; rng=r), infer=m->predict(m, X),
+         infer_millions=m->score(m, pu, pi)),
     ]
 end
 
 function compile_warmup()
     X = sparse([1, 2, 3], [1, 2, 1], [1.0, 1.0, 1.0], 50, 40)
     y = rand(MersenneTwister(3), size(X, 1))
-    for spec in benchmark_specs(X)
+    for spec in benchmark_specs(X, (Int[1, 2], Int[1, 2]))
         spec.fit(spec.model, MersenneTwister(1))
         spec.infer(spec.model)
+        if get(spec, :infer_millions, nothing) !== nothing
+            spec.infer_millions(spec.model)
+        end
     end
     C = sprand(40, 40, 0.2)
     C = C + C'
@@ -262,15 +276,24 @@ function main()
         @printf("  X nnz: %d\n\n", nnz(X))
 
         # Dense-output models (explicit predict / completion score) build a full
-        # n_users × n_items matrix — skipped at millions scale.
-        include_dense = scale.name != "millions"
-        for spec in benchmark_specs(X)
-            spec.dense && !include_dense && continue
+        # n_users × n_items matrix — at millions they run `infer_millions`
+        # (pairwise score over 1M sampled pairs) when available, else skipped.
+        if scale.name == "millions"
+            rngp = MersenneTwister(99)
+            pairs = (rand(rngp, 1:scale.n_users, 1_000_000),
+                     rand(rngp, 1:scale.n_items, 1_000_000))
+        else
+            pairs = (Int[], Int[])
+        end
+        for spec in benchmark_specs(X, pairs)
+            infer = (spec.dense && scale.name == "millions") ?
+                    get(spec, :infer_millions, nothing) : spec.infer
+            infer === nothing && continue           # no scale-scaled inference available
             model = spec.model
             cfg = config_string(model)
 
             fit_m = best_of(() -> spec.fit(model, MersenneTwister(1)), reps[scale.name])
-            rec_m = best_of(() -> spec.infer(model), reps[scale.name])
+            rec_m = best_of(() -> infer(model), reps[scale.name])
 
             record = log_record(merge(env_record(), Dict(
                 "algorithm" => spec.name,

@@ -30,9 +30,12 @@ penalizes head items and boosts long-tail candidates; `α` powers the
 transition entries (a no-op at its default `1.0` on binary interactions but
 relevant when the matrix carries weights).
 
-No training loop — the walk matrix is built with two sparse matrix products.
-The fitted `W` is sparse; `recommend`/`score` reuse the sparse item-similarity
-paths. Memory is O(nnz(X) + nnz(W)) and scales well beyond ShallowAutoencoder's O(n_items²).
+No training loop — the walk matrix is built from the two-hop transition
+product. With `k` set (the memory-bounded path) the top-k columns are computed
+streaming per item with bounded heaps — O(n_items·threads + nnz) memory, never
+materializing the full O(Σ_u deg(u)²)-nonzero two-hop matrix (which is only
+built when `k = nothing`). The fitted `W` is sparse; `recommend`/`score` reuse
+the sparse item-similarity paths.
 
 Note: this is the closed-form RP3β formulation (as in irspack/similaripy), not
 the Pixie real-time sampled-walk system (Eksombatchai et al. 2018).
@@ -110,58 +113,62 @@ function fit!(model::GraphRandomWalk{T}, X::SparseMatrixCSC{Tv,Ti};
     d_u = vec(sum(X; dims=2))
     d_i = vec(sum(X; dims=1))
 
-    # Item→user transition S1 (row = item, col = user): Xᵀ scaled by 1/d_i
-    # User→item transition S2 (row = user, col = item): X scaled by 1/d_u
-    # W = S1 * S2  is computed as (D_i^{-1} Xᵀ) · (D_u^{-1} X).
-    Xt = SparseMatrixCSC(X')
-    S1 = SparseMatrixCSC(n_items, n_users, Xt.colptr, rowvals(Xt), copy(nonzeros(Xt)))
-    S2 = SparseMatrixCSC(n_users, n_items, X.colptr, rowvals(X), copy(nonzeros(X)))
-
-    d_i_inv = T.(1 ./ max.(d_i, one(eltype(d_i))))
-    d_u_inv = T.(1 ./ max.(d_u, one(eltype(d_u))))
-
-    # Scale S1 rows (items): element (i, u) gets 1/d_i
-    @inbounds for c in 1:n_users
-        for idx in nzrange(S1, c)
-            S1.nzval[idx] *= d_i_inv[rowvals(S1)[idx]]
-        end
-    end
-    # Scale S2 rows (users): element (u, i) gets 1/d_u
-    @inbounds for c in 1:n_items
-        for idx in nzrange(S2, c)
-            S2.nzval[idx] *= d_u_inv[rowvals(S2)[idx]]
-        end
-    end
-
-    # α-power on the transition entries (no-op at α = 1)
-    if model.α != one(T)
-        S1.nzval .^= model.α
-        S2.nzval .^= model.α
-    end
-
-    # Two-hop walk: W = S1 * S2  (items × items)
-    W = S1 * S2
-
-    # Popularity penalization: scale each column j by pop(j)^{-β}
-    pop_inv = T.(1 ./ max.(d_i .^ model.β, one(eltype(d_i))))
-    @inbounds for j in 1:n_items
-        pj = pop_inv[j]
-        pj == one(T) && continue
-        for idx in nzrange(W, j)
-            W.nzval[idx] *= pj
-        end
-    end
-
-    # Zero the diagonal (no self-recommendation)
-    @inbounds for j in 1:n_items
-        for idx in nzrange(W, j)
-            rowvals(W)[idx] == j && (W.nzval[idx] = zero(T))
-        end
-    end
-
-    # Optional top-k truncation per item
     if model.k !== nothing
-        W = _truncate_topk_sparse(W, model.k)
+        # Memory-bounded path: the top-k walk matrix is computed column-by-column
+        # with bounded per-thread heaps, never materializing the intermediate
+        # two-hop matrix (which holds O(Σ_u deg(u)²) nonzeros). Memory is
+        # O(n_items·nthreads + nnz) instead of O(nnz(W_full)).
+        W = _walk_topk_streaming(X, model.k, model.α, model.β, T)
+    else
+        # Full two-hop walk W = S1 * S2 (inherently O(Σ_u deg(u)²) nonzeros)
+        # Item→user transition S1 (row = item, col = user): Xᵀ scaled by 1/d_i
+        # User→item transition S2 (row = user, col = item): X scaled by 1/d_u
+        # W = S1 * S2  is computed as (D_i^{-1} Xᵀ) · (D_u^{-1} X).
+        Xt = SparseMatrixCSC(X')
+        S1 = SparseMatrixCSC(n_items, n_users, Xt.colptr, rowvals(Xt), copy(nonzeros(Xt)))
+        S2 = SparseMatrixCSC(n_users, n_items, X.colptr, rowvals(X), copy(nonzeros(X)))
+
+        d_i_inv = T.(1 ./ max.(d_i, one(eltype(d_i))))
+        d_u_inv = T.(1 ./ max.(d_u, one(eltype(d_u))))
+
+        # Scale S1 rows (items): element (i, u) gets 1/d_i
+        @inbounds for c in 1:n_users
+            for idx in nzrange(S1, c)
+                S1.nzval[idx] *= d_i_inv[rowvals(S1)[idx]]
+            end
+        end
+        # Scale S2 rows (users): element (u, i) gets 1/d_u
+        @inbounds for c in 1:n_items
+            for idx in nzrange(S2, c)
+                S2.nzval[idx] *= d_u_inv[rowvals(S2)[idx]]
+            end
+        end
+
+        # α-power on the transition entries (no-op at α = 1)
+        if model.α != one(T)
+            S1.nzval .^= model.α
+            S2.nzval .^= model.α
+        end
+
+        # Two-hop walk: W = S1 * S2  (items × items)
+        W = S1 * S2
+
+        # Popularity penalization: scale each column j by pop(j)^{-β}
+        pop_inv = T.(1 ./ max.(d_i .^ model.β, one(eltype(d_i))))
+        @inbounds for j in 1:n_items
+            pj = pop_inv[j]
+            pj == one(T) && continue
+            for idx in nzrange(W, j)
+                W.nzval[idx] *= pj
+            end
+        end
+
+        # Zero the diagonal (no self-recommendation)
+        @inbounds for j in 1:n_items
+            for idx in nzrange(W, j)
+                rowvals(W)[idx] == j && (W.nzval[idx] = zero(T))
+            end
+        end
     end
 
     # Optional row normalization (each row sums to 1)
@@ -189,27 +196,110 @@ function fit!(model::GraphRandomWalk{T}, X::SparseMatrixCSC{Tv,Ti};
     end
 end
 
-# Keep the top-k (positive) entries per column of the sparse matrix W.
-function _truncate_topk_sparse(W::SparseMatrixCSC{T,Int}, k::Int) where {T}
-    n_items = size(W, 2)
-    rv = rowvals(W)
-    nz = nonzeros(W)
-    rows = Int[]; cols = Int[]; vals = T[]
+# ──────────────────────────────────────────────────────────────────────────────
+# Memory-bounded top-k two-hop walk
+# ──────────────────────────────────────────────────────────────────────────────
+
+# For each target item j the walk column is
+#     W[i, j] = pop(j)^{-β} · |N(i)|^{-α} · Σ_{u ∈ N(i)∩N(j)} X_ui^α · X_uj^α · |N(u)|^{-α}
+# computed column-by-column: a dense per-thread dot buffer scatters each user
+# u ∈ N(j) with their full row (CSR), the per-column scaling is applied, and the
+# top-k entries are kept with a bounded min-heap — the same streaming pattern as
+# ItemKNN's `_cosine_knn`. The full O(Σ_u deg(u)²)-nonzero two-hop matrix is
+# never materialized: memory is O(n_items·nthreads + nnz).
+function _walk_topk_streaming(X::SparseMatrixCSC{Tv,Ti}, k::Int, α::AbstractFloat,
+                              β::AbstractFloat, ::Type{T}) where {Tv,Ti,T}
+    n_users, n_items = size(X)
+
+    d_u = vec(sum(X; dims=2))
+    d_i = vec(sum(X; dims=1))
+
+    # Inverse transition weights: w_u = |N(u)|^{-α} (columns of S2), row_scale
+    # i = |N(i)|^{-α} (rows of S1), col_scale j = pop(j)^{-β}.
+    w_u = Vector{T}(undef, n_users)
+    @inbounds for u in 1:n_users
+        w_u[u] = d_u[u] > 0 ? T(one(T) / d_u[u]^α) : zero(T)
+    end
+    row_scale = Vector{T}(undef, n_items)
+    @inbounds for i in 1:n_items
+        row_scale[i] = d_i[i] > 0 ? T(one(T) / d_i[i]^α) : zero(T)
+    end
+    col_scale = Vector{T}(undef, n_items)
     @inbounds for j in 1:n_items
-        sims = Vector{Pair{Int,T}}()
-        for idx in nzrange(W, j)
-            v = nz[idx]
-            v > zero(T) && push!(sims, rv[idx] => v)
-        end
-        if length(sims) > k
-            partialsort!(sims, 1:k; by=last, rev=true)
-            resize!(sims, k)
-        end
-        for (i, v) in sims
-            push!(rows, i); push!(cols, j); push!(vals, v)
+        col_scale[j] = d_i[j] > 0 ? T(one(T) / d_i[j]^β) : zero(T)
+    end
+
+    X_csr = to_csr(X)
+    nt = Threads.nthreads()
+    dot_bufs = _thread_buffers(() -> zeros(T, n_items), nt)
+    heap_bufs = _thread_buffers(() -> fill(T(-Inf), k), nt)
+    heap_idx_bufs = _thread_buffers(() -> zeros(Int, k), nt)
+    local_rows = _thread_buffers(() -> Int[], nt)
+    local_cols = _thread_buffers(() -> Int[], nt)
+    local_vals = _thread_buffers(() -> T[], nt)
+
+    rv = rowvals(X)
+    nz = nonzeros(X)
+
+    Threads.@threads for chunk in 1:nt
+        dot = dot_bufs[chunk]
+        hv = heap_bufs[chunk]
+        hi = heap_idx_bufs[chunk]
+        @inbounds for j in _thread_chunk_bounds(chunk, n_items, nt)
+            d_i[j] == 0 && continue
+
+            for i in 1:n_items
+                dot[i] = zero(T)
+            end
+            for e in 1:k
+                hv[e] = T(-Inf)
+            end
+
+            # dot[i] += (X_uj/d_u)^α · (X_ui)^α  over users u of item j
+            if α == 1.0
+                for idx in nzrange(X, j)
+                    u = Int(rv[idx])
+                    w = T(nz[idx]) * w_u[u]
+                    for r in nzrange(X_csr, u)
+                        i = Int(X_csr.colval[r])
+                        i == j && continue
+                        dot[i] += w * T(X_csr.nzval[r])
+                    end
+                end
+            else
+                for idx in nzrange(X, j)
+                    u = Int(rv[idx])
+                    w = (T(nz[idx]) / T(d_u[u])) ^ T(α)
+                    for r in nzrange(X_csr, u)
+                        i = Int(X_csr.colval[r])
+                        i == j && continue
+                        dot[i] += w * (T(X_csr.nzval[r]) ^ T(α))
+                    end
+                end
+            end
+
+            # Scale by |N(i)|^{-α} and pop(j)^{-β}, keep the top-k positives
+            csj = col_scale[j]
+            for i in 1:n_items
+                i == j && continue
+                d = dot[i]
+                (d <= zero(T) || row_scale[i] == zero(T)) && continue
+                _heap_insert_topk!(hv, hi, d * row_scale[i] * csj, i, k)
+            end
+
+            for e in 1:k
+                hv[e] > T(-Inf) || continue
+                push!(local_rows[chunk], hi[e])
+                push!(local_cols[chunk], j)
+                push!(local_vals[chunk], hv[e])
+            end
         end
     end
-    sparse(rows, cols, vals, n_items, n_items)
+
+    all_rows = reduce(vcat, local_rows)
+    all_cols = reduce(vcat, local_cols)
+    all_vals = reduce(vcat, local_vals)
+    sparse(all_rows, all_cols, all_vals, n_items, n_items)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────

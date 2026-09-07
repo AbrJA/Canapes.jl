@@ -60,16 +60,19 @@ function elapsed_str(seconds::Real)
 end
 
 """
-    log_iteration(name, iter, max_iter, loss, iter_seconds, total_seconds; extra...)
+    log_iteration(name, iter, max_iter, loss, iter_seconds, total_seconds;
+                  metric="loss", extra="")
 
-Emit a structured @info log for a training iteration.
+Emit a structured @info log for a training iteration. `metric` customizes the
+monitored value's label for models whose logged quantity is not a loss
+(e.g. the reconstruction norm of SoftImpute/SoftSVD).
 """
 function log_iteration(name::String, iter::Int, max_iter::Int,
                        loss::Real, iter_seconds::Real, total_seconds::Real;
-                       extra::String="")
+                       metric::String="loss", extra::String="")
     pct = round(100.0 * iter / max_iter, digits=1)
-    msg = @sprintf("[%s] iter %d/%d (%.1f%%) | loss=%.6f | iter=%s | total=%s",
-                   name, iter, max_iter, pct, loss,
+    msg = @sprintf("[%s] iter %d/%d (%.1f%%) | %s=%.6f | iter=%s | total=%s",
+                   name, iter, max_iter, pct, metric, loss,
                    elapsed_str(iter_seconds), elapsed_str(total_seconds))
     if !isempty(extra)
         msg *= " | " * extra

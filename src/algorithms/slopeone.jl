@@ -77,7 +77,8 @@ function fit!(model::SlopeOne{T}, X::SparseMatrixCSC{Tv,Ti};
     run_callbacks_train_begin(callbacks, model)
     try
     dev = fill(zero(T), n_items, n_items)
-    freq = zeros(T, n_items, n_items)
+    freq = Matrix{T}(undef, n_items, n_items)
+    fill!(freq, zero(T))
 
     user_mean = zeros(T, n_users)
     item_cnt = zeros(Int, n_items)

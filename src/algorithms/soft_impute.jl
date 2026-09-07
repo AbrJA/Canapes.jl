@@ -278,8 +278,11 @@ function fit!(model::AbstractSoftALS{T}, X::SparseMatrixCSC{Tv,Ti};
         total_seconds = elapsed_seconds(monitor)
 
         if model.verbose
+            # the monitored value is the squared Frobenius norm of the current
+            # reconstruction U diag(d) V' (sum d²), which grows monotonically
+            # toward the ALS fixed point — it is a convergence gauge, not a loss
             log_iteration(algo_name, iter, model.max_iter, cur_frob,
-                         iter_seconds, total_seconds)
+                         iter_seconds, total_seconds, metric="‖UV‖²")
         end
 
         if record!(monitor, T(cur_frob))

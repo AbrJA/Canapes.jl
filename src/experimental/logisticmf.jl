@@ -41,10 +41,14 @@ The default `α=1.0` reproduces implicit's logisticmatrixfactorization exactly.
 exactly: per-entity Adagrad with an unbounded squared-gradient accumulator, so
 effective steps shrink as `lr/√Σg²` and low learning rates barely move the
 factors (implicit itself hardcodes `lr=1.0`). `optimizer=:rmsprop` replaces the
-accumulator with an EMA (`v ← 0.9·v + 0.1·g²`, decoupled from iteration count)
-— more robust to small learning rates and warm-start friendly, at the cost of
-no reference parity with implicit. `recommend`/`score` are unaffected by the
-choice.
+accumulator with an EMA (`v ← 0.9·v + 0.1·g²`, decoupled from iteration count):
+steps stay at the `lr` scale for the whole run instead of decaying, so on the
+per-epoch sampled negative objective the update direction is noisy and large
+rates accumulate drift — keep `lr` on the order of `0.005`–`0.01`
+(lr ≥ 0.05 makes training loss rise for many epochs before recovering;
+lr = 1.0 diverges). With a well-tuned small `lr` it is warm-start friendly and
+can out-converge Adagrad at the same rate, at the cost of no reference parity
+with implicit. `recommend`/`score` are unaffected by the choice.
 
 # Example
 ```julia

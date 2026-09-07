@@ -1,47 +1,72 @@
 using Test
-using Gideon
+using Canapes
+# Names that are internal (not exported) but exercised directly by the tests.
+using Canapes.Links: Binomial, Gaussian, Poisson
+using Canapes.Sampling: Popular, Dynamic
+using Canapes.Experimental: LogisticMF
+using Canapes: init_factors, sigmoid,
+              dual_representation, sparse_row_norms, sparse_col_nnz, sparse_row_nnz, run_callbacks
 using SparseArrays
 using LinearAlgebra
 using Random
+using Statistics
 using Aqua
 using JET
+using Pkg
 
-@testset "Gideon.jl" begin
-    @testset "Quality" begin
-        include("test_quality.jl")
+# Full vs fast suite: heavy static-analysis (Aqua/JET), docs-validation, and
+# GPU tests only run under TEST_SUITE=full (the default). Set TEST_SUITE=fast
+# for quick local iteration (~2 min): it still runs every algorithm, metric,
+# property, fixture and contract test.
+const TEST_FULL = get(ENV, "TEST_SUITE", "full") == "full"
+
+@testset verbose=true "Canapes.jl" begin
+    if TEST_FULL
+        @testset "Quality" begin
+            include("test_quality.jl")
+        end
     end
     @testset "Types & Utils" begin
         include("test_utils.jl")
     end
-    @testset "WRMF" begin
-        include("test_wrmf.jl")
+    @testset "WeightedMF" begin
+        include("test_weightedmf.jl")
     end
-    @testset "iALS" begin
-        include("test_ials.jl")
+    @testset "CachedALS" begin
+        include("test_cachedals.jl")
     end
-    @testset "eALS" begin
-        include("test_eals.jl")
+    @testset "ElementwiseALS" begin
+        include("test_elementwiseals.jl")
     end
     @testset "FTRL" begin
         include("test_ftrl.jl")
     end
-    @testset "FM" begin
-        include("test_fm.jl")
+    @testset "FactorizationMachine" begin
+        include("test_factorizationmachine.jl")
     end
-    @testset "GloVe" begin
-        include("test_glove.jl")
+    @testset "GlobalVectors" begin
+        include("test_globalvectors.jl")
     end
-    @testset "LMF" begin
+    @testset "LogisticMF" begin
         include("test_lmf.jl")
     end
-    @testset "BPR" begin
-        include("test_bpr.jl")
+    @testset "PairwiseRanking" begin
+        include("test_pairwiseranking.jl")
     end
-    @testset "EASE" begin
-        include("test_ease.jl")
+    @testset "ShallowAutoencoder" begin
+        include("test_shallowautoencoder.jl")
     end
-    @testset "SLIM" begin
-        include("test_slim.jl")
+    @testset "SparseLinearModel" begin
+        include("test_sparselinearmodel.jl")
+    end
+    @testset "SparseLinearADMM" begin
+        include("test_sparseadmm.jl")
+    end
+    @testset "ItemKNN" begin
+        include("test_knn.jl")
+    end
+    @testset "GraphRandomWalk" begin
+        include("test_graphrandomwalk.jl")
     end
     @testset "SoftImpute" begin
         include("test_soft_impute.jl")
@@ -49,16 +74,57 @@ using JET
     @testset "Metrics" begin
         include("test_metrics.jl")
     end
+    @testset "Explicit subsystem" begin
+        include("test_explicit.jl")
+    end
+    @testset "Explicit models" begin
+        include("test_explicit_models.jl")
+    end
     @testset "Infrastructure" begin
         include("test_infrastructure.jl")
+    end
+    @testset "Memory limits" begin
+        include("test_memory_limits.jl")
+    end
+    @testset "Finite input" begin
+        include("test_finite_input.jl")
+    end
+    @testset "Properties" begin
+        include("test_properties.jl")
+    end
+    if TEST_FULL
+        @testset "Docs examples" begin
+            include("validate_docs.jl")
+            @test !failed
+        end
     end
     @testset "Tables" begin
         include("test_tables.jl")
     end
-    @testset "GPU" begin
-        include("test_gpu.jl")
+    @testset "Concurrency" begin
+        include("test_concurrency.jl")
     end
-    @testset "R Correctness" begin
-        include("test_r_correctness.jl")
+    if TEST_FULL
+        @testset "GPU" begin
+            include("test_gpu.jl")
+        end
+    end
+    @testset "Coverage" begin
+        include("test_coverage.jl")
+    end
+    @testset "Correctness" begin
+        include("test_correctness.jl")
+    end
+    @testset "Reference contracts" begin
+        include("test_reference_contracts.jl")
+    end
+    @testset "Fixtures" begin
+        include("test_fixtures.jl")
+    end
+    @testset "README examples" begin
+        include("test_readme.jl")
+    end
+    @testset "Docs snippets" begin
+        include("test_docs_examples.jl")
     end
 end

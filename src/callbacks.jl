@@ -107,24 +107,42 @@ function on_epoch_end(cb::CheckpointCallback, info::CallbackInfo)
 end
 
 """
-    LearningRateScheduler(; decay=0.99, min_lr=1e-6)
+    LearningRateCallback(; decay=0.99, min_lr=1e-6)
 
-Decay learning rate geometrically each epoch (model must have a `learning_rate` field).
+Decay learning rate geometrically each epoch (model must have a `lr` field).
 """
-mutable struct LearningRateScheduler <: AbstractCallback
+mutable struct LearningRateCallback <: AbstractCallback
     decay::Float64
     min_lr::Float64
 end
 
-LearningRateScheduler(; decay::Float64=0.99, min_lr::Float64=1e-6) =
-    LearningRateScheduler(decay, min_lr)
+LearningRateCallback(; decay::Float64=0.99, min_lr::Float64=1e-6) =
+    LearningRateCallback(decay, min_lr)
 
-function on_epoch_end(cb::LearningRateScheduler, info::CallbackInfo)
-    if hasproperty(info.model, :learning_rate)
-        new_lr = max(info.model.learning_rate * cb.decay, cb.min_lr)
-        info.model.learning_rate = new_lr
+function on_epoch_end(cb::LearningRateCallback, info::CallbackInfo)
+    if hasproperty(info.model, :lr)
+        new_lr = max(info.model.lr * cb.decay, cb.min_lr)
+        info.model.lr = new_lr
     end
     :continue
+end
+
+"""
+    on_train_begin(callback, model)
+
+Called once at the start of training. Override for setup logic.
+"""
+function on_train_begin(::AbstractCallback, model)
+    nothing
+end
+
+"""
+    on_train_end(callback, model)
+
+Called once at the end of training. Override for teardown/summary logic.
+"""
+function on_train_end(::AbstractCallback, model)
+    nothing
 end
 
 """
@@ -138,4 +156,26 @@ function run_callbacks(callbacks::Vector{<:AbstractCallback}, info::CallbackInfo
         result === :stop && return true
     end
     false
+end
+
+"""
+    run_callbacks_train_begin(callbacks, model)
+
+Run `on_train_begin` for all callbacks at the start of training.
+"""
+function run_callbacks_train_begin(callbacks::Vector{<:AbstractCallback}, model)
+    for cb in callbacks
+        on_train_begin(cb, model)
+    end
+end
+
+"""
+    run_callbacks_train_end(callbacks, model)
+
+Run `on_train_end` for all callbacks at the end of training.
+"""
+function run_callbacks_train_end(callbacks::Vector{<:AbstractCallback}, model)
+    for cb in callbacks
+        on_train_end(cb, model)
+    end
 end

@@ -1,30 +1,42 @@
 # test/test_utils.jl — Type hierarchy, utilities, sparse utils
 
 @testset "Type Hierarchy" begin
-    @test WRMF <: AbstractMatrixFactorization
-    @test WRMF <: AbstractSparseModel
-    @test GloVe <: AbstractMatrixFactorization
-    @test LMF <: AbstractMatrixFactorization
+    @test WeightedMF <: AbstractMatrixFactorization
+    @test WeightedMF <: AbstractRecommender
+    @test WeightedMF <: AbstractSparseModel
+    @test GlobalVectors <: AbstractMatrixFactorization
+    @test GlobalVectors <: AbstractRecommender
+    @test LogisticMF <: AbstractMatrixFactorization
+    @test PairwiseRanking <: AbstractMatrixFactorization
+    @test CachedALS <: AbstractMatrixFactorization
+    @test ElementwiseALS <: AbstractMatrixFactorization
+    @test ShallowAutoencoder <: AbstractItemSimilarity
+    @test ShallowAutoencoder <: AbstractRecommender
+    @test SparseLinearModel <: AbstractItemSimilarity
+    @test SparseLinearModel <: AbstractRecommender
     @test FTRL <: AbstractSparseRegression
     @test FTRL <: AbstractSparseModel
     @test FactorizationMachine <: AbstractSparseRegression
+    # Verify AbstractRecommender is NOT a parent of regression models
+    @test !(FTRL <: AbstractRecommender)
+    @test !(FactorizationMachine <: AbstractRecommender)
 end
 
 @testset "Sigmoid" begin
-    @test Gideon.sigmoid(0.0) ≈ 0.5
-    @test Gideon.sigmoid(100.0) ≈ 1.0 atol=1e-10
-    @test Gideon.sigmoid(-100.0) ≈ 0.0 atol=1e-10
-    @test Gideon.sigmoid(1.0) ≈ 1 / (1 + exp(-1.0))
+    @test Canapes.sigmoid(0.0) ≈ 0.5
+    @test Canapes.sigmoid(100.0) ≈ 1.0 atol=1e-10
+    @test Canapes.sigmoid(-100.0) ≈ 0.0 atol=1e-10
+    @test Canapes.sigmoid(1.0) ≈ 1 / (1 + exp(-1.0))
     # Numerical stability at extremes
-    @test isfinite(Gideon.sigmoid(1000.0))
-    @test isfinite(Gideon.sigmoid(-1000.0))
+    @test isfinite(Canapes.sigmoid(1000.0))
+    @test isfinite(Canapes.sigmoid(-1000.0))
 end
 
 @testset "link_function" begin
-    @test Gideon.link_function(BINOMIAL, 0.0) ≈ 0.5
-    @test Gideon.link_function(GAUSSIAN, 1.5) ≈ 1.5
-    @test Gideon.link_function(POISSON, 0.0) ≈ 1.0
-    @test Gideon.link_function(POISSON, 1.0) ≈ exp(1.0)
+    @test Canapes.link_function(Binomial(), 0.0) ≈ 0.5
+    @test Canapes.link_function(Gaussian(), 1.5) ≈ 1.5
+    @test Canapes.link_function(Poisson(), 0.0) ≈ 1.0
+    @test Canapes.link_function(Poisson(), 1.0) ≈ exp(1.0)
 end
 
 @testset "init_factors" begin
@@ -48,6 +60,8 @@ end
         for i in 1:50
             @test norms[i] ≈ norm(A_dense[i, :]) atol=1e-10
         end
+        @test_throws ArgumentError sparse_row_norms(A, 0)
+        @test_throws ArgumentError sparse_row_norms(A, -1)
     end
 
     @testset "L1 norms" begin
@@ -88,4 +102,12 @@ end
         @test sparse_col_nnz(empty) == zeros(Int, 5)
         @test sparse_row_nnz(empty) == zeros(Int, 10)
     end
+end
+
+@testset "Recommendation input validation" begin
+    X = sparse([1], [1], [1.0], 1, 3)
+    @test Canapes._validate_recommend_input(X, 3, 1) == 1
+    @test_throws ArgumentError Canapes._validate_recommend_input(X, 3, 0)
+    @test_throws ArgumentError Canapes._validate_recommend_input(X, 3, -1)
+    @test_throws DimensionMismatch Canapes._validate_recommend_input(X, 2, 1)
 end

@@ -1,9 +1,11 @@
-using Documenter, Gideon
+using Documenter, Canapes
 
 makedocs(
-    modules  = [Gideon],
-    sitename = "Gideon.jl",
+    modules  = [Canapes],
+    sitename = "Canapes.jl",
     format   = Documenter.HTML(prettyurls = get(ENV, "CI", nothing) == "true"),
+    doctest  = true,
+    checkdocs = :exports,
     pages    = [
         "Home"       => "index.md",
         "Algorithms" => "algorithms.md",
@@ -13,6 +15,6 @@ makedocs(
 )
 
 deploydocs(
-    repo = "github.com/ajaimes/Gideon.jl.git",
+    repo = "github.com/AbrJA/Canapes.jl.git",
     push_preview = true,
 )

@@ -7,6 +7,24 @@
 #   actual      : SparseMatrixCSC (n_users × n_items) — non-zero = relevant
 # ──────────────────────────────────────────────────────────────────────────────
 
+function _validate_ranking_inputs(predictions::AbstractMatrix{<:Integer},
+                                  actual::SparseMatrixCSC, k::Int)
+    k >= 1 || throw(ArgumentError("k must be ≥ 1, got $k"))
+    size(predictions, 2) >= 1 || throw(ArgumentError("predictions must contain at least one item per user"))
+    n_users, n_items = size(actual)
+    size(predictions, 1) == n_users || throw(DimensionMismatch(
+        "predictions has $(size(predictions, 1)) users but actual has $n_users"))
+    all(item -> 1 <= item <= n_items, predictions) || throw(ArgumentError(
+        "predictions contain an item index outside 1:$n_items"))
+
+    k_eff = min(k, size(predictions, 2))
+    for u in axes(predictions, 1)
+        length(Set(@view predictions[u, 1:k_eff])) == k_eff || throw(ArgumentError(
+            "predictions contain duplicate items for user $u in the evaluated top-k"))
+    end
+    k_eff
+end
+
 # ──────────────── Average Precision @ K ────────────────
 
 """
@@ -17,27 +35,30 @@ Returns a vector of length `n_users`.
 """
 function ap_at_k(predictions::AbstractMatrix{<:Integer},
                  actual::SparseMatrixCSC;
-                 k::Int = size(predictions, 2))
+                  k::Int = size(predictions, 2))
+    k_eff = _validate_ranking_inputs(predictions, actual, k)
     n_users = size(predictions, 1)
-    @assert n_users == size(actual, 1) "Row count mismatch"
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    @inbounds for u in 1:n_users
-        result[u] = _ap_single(predictions, actual_t, u, k)
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds result[u] = _ap_single(predictions, actual_t, u, k_eff)
+        end
     end
     result
 end
 
 """
-    map_at_k(predictions, actual; k)
+    mean_ap_at_k(predictions, actual; k)
 
 Mean Average Precision @ K (macro-averaged over all users).
 """
-function map_at_k(predictions::AbstractMatrix{<:Integer},
+function mean_ap_at_k(predictions::AbstractMatrix{<:Integer},
                   actual::SparseMatrixCSC;
                   k::Int = size(predictions, 2))
     aps = ap_at_k(predictions, actual; k)
-    sum(aps) / length(aps)
+    isempty(aps) ? 0.0 : sum(aps) / length(aps)
 end
 
 function _ap_single(predictions::AbstractMatrix{<:Integer},
@@ -69,12 +90,15 @@ Non-zero values in `actual` are treated as relevance scores.
 function ndcg_at_k(predictions::AbstractMatrix{<:Integer},
                    actual::SparseMatrixCSC;
                    k::Int = size(predictions, 2))
+    k_eff = _validate_ranking_inputs(predictions, actual, k)
     n_users = size(predictions, 1)
-    @assert n_users == size(actual, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    @inbounds for u in 1:n_users
-        result[u] = _ndcg_single(predictions, actual_t, u, k)
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds result[u] = _ndcg_single(predictions, actual_t, u, k_eff)
+        end
     end
     result
 end
@@ -116,12 +140,15 @@ Precision @ K for each user.
 function precision_at_k(predictions::AbstractMatrix{<:Integer},
                         actual::SparseMatrixCSC;
                         k::Int = size(predictions, 2))
+    k_eff = _validate_ranking_inputs(predictions, actual, k)
     n_users = size(predictions, 1)
-    @assert n_users == size(actual, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    @inbounds for u in 1:n_users
-        result[u] = _precision_single(predictions, actual_t, u, k)
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds result[u] = _precision_single(predictions, actual_t, u, k_eff)
+        end
     end
     result
 end
@@ -151,24 +178,28 @@ Recall @ K for each user.
 function recall_at_k(predictions::AbstractMatrix{<:Integer},
                      actual::SparseMatrixCSC;
                      k::Int = size(predictions, 2))
+    k_eff = _validate_ranking_inputs(predictions, actual, k)
     n_users = size(predictions, 1)
-    @assert n_users == size(actual, 1)
     actual_t = _transpose_for_row_access(actual)
     result = Vector{Float64}(undef, n_users)
-    @inbounds for u in 1:n_users
-        relevant = Set(_relevant_items(actual_t, u))
-        if isempty(relevant)
-            result[u] = 0.0
-            continue
-        end
-        k_eff = min(k, size(predictions, 2))
-        hits = 0
-        @inbounds for pos in 1:k_eff
-            if predictions[u, pos] in relevant
-                hits += 1
+    nt = Threads.nthreads()
+    Threads.@threads for chunk in 1:nt
+        for u in _thread_chunk_bounds(chunk, n_users, nt)
+            @inbounds begin
+                relevant = Set(_relevant_items(actual_t, u))
+                if isempty(relevant)
+                    result[u] = 0.0
+                    continue
+                end
+                hits = 0
+                for pos in 1:k_eff
+                    if predictions[u, pos] in relevant
+                        hits += 1
+                    end
+                end
+                result[u] = hits / length(relevant)
             end
         end
-        result[u] = hits / length(relevant)
     end
     result
 end

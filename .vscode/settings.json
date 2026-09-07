@@ -1,0 +1,11 @@
+{
+  "positron.r.customBinaries": [
+    "/home/ajaimes/.uvr/r-versions/4.6.1/bin/R"
+  ],
+  "positron.r.customRootFolders": [
+    "/home/ajaimes/.uvr/r-versions"
+  ],
+  "positron.r.interpreters.default": "/home/ajaimes/.uvr/r-versions/4.6.1/bin/R",
+  "r.rpath.linux": "/home/ajaimes/.uvr/r-versions/4.6.1/bin/R",
+  "r.rterm.linux": "/home/ajaimes/.uvr/r-versions/4.6.1/bin/R"
+}

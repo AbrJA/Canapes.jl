@@ -15,37 +15,45 @@
 Follow The Regularized Leader proximal SGD for generalized linear models on sparse data.
 
 Supports three families:
-- `BINOMIAL` — logistic regression (predictions in [0,1])
-- `GAUSSIAN` — linear regression (identity link)
-- `POISSON`  — Poisson regression (log link, predictions > 0)
+- `Links.Binomial()` — logistic regression (predictions in [0,1])
+- `Links.Gaussian()` — linear regression (identity link)
+- `Links.Poisson()`  — Poisson regression (log link, predictions > 0)
 
 # Constructor
 ```julia
-FTRL(; learning_rate=0.1, learning_rate_decay=0.5, λ=0.0, l1_ratio=1.0,
-       dropout=0.0, family=BINOMIAL, clip_gradient=1000.0, verbose=true)
+FTRL(; lr=0.1, lr_decay=0.5, λ=0.0, l1_ratio=1.0,
+       dropout=0.0, family=Links.Binomial(), grad_clip=1000.0, verbose=true)
 ```
 
 # Example
 ```julia
-using SparseArrays, Gideon
+julia> using SparseArrays
 
-X = sprand(10000, 1000, 0.01)
-y = rand([0.0, 1.0], 10000)
-model = FTRL(learning_rate=0.1, λ=0.01, l1_ratio=0.5, family=BINOMIAL)
-fit!(model, X, y; n_iter=5)
-predictions = predict(model, X)
-weights = coef(model)
+julia> X = sprand(MersenneTwister(1), 200, 100, 0.05);
+
+julia> y = rand(MersenneTwister(3), [0.0, 1.0], 200);
+
+julia> model = FTRL(lr=0.1, λ=0.01, l1_ratio=0.5, max_iter=2, verbose=false);
+
+julia> fit!(model, X, y; rng=MersenneTwister(2));
+
+julia> size(predict(model, X))
+(200,)
+
+julia> length(coef(model))
+100
 ```
 """
 mutable struct FTRL{T<:AbstractFloat} <: AbstractSparseRegression
-    learning_rate::T
-    learning_rate_decay::T
-    λ::T
-    l1_ratio::T
-    dropout::T
-    family::Family
-    clip_gradient::T
-    verbose::Bool
+    lr::T
+    const lr_decay::T
+    const λ::T
+    const l1_ratio::T
+    const dropout::T
+    const family::LossFamily
+    const grad_clip::T
+    const max_iter::Int
+    const verbose::Bool
     n_features::Int
     z::Vector{T}
     n::Vector{T}
@@ -53,43 +61,46 @@ mutable struct FTRL{T<:AbstractFloat} <: AbstractSparseRegression
 end
 
 function FTRL(;
-    learning_rate::Float64 = 0.1,
-    learning_rate_decay::Float64 = 0.5,
+    lr::Float64 = 0.1,
+    lr_decay::Float64 = 0.5,
     λ::Float64 = 0.0,
     l1_ratio::Float64 = 1.0,
     dropout::Float64 = 0.0,
-    family::Family = BINOMIAL,
-    clip_gradient::Float64 = 1000.0,
+    family::LossFamily = Links.Binomial(),
+    grad_clip::Float64 = 1000.0,
+    max_iter::Int = 1,
     verbose::Bool = true,
+    T::Type{<:AbstractFloat} = Float32,
 )
-    @assert 0.0 <= dropout < 1.0 "dropout must be in [0, 1)"
-    @assert 0.0 <= l1_ratio <= 1.0 "l1_ratio must be in [0, 1]"
-    @assert λ >= 0.0 "λ must be non-negative"
-    @assert learning_rate > 0.0 "learning_rate must be positive"
-    @assert learning_rate_decay > 0.0 "learning_rate_decay must be positive"
-    @assert clip_gradient > 0.0 "clip_gradient must be positive"
-    FTRL{Float64}(learning_rate, learning_rate_decay, λ, l1_ratio, dropout,
-                  family, clip_gradient, verbose,
-                  0, Float64[], Float64[], false)
+    0.0 <= dropout < 1.0 || throw(ArgumentError("dropout must be in [0, 1), got $dropout"))
+    0.0 <= l1_ratio <= 1.0 || throw(ArgumentError("l1_ratio must be in [0, 1], got $l1_ratio"))
+    λ >= 0.0 || throw(ArgumentError("λ must be non-negative, got $λ"))
+    lr > 0.0 || throw(ArgumentError("lr must be positive, got $lr"))
+    lr_decay > 0.0 || throw(ArgumentError("lr_decay must be positive, got $lr_decay"))
+    grad_clip > 0.0 || throw(ArgumentError("grad_clip must be positive, got $grad_clip"))
+    FTRL{T}(T(lr), T(lr_decay), T(λ), T(l1_ratio), T(dropout),
+            family, T(grad_clip), max_iter, verbose,
+            0, T[], T[], false)
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
-# partial_fit! — single epoch (online / streaming)
+# update! — single epoch (online / streaming)
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    partial_fit!(model::FTRL, X, y; weights, rng) -> model
+    update!(model::FTRL, X, y; weights, rng) -> model
 
-Run a single epoch of FTRL-proximal SGD over the data.
+Run a single epoch of proximal SGD over the data.
 Supports online/streaming learning — can be called repeatedly.
 """
-function partial_fit!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVector;
+function update!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVector;
                       weights::AbstractVector{T} = ones(T, length(y)),
                       rng::AbstractRNG = Random.default_rng()) where {T,Tv,Ti}
     iter_start = time_ns()
     n_samples, n_features = size(X)
-    @assert n_samples == length(y) "X rows ($n_samples) ≠ length(y) ($(length(y)))"
-    @assert !any(isnan, nonzeros(X)) "NaN values in input matrix"
+    n_samples == length(y) || throw(DimensionMismatch("X rows ($n_samples) ≠ length(y) ($(length(y)))"))
+    _require_finite_input(X, "FTRL")
+    _require_finite_vector(y, "FTRL")
 
     if !model.is_initialized
         model.n_features = n_features
@@ -97,19 +108,19 @@ function partial_fit!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVect
         model.n = zeros(T, n_features)
         model.is_initialized = true
     end
-    @assert n_features == model.n_features "Feature dimension mismatch: got $n_features, expected $(model.n_features)"
+    n_features == model.n_features || throw(DimensionMismatch("Feature dimension mismatch: got $n_features, expected $(model.n_features)"))
 
     Xt = SparseMatrixCSC(X')  # n_features × n_samples
 
     z = model.z
     n_acc = model.n
-    lr = model.learning_rate
-    β  = model.learning_rate_decay
+    lr = model.lr
+    β  = model.lr_decay
     λ  = model.λ
     λ1 = λ * model.l1_ratio
     λ2 = λ * (one(T) - model.l1_ratio)
     do_dropout = model.dropout > zero(T)
-    clip = model.clip_gradient
+    clip = model.grad_clip
     family = model.family
 
     rv = rowvals(Xt)
@@ -138,7 +149,7 @@ function partial_fit!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVect
             j = rv[idx]
             xval = T(nzv[idx])
             gj = err * xval
-            # Gradient clipping (matches R rsparse)
+            # Gradient clipping (validated against the R reference)
             gj = clamp(gj, -clip, clip)
             σj = (sqrt(n_acc[j] + gj^2) - sqrt(n_acc[j])) / lr
             z[j] += gj - σj * _ftrl_weight(z[j], n_acc[j], lr, β, λ1, λ2)
@@ -148,31 +159,54 @@ function partial_fit!(model::FTRL{T}, X::SparseMatrixCSC{Tv,Ti}, y::AbstractVect
 
     if model.verbose
         pass_seconds = (time_ns() - iter_start) / 1e9
-        @info @sprintf("[FTRL] partial_fit: %d samples, %d features | time=%s",
+        @info @sprintf("[FTRL] update: %d samples, %d features | time=%s",
                        n_samples, n_features, elapsed_str(pass_seconds))
     end
     model
 end
 
 """
-    fit!(model::FTRL, X, y; n_iter=1, kwargs...) -> model
+    fit!(model::FTRL, X, y; kwargs...) -> model
 
-Train the FTRL model for `n_iter` epochs over the full dataset.
+Train the FTRL model for `model.max_iter` epochs over the full dataset.
 """
 function fit!(model::FTRL{T}, X::SparseMatrixCSC, y::AbstractVector;
-              n_iter::Int = 1, kwargs...) where {T}
+              weights::AbstractVector{T}=ones(T, length(y)),
+              rng::AbstractRNG=Random.default_rng(),
+              callbacks::AbstractVector{<:AbstractCallback}=AbstractCallback[]) where {T}
     train_start = time_ns()
-    for i in 1:n_iter
+    run_callbacks_train_begin(callbacks, model)
+    try
+    for i in 1:model.max_iter
         epoch_start = time_ns()
-        partial_fit!(model, X, y; kwargs...)
+        update!(model, X, y; weights=weights, rng=rng)
         epoch_seconds = (time_ns() - epoch_start) / 1e9
         total_seconds = (time_ns() - train_start) / 1e9
         if model.verbose
             @info @sprintf("[FTRL] epoch %d/%d | epoch=%s | total=%s",
-                           i, n_iter, elapsed_str(epoch_seconds), elapsed_str(total_seconds))
+                           i, model.max_iter, elapsed_str(epoch_seconds), elapsed_str(total_seconds))
+        end
+        if !isempty(callbacks)
+            loss = _ftrl_training_loss(model, X, y)
+            info = CallbackInfo(i, Float64(loss), total_seconds, model)
+            run_callbacks(callbacks, info) && break
         end
     end
     model
+    finally
+        run_callbacks_train_end(callbacks, model)
+    end
+end
+
+function _ftrl_training_loss(model::FTRL{T}, X::SparseMatrixCSC,
+                             y::AbstractVector) where {T}
+    preds = predict(model, X)
+    if model.family isa Links.Binomial
+        -sum(y .* log.(preds .+ T(1e-10)) .+
+             (one(T) .- y) .* log.(one(T) .- preds .+ T(1e-10))) / length(y)
+    else
+        sum((preds .- y).^2) / length(y)
+    end
 end
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -183,14 +217,14 @@ end
     predict(model::FTRL, X) -> Vector
 
 Generate predictions using the fitted model. Output depends on family:
-- `BINOMIAL` → probabilities in [0,1]
-- `GAUSSIAN` → real-valued predictions
-- `POISSON`  → positive count predictions
+- `Links.Binomial()` → probabilities in [0,1]
+- `Links.Gaussian()` → real-valued predictions
+- `Links.Poisson()`  → positive count predictions
 """
 function predict(model::FTRL{T}, X::SparseMatrixCSC) where {T}
-    model.is_initialized || error("Model not fitted")
+    _require_fitted(model.is_initialized)
     n_samples = size(X, 1)
-    @assert size(X, 2) == model.n_features "Feature dimension mismatch"
+    size(X, 2) == model.n_features || throw(DimensionMismatch("Feature dimension mismatch: expected $(model.n_features), got $(size(X, 2))"))
 
     w = coef(model)
     Xt = SparseMatrixCSC(X')
@@ -216,10 +250,10 @@ end
 Return the model coefficient vector derived from the FTRL state.
 """
 function coef(model::FTRL{T}) where {T}
-    model.is_initialized || error("Model not fitted")
+    _require_fitted(model.is_initialized)
     w = Vector{T}(undef, model.n_features)
-    lr = model.learning_rate
-    β  = model.learning_rate_decay
+    lr = model.lr
+    β  = model.lr_decay
     λ1 = model.λ * model.l1_ratio
     λ2 = model.λ * (one(T) - model.l1_ratio)
     @inbounds for j in 1:model.n_features

@@ -20,6 +20,7 @@ end
 Compute row-wise Lp norms of a CSC sparse matrix without allocating full dense rows.
 """
 function sparse_row_norms(A::SparseMatrixCSC{Tv}, p::Int=2) where {Tv}
+    p > 0 || throw(ArgumentError("p must be positive, got $p"))
     m = size(A, 1)
     norms = zeros(Tv, m)
     rv = rowvals(A)

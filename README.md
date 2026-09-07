@@ -1,412 +1,178 @@
 <div align="center">
 
-# Gideon.jl
+# Canapes.jl
 
-**High-performance statistical learning on sparse matrices in pure Julia.**
+**Sparse statistical learning and recommender systems in pure Julia.**
 
-[![Build Status](https://github.com/AbrJA/Gideon.jl/workflows/CI/badge.svg)](https://github.com/AbrJA/Gideon.jl/actions)
-[![codecov](https://codecov.io/gh/AbrJA/Gideon.jl/graph/badge.svg)](https://codecov.io/gh/AbrJA/Gideon.jl)
-[![Julia 1.9+](https://img.shields.io/badge/Julia-1.9%2B-blue?logo=julia)](https://julialang.org)
+[![Build Status](https://github.com/AbrJA/Canapes.jl/workflows/CI/badge.svg)](https://github.com/AbrJA/Canapes.jl/actions)
+[![codecov](https://codecov.io/gh/AbrJA/Canapes.jl/graph/badge.svg)](https://codecov.io/gh/AbrJA/Canapes.jl)
+[![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://AbrJA.github.io/Canapes.jl/)
+[![Julia 1.10+](https://img.shields.io/badge/Julia-1.10%2B-blue?logo=julia)](https://julialang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 </div>
 
 ---
 
-Gideon.jl is a pure-Julia port and enhancement of the R package [rsparse](https://github.com/dselivanov/rsparse), providing a unified, extensible interface for matrix factorization, sparse regression, and recommender-system evaluation. All algorithms are validated against R reference outputs and optimized for production scale via multithreading, SIMD vectorization, and optional GPU acceleration.
+Canapes.jl is a pure-Julia library for statistical learning on sparse matrices:
+matrix factorization, item-item similarity, low-rank completion, and sparse
+regression — all behind one unified `fit!` / `recommend` / `score` / `predict`
+API on `SparseMatrixCSC`.
 
-## Features
-
-- **Unified API** — `fit!` / `predict` / `predict_scores` / `transform` for every model; no framework lock-in.
-- **Production-grade performance** — zero-allocation inner loops, `@inbounds @simd` vectorization, BLAS-2 gram updates, per-thread pre-allocated buffers.
-- **GPU acceleration** — optional CUDA.jl extension for EASE, iALS, WRMF (via package extensions).
-- **R-validated correctness** — the full test suite includes a Tier-2 fixture layer that compares numerically against pre-computed R / rsparse outputs.
-- **Sparse-native** — all algorithms operate directly on `SparseMatrixCSC`; no dense conversion needed.
-- **Precompilation** — `PrecompileTools.jl` workloads reduce time-to-first-execution.
-- **Tables.jl integration** — accept interaction data as `(user, item, value)` triplets from any Tables.jl-compatible source.
-- **Cross-validation & search** — built-in temporal split, k-fold CV, grid search, and random search with warm-starting.
-- **Callback system** — extensible training hooks for early stopping, checkpointing, learning rate scheduling, and custom logging.
-
----
-
-## Algorithms
-
-| Model | Type | Reference |
-|-------|------|-----------|
-| `WRMF` | Implicit / Explicit ALS (Cholesky, CG, NNLS) | Hu, Koren & Volinsky (2008) |
-| `IALS` | Implicit ALS with Gramian caching | Rendle et al. (2021) |
-| `EALS` | Element-wise ALS with popularity weighting | He et al. (2016) |
-| `BPR` | Bayesian Personalized Ranking (pairwise SGD) | Rendle et al. (2009) |
-| `LMF` | Logistic Matrix Factorization | Johnson (2014) |
-| `GloVe` | Co-occurrence embedding (Hogwild AdaGrad) | Pennington, Socher & Manning (2014) |
-| `EASE` | Embarrassingly Shallow Autoencoders | Steck (2019) |
-| `SLIM` | Sparse Linear Methods (elastic net) | Ning & Karypis (2011) |
-| `FTRL` | Follow The Regularized Leader (online GLM) | McMahan et al. (2013) |
-| `FactorizationMachine` | 2nd-order FM (AdaGrad SGD) | Rendle (2010) |
-| `soft_impute` / `soft_svd` | Low-rank matrix completion | Hastie et al. (2014) |
-
----
+- **Reproducible training** for a fixed seed and environment (GlobalVectors and PairwiseRanking are
+  the documented Hogwild exceptions)
+- **Memory-bounded scoring** — top-k paths never materialize a full dense score
+  matrix
+- **Reference-validated** — weights, predictions, and losses are compared
+  numerically against R (`rsparse`) and Python (`implicit`, `scikit-learn`,
+  `scikit-surprise`) implementations
+- **Optional GPU** acceleration via a CUDA.jl extension, Tables.jl input,
+  atomic model persistence, and a tracked benchmark harness
 
 ## Installation
 
 ```julia
 using Pkg
-Pkg.add(url="https://github.com/AbrJA/Gideon.jl")
+Pkg.add("Canapes")   # once registered; before that: Pkg.add(url="https://github.com/AbrJA/Canapes.jl")
 ```
 
-Requires Julia ≥ 1.9.
+Requires Julia ≥ 1.10. The full API reference is at [docs](https://AbrJA.github.io/Canapes.jl/).
 
 ---
 
 ## Quick Start
 
-### WRMF — Implicit Collaborative Filtering
-
 ```julia
-using Gideon, SparseArrays, Random
+using Canapes, SparseArrays, Random, Statistics
 
-# Build a user–item interaction matrix (n_users × n_items)
-rng = MersenneTwister(42)
-X = sprand(rng, 1000, 500, 0.02)   # 1 K users, 500 items, 2% density
+# 1. Interactions as a table (any Tables.jl source: NamedTuples, DataFrames, CSV, Arrow, …)
+df = (user=[1,1,2,3,3,4], item=[2,5,3,1,4,2], rating=[1.0,1.0,1.0,1.0,1.0,1.0])
+X = triplets_to_sparse(df; user_col=:user, item_col=:item, value_col=:rating)   # 4×5
 
-# Train with Conjugate-Gradient ALS (default, fastest at scale)
-model = WRMF(rank=20, λ=0.1, α=1.0, max_iter=15)
-fit!(model, X; rng)
+# 2. Train (seen items are masked at recommend time)
+model = WeightedMF(rank=8, λ=0.1, α=40.0, max_iter=15, verbose=false)
+fit!(model, X; rng=MersenneTwister(42))
 
-# User and item embeddings: rank × n matrix
-size(model.user_factors)   # (20, 1000)
-size(model.item_factors)   # (20, 500)
+# 3. Top-k recommendations per user (k clamps to n_items)
+preds = recommend(model, X; k=10)   # 4×5 Matrix{Int} of item indices
 
-# Embed new users from their interaction history
-X_new = sprand(rng, 50, 500, 0.03)
-U_new = transform(model, X_new)    # (20, 50)
-```
-
-Switch to Cholesky for maximum numerical stability, or NNLS for non-negative factors:
-
-```julia
-model_chol = WRMF(rank=20, λ=0.1, solver=CHOLESKY)
-model_nnls = WRMF(rank=20, λ=0.1, solver=NNLS)
+# 4. Evaluate against a held-out split (mean_ap_at_k is scalar; ndcg_at_k is per-user)
+X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
+fit!(model, X_train; rng=MersenneTwister(42))
+println("MAP@10      = ", round(mean_ap_at_k(recommend(model, X_train; k=10), X_test), digits=4))
+println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10), X_test)), digits=4))
 ```
 
 ---
 
-### GloVe — Co-occurrence Embeddings
+## Models
 
-```julia
-using Gideon, SparseArrays, Random
+| Model | Type | Reference |
+|-------|------|-----------|
+| `WeightedMF` | Implicit/explicit ALS (Cholesky, CG, NNLS solvers) | Hu, Koren & Volinsky (2008) |
+| `CachedALS` | Implicit ALS with Gramian caching | Rendle et al. (2021) |
+| `ElementwiseALS` | Element-wise ALS with popularity weighting | He et al. (2016) |
+| `PairwiseRanking` | Pairwise ranking via SGD | Rendle et al. (2009) |
+| `GlobalVectors` | Co-occurrence embeddings | Pennington, Socher & Manning (2014) |
+| `ShallowAutoencoder` | Closed-form item-item model | Steck (2019) |
+| `SparseLinearModel` | Sparse linear methods (elastic net) | Ning & Karypis (2011) |
+| `SparseLinearADMM` | ADMM-based SparseLinearModel | Steck et al. (2020) |
+| `ItemKNN` | Item-based KNN (cosine, Jaccard, asymmetric, BM25) | Deshpande & Karypis (2004) |
+| `GraphRandomWalk` | RP3β graph random walk | Paolino et al. (2017) |
+| `FTRL` | Online GLM (elastic-net, streaming) | McMahan et al. (2013) |
+| `FactorizationMachine` | Factorization Machines | Rendle (2010) |
+| `SoftImpute` | Low-rank matrix completion | Hastie et al. (2014) |
+| `SoftSVD` / `PureSVD` | Low-rank SVD (ALS style) | Hastie et al. (2014) / Cremonesi et al. (2010) |
+| `BaselineOnly` | Rating baseline μ + b_u + b_i | Koren (2009) |
+| `SlopeOne` | Rating predictor from pair deviations | Lemire & Maclachlan (2005) |
+| `PearsonKNN` | User-centered Pearson neighborhood | Resnick et al. (1994) |
 
-# Co-occurrence matrix must be square and positive (e.g. from a tokenizer)
-C = sprand(MersenneTwister(1), 5000, 5000, 0.005)
-C = C + C'   # symmetrize
+`ProbabilisticMF` and `LogisticMF` live in the `Canapes.Experimental` namespace; the latter
+is reference-validated against `implicit` but ranks at the bottom of implicit
+top-N benchmarks and needs fragile tuning.
 
-glove = GloVe(rank=100, learning_rate=0.05, x_max=100.0)
-fit!(glove, C; n_iter=20, rng=MersenneTwister(2))
+Choosing a model, briefly:
 
-# Final embeddings: average main + context vectors (standard GloVe convention)
-E = get_embeddings(glove)   # 100 × 5000
-```
-
----
-
-### Logistic Matrix Factorization (LMF)
-
-```julia
-using Gideon, SparseArrays, Random
-
-X = sprand(MersenneTwister(3), 800, 300, 0.03)
-
-lmf = LMF(rank=15, α=1.0, λ=0.1, learning_rate=0.01, max_iter=20, n_negative=5)
-fit!(lmf, X; rng=MersenneTwister(3))
-
-size(lmf.user_factors)   # (15, 800)
-size(lmf.item_factors)   # (15, 300)
-```
-
----
-
-### FTRL — Online Logistic Regression
-
-FTRL supports Elastic-Net regularization and streaming/online updates via `partial_fit!`.
-
-```julia
-using Gideon, SparseArrays, Random
-
-rng = MersenneTwister(7)
-n, p = 10_000, 50_000
-X_train = sprand(rng, n, p, 0.001)
-y_train = rand(rng, Bool, n) .|> Float64
-
-model = FTRL(
-    learning_rate       = 0.1,
-    learning_rate_decay = 0.5,
-    λ                   = 1e-4,
-    l1_ratio            = 0.9,   # mostly L1 (Lasso-like)
-)
-
-# Single pass — call multiple times for multiple epochs
-partial_fit!(model, X_train, y_train; rng)
-
-# Predict probabilities
-ŷ = predict(model, X_train)   # Vector{Float64} ∈ (0, 1)
-
-# Online update with a new mini-batch
-X_new = sprand(rng, 200, p, 0.001)
-y_new = rand(rng, Bool, 200) .|> Float64
-partial_fit!(model, X_new, y_new; rng)
-```
+- **Implicit feedback (clicks, views, plays)**: `WeightedMF` (fast, any scale), `CachedALS`
+  (accuracy/cost balance), `ElementwiseALS` (popularity-weighted), `PairwiseRanking` (pairwise
+  ranking). Note: "iALS" in the literature usually means Hu et al. (2008) —
+  that is this package's `WeightedMF`; `CachedALS` here is Rendle et al. (2021).
+- **Item-item similarity**: `ShallowAutoencoder` (accuracy), `SparseLinearModel` / `SparseLinearADMM` (sparse and
+  interpretable weights), `ItemKNN` (lightweight baseline), `GraphRandomWalk`
+  (long-tail bias).
+- **Explicit ratings (rating prediction)**: `WeightedMF(feedback=Explicit)` (BiasedMF),
+  plus `BaselineOnly`, `SlopeOne`, `PearsonKNN`, and the completion models;
+  evaluated with `rmse` / `mae`.
+- **Sparse regression / CTR**: `FTRL` (online) and `FactorizationMachine`.
 
 ---
 
-### Factorization Machines
-
-```julia
-using Gideon, SparseArrays, Random
-
-rng = MersenneTwister(9)
-X = sprand(rng, 5_000, 1_000, 0.01)
-y = rand(rng, Bool, 5_000) .|> Float64
-
-fm = FactorizationMachine(
-    rank           = 8,
-    learning_rate_w = 0.1,
-    learning_rate_v = 0.05,
-    λ_w            = 1e-5,
-    λ_v            = 1e-5,
-    family         = :binomial,
-)
-
-partial_fit!(fm, X, y; rng)
-ŷ = predict(fm, X)
-```
-
----
-
-### SoftImpute — Low-rank Matrix Completion
-
-```julia
-using Gideon, SparseArrays, LinearAlgebra, Random
-
-rng = MersenneTwister(11)
-X_observed = sprand(rng, 200, 150, 0.3)   # only ~30% of entries observed
-
-# Complete the matrix up to rank 10, nuclear-norm penalty λ=0.5
-result = soft_impute(X_observed; rank=10, λ=0.5, n_iter=100)
-
-# Low-rank approximation: result.U * Diagonal(result.d) * result.V'
-recon = result.U * Diagonal(result.d) * result.V'
-size(recon)   # (200, 150)
-
-# Use soft_svd for a cleaner low-rank SVD (no imputation correction term)
-svd_result = soft_svd(X_observed; rank=5, n_iter=50)
-```
-
----
-
-### Ranking Metrics
-
-All metric functions accept a predictions matrix of shape `(n_users, K)` (item indices,
-1-based) and a sparse relevance matrix.
-
-```julia
-using Gideon, SparseArrays, Random
-
-rng = MersenneTwister(13)
-n_users, n_items, K = 500, 2000, 20
-
-# Ground-truth relevance (non-zero = relevant)
-actual = sprand(rng, n_users, n_items, 0.02)
-
-# Simulated top-K predictions (replace with your model's output)
-preds = hcat([randperm(rng, n_items)[1:K] for _ in 1:n_users]...)'
-
-ap   = ap_at_k(preds, actual; k=K)          # Vector{Float64}, length n_users
-ndcg = ndcg_at_k(preds, actual; k=K)
-prec = precision_at_k(preds, actual; k=K)
-rec  = recall_at_k(preds, actual; k=K)
-
-println("MAP@$K     = ", round(map_at_k(preds, actual; k=K), digits=4))
-println("Mean NDCG@$K = ", round(mean(ndcg), digits=4))
-```
-
----
-
-## Architecture
-
-```
-Gideon.jl
-├── src/
-│   ├── Gideon.jl          # Module entry, exports
-│   ├── types.jl           # Abstract hierarchy, ALSSolver / FeedbackType enums
-│   ├── utils.jl           # init_factors, sigmoid, _inplace_shuffle!, …
-│   ├── sparse_utils.jl    # to_csr, dual_representation, row/col nnz
-│   ├── callbacks.jl       # EarlyStopping, Checkpoint, LRScheduler, custom hooks
-│   ├── crossval.jl        # temporal_split, kfold_cv, grid_search, random_search
-│   ├── serialization.jl   # save_model / load_model (versioned binary format)
-│   ├── tables.jl          # interactions_to_sparse / sparse_to_interactions
-│   ├── progress.jl        # ConvergenceMonitor, logging utilities
-│   ├── precompile.jl      # PrecompileTools workloads for TTFX
-│   ├── algorithms/
-│   │   ├── wrmf.jl        # Implicit/Explicit ALS (Cholesky · CG · NNLS)
-│   │   ├── ials.jl        # iALS with Gramian caching
-│   │   ├── eals.jl        # Element-wise ALS (popularity-weighted)
-│   │   ├── bpr.jl         # Bayesian Personalized Ranking (pairwise SGD)
-│   │   ├── lmf.jl         # Logistic MF with negative sampling
-│   │   ├── glove.jl       # GloVe Hogwild AdaGrad
-│   │   ├── ease.jl        # EASE (closed-form autoencoder)
-│   │   ├── slim.jl        # SLIM (elastic-net item-item)
-│   │   ├── ftrl.jl        # Follow The Regularized Leader (online)
-│   │   ├── fm.jl          # Factorization Machines
-│   │   └── soft_impute.jl # SoftImpute / SoftSVD
-│   └── metrics/
-│       └── ranking.jl     # AP@K, MAP@K, NDCG@K, Precision@K, Recall@K
-├── ext/
-│   └── GideonCUDAExt.jl   # GPU acceleration (EASE, iALS, WRMF, predict)
-└── test/
-    ├── runtests.jl
-    └── r_correctness.jl   # Numerical validation against R / rsparse
-```
-
-### Type Hierarchy
-
-```julia
-AbstractSparseModel
-├── AbstractMatrixFactorization   →  WRMF, IALS, EALS, LMF, BPR, GloVe, SoftImputeResult
-└── AbstractSparseRegression      →  FTRL, FactorizationMachine
-# Item-item models (no abstract parent):    EASE, SLIM
-```
-
-Every model implements the same generic interface:
+## API at a glance
 
 | Function | Description |
 |----------|-------------|
-| `fit!(model, X)` | Train in-place on sparse matrix `X` |
-| `partial_fit!(model, X, y)` | Online/incremental update (FTRL, FM, eALS) |
-| `predict(model, X; k)` | Return top-k item indices per user |
-| `predict_scores(model, X)` | Return full user×item score matrix |
-| `transform(model, X)` | Return latent embeddings for new users |
-| `coef(model)` | Return learned weight vector (FTRL) |
+| `fit!(model, X)` | Train in place on a sparse matrix (transactional: previous state intact on failure) |
+| `update!(model, X, y)` | Online / incremental update (FTRL, FactorizationMachine, ElementwiseALS) |
+| `recommend(model, X; k)` | Top-k item indices per user, seen items masked — never builds the full score matrix |
+| `score(model, X)` | Full user × item score matrix |
+| `score(model, users, items)` | Scores for specific (user, item) pairs |
+| `transform(model, X)` | Latent embeddings for new users (fold-in) |
+| `similar_items(model, id; k)` | Cosine nearest neighbors |
+| `coef(model)` / `predict(model, X)` | Learned weights / regression predictions (FTRL, FactorizationMachine) |
+
+Metrics (`ap_at_k`, `ndcg_at_k`, `precision_at_k`, `recall_at_k`, `mean_ap_at_k`,
+`rmse`, `mae`), `grid_search` / `random_search`, and the `triplets_to_sparse` /
+`sparse_to_triplets` Tables.jl round-trips are part of the same package — see
+the docs for examples.
 
 ---
 
-## GPU Acceleration
+## Performance, Validation & Benchmarking
 
-With [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl) installed, Gideon loads a package extension providing:
-
-```julia
-using Gideon, CUDA
-
-# GPU-accelerated EASE (fully on GPU)
-fit_gpu!(model::EASE, X)
-
-# GPU-accelerated iALS/WRMF (Gramian on GPU, solve on CPU)
-fit_gpu!(model::IALS, X)
-fit_gpu!(model::WRMF, X)
-
-# Score computation on GPU for any matrix factorization model
-predict_scores_gpu(model, X)
-predict_gpu(model, X; k=10)
-```
-
----
-
-## Tables.jl Integration
-
-Accept interaction data from any Tables.jl-compatible source (DataFrames, CSV rows, etc.):
-
-```julia
-using Gideon
-
-# From a NamedTuple of vectors (column table)
-data = (user=[1,1,2,3,3], item=[2,5,3,1,4], value=[1.0,2.0,1.0,3.0,1.0])
-X = interactions_to_sparse(data)
-
-# From a Vector of NamedTuples (row table)
-rows = [(user=1, item=3, value=1.0), (user=2, item=1, value=2.0)]
-X = interactions_to_sparse(rows)
-
-# Convert back to triplets
-triplets = sparse_to_interactions(X)
-```
-
----
-
-## Cross-Validation & Hyperparameter Search
-
-```julia
-using Gideon, SparseArrays
-
-X = sprand(1000, 500, 0.02)
-
-# Temporal train/test split
-X_train, X_test = temporal_split(X; ratio=0.8)
-
-# Grid search over hyperparameters
-best = grid_search(WRMF, X_train, X_test;
-    params = (rank=[16, 32, 64], λ=[0.01, 0.1, 1.0]),
-    metric = :ndcg, k = 10)
-
-# Random search with budget
-best = random_search(WRMF, X_train, X_test;
-    params = (rank=16:128, λ=LogRange(1e-4, 1.0)),
-    n_trials = 20, metric = :ndcg, k = 10)
-```
-
----
-
-## Performance Design
-
-| Technique | Where used |
-|-----------|-----------|
-| Pre-allocated per-thread Gram / RHS / Cholesky buffers | WRMF ALS sweep |
-| `BLAS.syr!` rank-1 Gram accumulation | WRMF Cholesky solver |
-| `BLAS.syrk!` item Gram `YᵀY` | WRMF, iALS |
-| Fast-path manual SIMD dot (`@inbounds @simd`) for sparse users with < 32 nnz | WRMF CG `_implicit_matvec!` |
-| `@inbounds @simd` vectorized dot / gradient loops | WRMF, LMF, GloVe, BPR, eALS |
-| CSR dual storage for O(nnz_u) per-user row access | All algorithms, metrics |
-| `Threads.@threads :static` outer loops | WRMF, iALS, eALS, BPR user/item sweeps |
-| Element-wise coordinate descent O(d) per update | eALS |
-| Gramian caching (avoids per-user recomputation) | iALS, eALS |
-| Zero-allocation Fisher-Yates shuffle | GloVe epoch shuffling |
-| Numerical stability (epsilon floors in AdaGrad) | GloVe, FM |
-| PrecompileTools workloads | All algorithms (reduces TTFX) |
-| Optional GPU offloading via CUDA.jl extension | EASE, iALS, WRMF, predict |
-
----
+- **Thread-safe and reproducible**: shared chunked-buffer helpers for
+  `Threads.@threads` loops, `@simd` reductions without `@fastmath`, per-chunk
+  work buffers.
+- **Reference parity** is enforced by `validation/run.jl` (R, Python, Surprise,
+  MovieLens-1M), and a tracked harness in `benchmark/` records `fit!` /
+  `recommend` time and allocations at three fixed scales across commits.
 
 ## Testing
 
 ```bash
-julia --project=. --threads=4 -e 'using Pkg; Pkg.test()'
+julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'                 # full suite
+TEST_SUITE=fast julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'  # fast (skips Aqua/JET, docs, GPU)
 ```
 
-The suite runs **420+ tests** covering:
+The suite covers unit correctness, randomized property tests, pure-Julia
+fixtures, reference-style contracts, executed docstrings, README examples, and
+Aqua/JET static analysis; GPU tests run when CUDA is available. CI runs the full
+suite on Julia 1, LTS, and pre-release, on Linux, macOS, and Windows, and
+uploads coverage to Codecov.
 
-- Unit correctness (dimensions, NaN / Inf guards, convergence monotonicity)
-- R / rsparse numerical fixture comparisons (weights, predictions, loss values)
-- Static analysis via [Aqua.jl](https://github.com/JuliaTesting/Aqua.jl) and [JET.jl](https://github.com/aviatesk/JET.jl)
-- All algorithms: WRMF, iALS, eALS, BPR, LMF, GloVe, EASE, SLIM, FTRL, FM, SoftImpute
-- Infrastructure: serialization, cross-validation, callbacks, Tables.jl integration
-- GPU stubs (full GPU tests when CUDA available)
+## GPU
 
----
+With CUDA.jl installed, a package extension adds `fit_gpu!`, `score_gpu`, and
+`recommend_gpu` for ShallowAutoencoder, CachedALS, and WeightedMF — load `CUDA` and the same API works.
 
-## Dependencies
+## Contributing
 
-| Package | Role |
-|---------|------|
-| `SparseArrays` (stdlib) | Core sparse matrix type |
-| `LinearAlgebra` (stdlib) | BLAS / LAPACK, SVD, Cholesky |
-| `SparseMatricesCSR.jl` | CSR representation for row-oriented access |
-| `PrecompileTools.jl` | Precompilation workloads for faster TTFX |
-
-### Optional (Extensions)
-
-| Package | Role |
-|---------|------|
-| `CUDA.jl` | GPU acceleration via package extension |
+Issues and PRs are welcome. Run the full suite (`--threads=8`) before opening a
+PR, validate performance changes with `benchmark/run.jl`, and keep training
+kernels SIMD-vectorized but `@fastmath`-free.
 
 ---
+
+## Development with AI assistance
+
+Substantial parts of this package — algorithm implementations, tests, and the
+validation and benchmark harnesses — were written with the assistance of
+LLM-based coding tools. Every generated line has been reviewed by the
+maintainer before inclusion. Each algorithm is an independent Julia
+implementation of the paper cited in its docstring; R (`rsparse`) and Python
+(`implicit`, `scikit-learn`, `scikit-surprise`, `scipy`) are used only as
+numerical references in `validation/`, and no source code is derived from
+them. Tests run in CI with coverage collection, and documentation is built and
+deployed from the same workflow.
 
 ## License
 

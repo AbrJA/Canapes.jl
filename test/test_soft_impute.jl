@@ -1,35 +1,41 @@
-# test/test_soft_impute.jl — SoftImpute/SoftSVD tests
+# test/test_soft_impute.jl — SoftImpute / SoftSVD tests
 
 @testset "Basic SoftImpute" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 40, 0.2)
-    result = soft_impute(X; rank=5, λ=0.1, max_iter=20, verbose=false)
-    @test result isa SoftImputeResult
-    @test size(result.U, 2) <= 5
-    @test length(result.d) <= 5
-    @test all(result.d .>= 0)
-    @test all(isfinite, result.U)
-    @test all(isfinite, result.V)
+    model = SoftImpute(rank=5, λ=0.1, max_iter=20, verbose=false)
+    fit!(model, X; rng=rng)
+    @test model isa SoftImpute
+    @test model isa AbstractSoftALS
+    @test model.is_fitted
+    @test size(model.U, 2) <= 5
+    @test length(model.d) <= 5
+    @test all(model.d .>= 0)
+    @test all(isfinite, model.U)
+    @test all(isfinite, model.V)
 
     # Reconstruction should be finite
-    recon = result.U * Diagonal(result.d) * result.V'
+    recon = model.U * Diagonal(model.d) * model.V'
     @test all(isfinite, recon)
 end
 
-@testset "SoftSVD" begin
+@testset "SoftSVD mode" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 40, 0.2)
-    result = soft_svd(X; rank=5, λ=0.0, max_iter=20, verbose=false)
-    @test result isa SoftImputeResult
-    @test all(result.d .>= 0)
+    model = SoftSVD(rank=5, λ=0.0, max_iter=20, verbose=false)
+    fit!(model, X; rng=rng)
+    @test model isa SoftSVD
+    @test model isa AbstractSoftALS
+    @test all(model.d .>= 0)
 end
 
 @testset "Singular values sorted descending" begin
     rng = MersenneTwister(5)
     X = sprand(rng, 60, 50, 0.2)
-    result = soft_impute(X; rank=5, λ=0.1, max_iter=20, verbose=false)
-    @test issorted(result.d; rev=true)
-    @test all(result.d .>= 0)
+    model = SoftImpute(rank=5, λ=0.1, max_iter=20, verbose=false)
+    fit!(model, X; rng=rng)
+    @test issorted(model.d; rev=true)
+    @test all(model.d .>= 0)
 end
 
 @testset "Low-rank recovery" begin
@@ -44,23 +50,37 @@ end
     # Make it actually sparse
     X_obs = sparse(findnz(X_obs)..., 50, 40)
 
-    result = soft_impute(X_obs; rank=3, λ=0.01, max_iter=50, verbose=false)
-    @test length(result.d) <= 3
-    @test size(result.U, 1) == 50
-    @test size(result.V, 1) == 40
+    model = SoftImpute(rank=3, λ=0.01, max_iter=50, verbose=false)
+    fit!(model, X_obs; rng=rng)
+    @test length(model.d) <= 3
+    @test size(model.U, 1) == 50
+    @test size(model.V, 1) == 40
 end
 
 @testset "Convergence tolerance" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 30, 25, 0.3)
-    result = soft_impute(X; rank=5, λ=0.1, max_iter=1000, convergence_tol=1e-6, verbose=false)
-    @test all(isfinite, result.d)
+    model = SoftImpute(rank=5, λ=0.1, max_iter=1000, tol=1e-6, verbose=false)
+    fit!(model, X; rng=rng)
+    @test all(isfinite, model.d)
 end
 
 @testset "λ shrinks singular values" begin
     rng = MersenneTwister(42)
     X = sprand(rng, 50, 40, 0.2)
-    r_low_λ = soft_impute(X; rank=5, λ=0.01, max_iter=30, verbose=false)
-    r_high_λ = soft_impute(X; rank=5, λ=5.0, max_iter=30, verbose=false)
-    @test sum(r_high_λ.d) <= sum(r_low_λ.d)
+    m_low = SoftImpute(rank=5, λ=0.01, max_iter=30, verbose=false)
+    m_high = SoftImpute(rank=5, λ=5.0, max_iter=30, verbose=false)
+    fit!(m_low, X; rng=rng)
+    fit!(m_high, X; rng=rng)
+    @test sum(m_high.d) <= sum(m_low.d)
+end
+
+@testset "verbose logging with Float32 losses" begin
+    # Regression: log_iteration required Float64 while Float32 models pass
+    # Float32 losses — verbose fits of a Float32 model must not throw.
+    rng = MersenneTwister(42)
+    X = sprand(rng, 30, 25, 0.2)
+    m = SoftImpute(rank=4, λ=0.1, max_iter=3, verbose=true)
+    fit!(m, X; rng=rng)
+    @test m.is_fitted
 end

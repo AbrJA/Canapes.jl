@@ -3,17 +3,18 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 """
-    temporal_split(X::SparseMatrixCSC; test_fraction=0.2, rng=Random.default_rng())
+    random_holdout(X::SparseMatrixCSC; test_fraction=0.2, rng=Random.default_rng())
 
 Split a user-item matrix into train/test by randomly holding out a fraction
-of each user's interactions for testing. This simulates a temporal split.
+of each user's interactions for testing. This is a random holdout, not a
+temporal split, because the matrix does not contain timestamps.
 
 Returns `(X_train, X_test)` as sparse matrices.
 """
-function temporal_split(X::SparseMatrixCSC{Tv,Ti};
-                        test_fraction::Float64=0.2,
+function random_holdout(X::SparseMatrixCSC{Tv,Ti};
+                        test_fraction::Real=0.2,
                         rng::AbstractRNG=Random.default_rng()) where {Tv,Ti}
-    @assert 0.0 < test_fraction < 1.0
+    0.0 < test_fraction < 1.0 || throw(ArgumentError("test_fraction must be in (0, 1), got $test_fraction"))
 
     n_users, n_items = size(X)
     train_rows = Int[]; train_cols = Int[]; train_vals = Tv[]
@@ -62,7 +63,7 @@ function temporal_split(X::SparseMatrixCSC{Tv,Ti};
 end
 
 """
-    cv_evaluate(model_fn, X; n_folds=5, k=10, metric=map_at_k, rng=default_rng())
+    cross_validate(model_fn, X; n_folds=5, k=10, metric=mean_ap_at_k, rng=default_rng())
 
 K-fold cross-validation for recommendation models.
 
@@ -71,37 +72,37 @@ K-fold cross-validation for recommendation models.
 - `X` — full interaction matrix (users × items)
 - `n_folds` — number of folds
 - `k` — cutoff for ranking metrics
-- `metric` — ranking metric function (e.g., `map_at_k`, `ndcg_at_k`)
+- `metric` — ranking metric function (e.g., `mean_ap_at_k`, `ndcg_at_k`)
 
 # Returns
 - `(mean_score, std_score, fold_scores)`
 
 # Example
 ```julia
-mean_map, std_map, scores = cv_evaluate(
-    () -> WRMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
-    X; n_folds=5, k=10, metric=map_at_k
+mean_map, std_map, scores = cross_validate(
+    () -> WeightedMF(rank=10, λ=0.1, α=40.0, max_iter=10, verbose=false),
+    X; n_folds=5, k=10, metric=mean_ap_at_k
 )
 ```
 """
-function cv_evaluate(model_fn, X::SparseMatrixCSC;
+function cross_validate(model_fn, X::SparseMatrixCSC;
                      n_folds::Int=5,
                      k::Int=10,
-                     metric=map_at_k,
+                     metric=mean_ap_at_k,
                      rng::AbstractRNG=Random.default_rng())
-    @assert n_folds >= 2
+    n_folds >= 2 || throw(ArgumentError("n_folds must be ≥ 2, got $n_folds"))
 
     fold_scores = Float64[]
 
     for fold in 1:n_folds
-        X_train, X_test = temporal_split(X; test_fraction=1.0/n_folds,
-                                         rng=MersenneTwister(fold))
+        X_train, X_test = random_holdout(X; test_fraction=1.0/n_folds,
+                                         rng=MersenneTwister(rand(rng, UInt)))
 
         model = model_fn()
         fit!(model, X_train; rng=rng)
-        preds = predict(model, X_train; k=k)
-        score = metric(preds, X_test; k=k)
-        push!(fold_scores, score)
+        preds = recommend(model, X_train; k=k)
+        metric_val = _scalarize_metric(metric(preds, X_test; k=k))
+        push!(fold_scores, metric_val)
     end
 
     mean_score = sum(fold_scores) / length(fold_scores)
@@ -111,7 +112,7 @@ function cv_evaluate(model_fn, X::SparseMatrixCSC;
 end
 
 """
-    grid_search(model_fn, X, param_grid; k=10, metric=map_at_k,
+    grid_search(model_fn, X, param_grid; k=10, metric=mean_ap_at_k,
                 test_fraction=0.2, rng=default_rng(), verbose=true)
 
 Grid search over hyperparameters with train/test split.
@@ -127,7 +128,7 @@ Grid search over hyperparameters with train/test split.
 # Example
 ```julia
 best, score, results = grid_search(
-    p -> WRMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
+    p -> WeightedMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
     X,
     Dict(:rank => [10, 20, 50], :λ => [0.01, 0.1, 1.0]);
     k=10
@@ -137,11 +138,11 @@ best, score, results = grid_search(
 function grid_search(model_fn, X::SparseMatrixCSC,
                      param_grid::Dict{Symbol,<:AbstractVector};
                      k::Int=10,
-                     metric=map_at_k,
+                     metric=mean_ap_at_k,
                      test_fraction::Float64=0.2,
                      rng::AbstractRNG=Random.default_rng(),
                      verbose::Bool=true)
-    X_train, X_test = temporal_split(X; test_fraction=test_fraction, rng=rng)
+    X_train, X_test = random_holdout(X; test_fraction=test_fraction, rng=rng)
 
     # Generate all combinations
     keys_vec = collect(keys(param_grid))
@@ -158,16 +159,16 @@ function grid_search(model_fn, X::SparseMatrixCSC,
         model = model_fn(params)
         try
             fit!(model, X_train; rng=rng)
-            preds = predict(model, X_train; k=k)
-            score = metric(preds, X_test; k=k)
-            push!(results, (params=params, score=score))
+            preds = recommend(model, X_train; k=k)
+            metric_val = _scalarize_metric(metric(preds, X_test; k=k))
+            push!(results, (params=params, score=metric_val))
 
-            if score > best_score
-                best_score = score
+            if metric_val > best_score
+                best_score = metric_val
                 best_params = params
             end
 
-            verbose && @info "[GridSearch] $(params) → $(round(score, digits=6))"
+            verbose && @info "[GridSearch] $(params) → $(round(metric_val, digits=6))"
         catch e
             verbose && @warn "[GridSearch] $(params) failed: $(e)"
             push!(results, (params=params, score=-Inf))
@@ -179,7 +180,7 @@ end
 
 """
     random_search(model_fn, X, param_samplers; n_trials=20, k=10,
-                  metric=map_at_k, test_fraction=0.2, rng=default_rng(), verbose=true)
+                  metric=mean_ap_at_k, test_fraction=0.2, rng=default_rng(), verbose=true)
 
 Random search over hyperparameters.
 
@@ -191,7 +192,7 @@ Random search over hyperparameters.
 # Example
 ```julia
 best, score, _ = random_search(
-    p -> WRMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
+    p -> WeightedMF(rank=p.rank, λ=p.λ, α=40.0, max_iter=10, verbose=false),
     X,
     Dict(:rank => rng -> rand(rng, [10,20,50,100]),
          :λ => rng -> 10.0^(rand(rng)*3 - 2));  # log-uniform [0.01, 10]
@@ -203,11 +204,11 @@ function random_search(model_fn, X::SparseMatrixCSC,
                        param_samplers::Dict{Symbol,<:Function};
                        n_trials::Int=20,
                        k::Int=10,
-                       metric=map_at_k,
+                       metric=mean_ap_at_k,
                        test_fraction::Float64=0.2,
                        rng::AbstractRNG=Random.default_rng(),
                        verbose::Bool=true)
-    X_train, X_test = temporal_split(X; test_fraction=test_fraction, rng=rng)
+    X_train, X_test = random_holdout(X; test_fraction=test_fraction, rng=rng)
 
     keys_vec = collect(keys(param_samplers))
     results = Vector{NamedTuple{(:params, :score), Tuple{NamedTuple, Float64}}}()
@@ -222,16 +223,16 @@ function random_search(model_fn, X::SparseMatrixCSC,
         model = model_fn(params)
         try
             fit!(model, X_train; rng=rng)
-            preds = predict(model, X_train; k=k)
-            score = metric(preds, X_test; k=k)
-            push!(results, (params=params, score=score))
+            preds = recommend(model, X_train; k=k)
+            metric_val = _scalarize_metric(metric(preds, X_test; k=k))
+            push!(results, (params=params, score=metric_val))
 
-            if score > best_score
-                best_score = score
+            if metric_val > best_score
+                best_score = metric_val
                 best_params = params
             end
 
-            verbose && @info "[RandomSearch $trial/$n_trials] $(params) → $(round(score, digits=6))"
+            verbose && @info "[RandomSearch $trial/$n_trials] $(params) → $(round(metric_val, digits=6))"
         catch e
             verbose && @warn "[RandomSearch $trial/$n_trials] $(params) failed: $(e)"
             push!(results, (params=params, score=-Inf))
@@ -240,3 +241,8 @@ function random_search(model_fn, X::SparseMatrixCSC,
 
     (best_params, best_score, results)
 end
+
+# Metrics that return per-user vectors (e.g. ndcg_at_k) are reduced to their
+# mean so cross-validation and search report a single scalar per trial.
+@inline _scalarize_metric(x::Real) = x
+@inline _scalarize_metric(v::AbstractVector{<:Real}) = isempty(v) ? NaN : sum(v) / length(v)

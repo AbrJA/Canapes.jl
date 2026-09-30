@@ -1,3 +1,22 @@
+"""
+    Canapes
+
+Sparse statistical learning and recommender systems in pure Julia: matrix
+factorization, item-item similarity, low-rank completion, and sparse
+regression — all behind one `fit!` / `recommend` / `score` / `predict` API on
+`SparseMatrixCSC`.
+
+# Why "Canapes"?
+
+C.A.N.A.P.E.S. — Collaborative Algorithms & Neighborhood Approximations for
+Prediction & Embeddings, Sparse.
+
+In Spanish, a *canapé* is a small appetizer served in a single bite, made to
+order. That is the spirit of this library: bite-sized recommendations tailored
+to each user.
+
+The seven letters are also a quiet dedication: **C**iro, **A**braham, **N**oe, **A**bdiel, **P**aty and **E**lias
+"""
 module Canapes
 
 using LinearAlgebra

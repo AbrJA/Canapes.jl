@@ -1,5 +1,11 @@
 # API Reference
 
+## Package overview
+
+```@docs
+Canapes
+```
+
 ## Core Types & Utilities
 
 ```@autodocs

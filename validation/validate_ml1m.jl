@@ -77,7 +77,7 @@ function main()
         preds = recommend(m, X_tr; k=10)
         rec_alloc = @allocated recommend(m, X_tr; k=10)
         map_ = mean_ap_at_k(preds, X_te; k=10)
-        ndcg = mean(ndcg_at_k(preds, X_te; k=10))
+        ndcg = mean_ndcg_at_k(preds, X_te; k=10)
         (name, fit_s, fit_alloc, rec_alloc, map_, ndcg)
     end
     jl = []
@@ -106,7 +106,7 @@ function main()
     for (name, fit_s, fit_alloc, rec_alloc, jmap, jndcg) in jl
         precs = load_recs(joinpath(FDIR, "py_$(name).txt"), n_users)
         pmap = mean_ap_at_k(precs, X_te; k=10)
-        pndcg = mean(ndcg_at_k(precs, X_te; k=10))
+        pndcg = mean_ndcg_at_k(precs, X_te; k=10)
         pfit = get(timings, name, NaN)
         dmap = abs(jmap - pmap); dndcg = abs(jndcg - pndcg)
         # PairwiseRanking is SGD-based: both implementations are valid but trajectories

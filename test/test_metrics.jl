@@ -9,6 +9,9 @@
     @test ap[1] ≈ 1.0
 
     @test mean_ap_at_k(predictions, actual; k=4) ≈ 1.0
+    @test mean_ndcg_at_k(predictions, actual; k=4) ≈ 1.0
+    @test mean_precision_at_k(predictions, actual; k=4) ≈ 0.75
+    @test mean_recall_at_k(predictions, actual; k=4) ≈ 1.0
     @test ndcg_at_k(predictions, actual; k=4)[1] ≈ 1.0
     @test precision_at_k(predictions, actual; k=4)[1] ≈ 0.75
     @test recall_at_k(predictions, actual; k=4)[1] ≈ 1.0
@@ -75,6 +78,18 @@ end
     # k=2 should only consider first 2 predictions
     prec = precision_at_k(preds, actual; k=2)
     @test prec[1] ≈ 1.0  # both [1,2] are relevant
+end
+
+@testset "mean_* equals mean of per-user vectors" begin
+    actual = sparse([1,1,2,2,3,3], [1,2,3,4,5,6], ones(6), 3, 10)
+    preds = [1 2; 3 4; 5 6]
+    @test mean_ndcg_at_k(preds, actual; k=2) ≈ mean(ndcg_at_k(preds, actual; k=2))
+    @test mean_precision_at_k(preds, actual; k=2) ≈ mean(precision_at_k(preds, actual; k=2))
+    @test mean_recall_at_k(preds, actual; k=2) ≈ mean(recall_at_k(preds, actual; k=2))
+    empty_actual = sparse(Int[], Int[], Float64[], 1, 10)
+    @test mean_ndcg_at_k([1 2], empty_actual; k=2) == 0.0
+    @test mean_precision_at_k([1 2], empty_actual; k=2) == 0.0
+    @test mean_recall_at_k([1 2], empty_actual; k=2) == 0.0
 end
 
 @testset "Invalid ranking inputs" begin

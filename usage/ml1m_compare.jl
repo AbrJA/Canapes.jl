@@ -103,9 +103,9 @@ function evaluate(model, name; rng=MersenneTwister(1))
         return nothing
     end
     map_  = mean_ap_at_k(preds, X_test; k=K)
-    ndcg  = mean(ndcg_at_k(preds, X_test; k=K))
-    prec  = mean(precision_at_k(preds, X_test; k=K))
-    rec   = mean(recall_at_k(preds, X_test; k=K))
+    ndcg  = mean_ndcg_at_k(preds, X_test; k=K)
+    prec  = mean_precision_at_k(preds, X_test; k=K)
+    rec   = mean_recall_at_k(preds, X_test; k=K)
     (name=name, fit_s=fit_s, map=map_, ndcg=ndcg, prec=prec, rec=rec)
 end
 
@@ -155,9 +155,9 @@ for u in 1:size(X_train, 1)
     end
 end
 push!(results, (name="Popularity", fit_s=time()-t0,
-                map=mean_ap_at_k(preds_pop, X_test; k=K), ndcg=mean(ndcg_at_k(preds_pop, X_test; k=K)),
-                prec=mean(precision_at_k(preds_pop, X_test; k=K)),
-                rec=mean(recall_at_k(preds_pop, X_test; k=K))))
+                map=mean_ap_at_k(preds_pop, X_test; k=K), ndcg=mean_ndcg_at_k(preds_pop, X_test; k=K),
+                prec=mean_precision_at_k(preds_pop, X_test; k=K),
+                rec=mean_recall_at_k(preds_pop, X_test; k=K)))
 
 # ── 6. Report ────────────────────────────────────────────────────────────────
 println("\n" * "─"^98)

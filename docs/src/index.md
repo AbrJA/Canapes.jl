@@ -56,9 +56,9 @@ fit!(model, X_train)
 # Get top-10 recommendations (seen items automatically masked)
 recommendations = recommend(model, X_train; k=10)
 
-# Evaluate
+# Evaluate (mean_* are macro-averaged scalars)
 map_score  = mean_ap_at_k(recommendations, X_test; k=10)
-ndcg_score = mean(ndcg_at_k(recommendations, X_test; k=10))   # mean over users → scalar
+ndcg_score = mean_ndcg_at_k(recommendations, X_test; k=10)
 println("MAP@10: $(round(map_score, digits=4))")
 println("NDCG@10: $(round(ndcg_score, digits=4))")
 

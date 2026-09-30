@@ -56,11 +56,11 @@ fit!(model, X; rng=MersenneTwister(42))
 # 3. Top-k recommendations per user (k clamps to n_items)
 preds = recommend(model, X; k=10)   # 4×5 Matrix{Int} of item indices
 
-# 4. Evaluate against a held-out split (mean_ap_at_k is scalar; ndcg_at_k is per-user)
+# 4. Evaluate against a held-out split (the mean_* functions are macro-averaged scalars)
 X_train, X_test = random_holdout(X; test_fraction=0.2, rng=MersenneTwister(1))
 fit!(model, X_train; rng=MersenneTwister(42))
-println("MAP@10      = ", round(mean_ap_at_k(recommend(model, X_train; k=10), X_test), digits=4))
-println("Mean NDCG@10 = ", round(mean(ndcg_at_k(recommend(model, X_train; k=10), X_test)), digits=4))
+println("MAP@10       = ", round(mean_ap_at_k(recommend(model, X_train; k=10), X_test), digits=4))
+println("Mean NDCG@10 = ", round(mean_ndcg_at_k(recommend(model, X_train; k=10), X_test), digits=4))
 ```
 
 ---

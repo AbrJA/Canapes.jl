@@ -103,6 +103,18 @@ function ndcg_at_k(predictions::AbstractMatrix{<:Integer},
     result
 end
 
+"""
+    mean_ndcg_at_k(predictions, actual; k)
+
+Mean Normalized Discounted Cumulative Gain @ K (macro-averaged over all users).
+"""
+function mean_ndcg_at_k(predictions::AbstractMatrix{<:Integer},
+                        actual::SparseMatrixCSC;
+                        k::Int = size(predictions, 2))
+    vals = ndcg_at_k(predictions, actual; k)
+    isempty(vals) ? 0.0 : sum(vals) / length(vals)
+end
+
 function _ndcg_single(predictions::AbstractMatrix{<:Integer},
                       actual::SparseMatrixCSC, u::Int, k::Int)
     items, rels = _relevant_items_with_scores(actual, u)
@@ -151,6 +163,18 @@ function precision_at_k(predictions::AbstractMatrix{<:Integer},
         end
     end
     result
+end
+
+"""
+    mean_precision_at_k(predictions, actual; k)
+
+Mean Precision @ K (macro-averaged over all users).
+"""
+function mean_precision_at_k(predictions::AbstractMatrix{<:Integer},
+                             actual::SparseMatrixCSC;
+                             k::Int = size(predictions, 2))
+    vals = precision_at_k(predictions, actual; k)
+    isempty(vals) ? 0.0 : sum(vals) / length(vals)
 end
 
 function _precision_single(predictions::AbstractMatrix{<:Integer},
@@ -202,6 +226,18 @@ function recall_at_k(predictions::AbstractMatrix{<:Integer},
         end
     end
     result
+end
+
+"""
+    mean_recall_at_k(predictions, actual; k)
+
+Mean Recall @ K (macro-averaged over all users).
+"""
+function mean_recall_at_k(predictions::AbstractMatrix{<:Integer},
+                          actual::SparseMatrixCSC;
+                          k::Int = size(predictions, 2))
+    vals = recall_at_k(predictions, actual; k)
+    isempty(vals) ? 0.0 : sum(vals) / length(vals)
 end
 
 # ──────────────── Helpers: extract relevant items from sparse row ────────────────

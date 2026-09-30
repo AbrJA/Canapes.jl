@@ -103,9 +103,9 @@ using Canapes.Experimental: LogisticMF
 X = sprand(MersenneTwister(1), 800, 300, 0.03)
 model = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.01, max_iter=20, n_negative=5)
 # optimizer=:adagrad (default) reproduces implicit's lmf.pyx exactly;
-# optimizer=:rmsprop uses an EMA squared-gradient accumulator — recommended
-# when training with small learning rates for longer runs.
-model_rp = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.05, max_iter=50, optimizer=:rmsprop)
+# optimizer=:rmsprop keeps step sizes at the lr scale for the whole run, so it
+# needs a much smaller lr (~0.005) — larger rates make the sampled loss rise.
+model_rp = LogisticMF(rank=15, α=1.0, λ=0.1, lr=0.005, max_iter=50, optimizer=:rmsprop)
 fit!(model, X; rng=MersenneTwister(42))
 fit!(model_rp, X; rng=MersenneTwister(42))
 preds = recommend(model, X; k=10)

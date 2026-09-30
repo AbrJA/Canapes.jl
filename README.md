@@ -10,6 +10,12 @@
 [![Julia 1.10+](https://img.shields.io/badge/Julia-1.10%2B-blue?logo=julia)](https://julialang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+In Spanish, a *canapé* is a small appetizer served in a single bite, made to
+order. That is the spirit of this library: bite-sized recommendations tailored
+to each user.
+
+The seven letters are also a quiet dedication: **C**iro, **A**braham, **N**oe, **A**bdiel, **P**aty and **E**lias
+
 </div>
 
 ---
@@ -28,6 +34,7 @@ API on `SparseMatrixCSC`.
   `scikit-surprise`) implementations
 - **Optional GPU** acceleration via a CUDA.jl extension, Tables.jl input,
   atomic model persistence, and a tracked benchmark harness
+
 
 ## Installation
 
@@ -153,17 +160,6 @@ uploads coverage to Codecov.
 
 With CUDA.jl installed, a package extension adds `fit_gpu!`, `score_gpu`, and
 `recommend_gpu` for ShallowAutoencoder, CachedALS, and WeightedMF — load `CUDA` and the same API works.
-
-## Why "Canapes"?
-
-C.A.N.A.P.E.S. — Collaborative Algorithms & Neighborhood Approximations for
-Prediction & Embeddings, Sparse.
-
-In Spanish, a *canapé* is a small appetizer served in a single bite, made to
-order. That is the spirit of this library: bite-sized recommendations tailored
-to each user.
-
-The seven letters are also a quiet dedication: **C**iro, **A**braham, **N**oe, **A**bdiel, **P**aty and **E**lias
 
 ## Contributing
 

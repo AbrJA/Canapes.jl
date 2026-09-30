@@ -10,7 +10,7 @@
 [![Julia 1.10+](https://img.shields.io/badge/Julia-1.10%2B-blue?logo=julia)](https://julialang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-The name is a quiet dedication: **C**iro, **A**braham, **N**oe, **A**bdiel, **P**aty and **E**lias.
+❤️ The name is a quiet dedication: **C**iro, **A**braham, **N**oe, **A**bdiel, **P**aty and **E**lias.
 
 </div>
 
@@ -21,17 +21,17 @@ matrix factorization, item-item similarity, low-rank completion, and sparse
 regression — all behind one unified `fit!` / `recommend` / `score` / `predict`
 API on `SparseMatrixCSC`.
 
-- **Reproducible training** for a fixed seed and environment (GlobalVectors and PairwiseRanking are
+- 🔄 **Reproducible training** for a fixed seed and environment (GlobalVectors and PairwiseRanking are
   the documented Hogwild exceptions)
-- **Memory-bounded scoring** — top-k paths never materialize a full dense score
+- 🧠 **Memory-bounded scoring** — top-k paths never materialize a full dense score
   matrix
-- **Reference-validated** — weights, predictions, and losses are compared
+- ✅ **Reference-validated** — weights, predictions, and losses are compared
   numerically against R (`rsparse`) and Python (`implicit`, `scikit-learn`,
   `scikit-surprise`) implementations
-- **Optional GPU** acceleration via a CUDA.jl extension, Tables.jl input,
+- ⚡ **Optional GPU** acceleration via a CUDA.jl extension, Tables.jl input,
   atomic model persistence, and a tracked benchmark harness
 
-## Installation
+## 📦 Installation
 
 ```julia
 using Pkg
@@ -42,7 +42,7 @@ Requires Julia ≥ 1.10. The full API reference is at [docs](https://AbrJA.githu
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ```julia
 using Canapes, SparseArrays, Random, Statistics
@@ -67,7 +67,7 @@ println("Mean NDCG@10 = ", round(mean_ndcg_at_k(recommend(model, X_train; k=10),
 
 ---
 
-## Models
+## 🧩 Models
 
 | Model | Type | Reference |
 |-------|------|-----------|
@@ -95,21 +95,21 @@ top-N benchmarks and needs fragile tuning.
 
 Choosing a model, briefly:
 
-- **Implicit feedback (clicks, views, plays)**: `WeightedMF` (fast, any scale), `CachedALS`
+- 👆 **Implicit feedback (clicks, views, plays)**: `WeightedMF` (fast, any scale), `CachedALS`
   (accuracy/cost balance), `ElementwiseALS` (popularity-weighted), `PairwiseRanking` (pairwise
   ranking). Note: "iALS" in the literature usually means Hu et al. (2008) —
   that is this package's `WeightedMF`; `CachedALS` here is Rendle et al. (2021).
-- **Item-item similarity**: `ShallowAutoencoder` (accuracy), `SparseLinearModel` / `SparseLinearADMM` (sparse and
+- 🔗 **Item-item similarity**: `ShallowAutoencoder` (accuracy), `SparseLinearModel` / `SparseLinearADMM` (sparse and
   interpretable weights), `ItemKNN` (lightweight baseline), `GraphRandomWalk`
   (long-tail bias).
-- **Explicit ratings (rating prediction)**: `WeightedMF(feedback=Explicit)` (BiasedMF),
+- ⭐ **Explicit ratings (rating prediction)**: `WeightedMF(feedback=Explicit)` (BiasedMF),
   plus `BaselineOnly`, `SlopeOne`, `PearsonKNN`, and the completion models;
   evaluated with `rmse` / `mae`.
-- **Sparse regression / CTR**: `FTRL` (online) and `FactorizationMachine`.
+- 🎯 **Sparse regression / CTR**: `FTRL` (online) and `FactorizationMachine`.
 
 ---
 
-## API at a glance
+## 🧰 API at a glance
 
 | Function | Description |
 |----------|-------------|
@@ -129,7 +129,7 @@ the docs for examples.
 
 ---
 
-## Performance, Validation & Benchmarking
+## 📊 Performance, Validation & Benchmarking
 
 - **Thread-safe and reproducible**: shared chunked-buffer helpers for
   `Threads.@threads` loops, `@simd` reductions without `@fastmath`, per-chunk
@@ -138,7 +138,7 @@ the docs for examples.
   MovieLens-1M), and a tracked harness in `benchmark/` records `fit!` /
   `recommend` time and allocations at three fixed scales across commits.
 
-## Testing
+## 🧪 Testing
 
 ```bash
 julia --project=. --threads=8 -e 'using Pkg; Pkg.test()'                 # full suite
@@ -151,18 +151,18 @@ Aqua/JET static analysis; GPU tests run when CUDA is available. CI runs the full
 suite on Julia 1, LTS, and pre-release, on Linux, macOS, and Windows, and
 uploads coverage to Codecov.
 
-## GPU
+## ⚡ GPU
 
 With CUDA.jl installed, a package extension adds `fit_gpu!`, `score_gpu`, and
 `recommend_gpu` for ShallowAutoencoder, CachedALS, and WeightedMF — load `CUDA` and the same API works.
 
-## Why "Canapes"?
+## 🍢 Why "Canapes"?
 
 In Spanish, a *canapé* is a small appetizer served in a single bite, made to
 order. That is the spirit of this library: bite-sized recommendations tailored
 to each user.
 
-## Contributing
+## 🤝 Contributing
 
 Issues and PRs are welcome. Run the full suite (`--threads=8`) before opening a
 PR, validate performance changes with `benchmark/run.jl`, and keep training
@@ -170,7 +170,7 @@ kernels SIMD-vectorized but `@fastmath`-free.
 
 ---
 
-## Development with AI assistance
+## 🤖 Development with AI assistance
 
 Substantial parts of this package — algorithm implementations, tests, and the
 validation and benchmark harnesses — were written with the assistance of
@@ -182,6 +182,6 @@ numerical references in `validation/`, and no source code is derived from
 them. Tests run in CI with coverage collection, and documentation is built and
 deployed from the same workflow.
 
-## License
+## 📄 License
 
 MIT — see [LICENSE](LICENSE).
